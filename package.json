@@ -1,0 +1,31 @@
+{
+  "name": "imaj-cad",
+  "version": "0.1.0",
+  "description": "İmaj CAD - web tabanlı 3D CAD",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AliYldz01/imaj-cad.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/AliYldz01/imaj-cad/issues"
+  },
+  "homepage": "https://github.com/AliYldz01/imaj-cad#readme",
+  "dependencies": {
+    "replicad": "^1.2.1",
+    "replicad-opencascadejs": "^1.2.1",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "private": true,
+  "type": "module"
+}
