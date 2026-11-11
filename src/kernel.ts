@@ -1,7 +1,7 @@
-// Çekirdek iş parçacığıyla konuşan küçük istemci.
-import type { Feature, KernelRequest, KernelResponse, MeshData } from "./types";
+// Çekirdek iş parçacığıyla konuşan istemci.
+import type { KFeature, KernelRequest, KernelResponse, MeshData } from "./doc/types";
 
-type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[] };
+export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[] };
 
 export class Kernel {
   private worker: Worker;
@@ -38,7 +38,7 @@ export class Kernel {
     });
   }
 
-  async build(features: Feature[]): Promise<BuildResult> {
+  async build(features: KFeature[]): Promise<BuildResult> {
     await this.ready;
     const r = await this.request<BuildResult>({ type: "build", features } as any);
     return { mesh: r.mesh, errors: r.errors };

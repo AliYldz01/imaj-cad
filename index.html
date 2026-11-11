@@ -13,92 +13,75 @@
     <title>İmaj CAD</title>
   </head>
   <body>
-    <header id="toolbar" class="bar">
-      <div class="group" id="tools">
-        <button data-tool="orbit" class="active" title="3D döndür"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5 M12 12v9 M12 12L4 7.5"/></svg><span>3D</span></button>
-        <button data-tool="rect" title="Dikdörtgen"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg><span>Dikdörtgen</span></button>
-        <button data-tool="circle" title="Daire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg><span>Daire</span></button>
-        <button data-tool="poly" title="Çokgen"><svg viewBox="0 0 24 24"><path d="M5 18L4 8l8-4 8 6-3 9z"/></svg><span>Çokgen</span></button>
+    <header id="cmdbar">
+      <div id="tabs">
+        <button data-tab="features" class="active">Özellikler</button>
+        <button data-tab="sketch">Eskiz</button>
       </div>
-      <div class="group">
-        <button id="undo" title="Geri al"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5 M4 9h10a6 6 0 010 12h-3"/></svg><span>Geri</span></button>
-        <button id="redo" title="Yinele"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5 M20 9H10a6 6 0 000 12h3"/></svg><span>İleri</span></button>
-        <button id="help-btn" title="Yardım ve hakkında"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 115 0c0 2-2.5 2-2.5 4 M12 17v.5"/></svg><span>Yardım</span></button>
+      <div id="cmds"></div>
+      <div id="globals">
+        <button id="tree-btn" class="cmd" title="Özellik ağacı"></button>
+        <button id="undo" class="cmd" title="Geri al (Ctrl+Z)"></button>
+        <button id="redo" class="cmd" title="Yinele (Ctrl+Y)"></button>
+        <button id="file-btn" class="cmd" title="Dosya"></button>
+        <button id="help-btn" class="cmd" title="Yardım"></button>
       </div>
     </header>
 
-    <main id="view">
-      <div id="status"><span class="dot"></span><span id="status-text">Çekirdek yükleniyor…</span></div>
-    </main>
+    <div id="main">
+      <aside id="side">
+        <section id="tree-panel">
+          <div class="side-head"><strong id="part-name">Parça1</strong><button id="side-close" class="icon-x" aria-label="Kapat">✕</button></div>
+          <ul id="tree"></ul>
+          <div id="tree-actions"></div>
+        </section>
+        <section id="pm" hidden>
+          <div class="pm-head">
+            <strong id="pm-title"></strong>
+            <span class="spacer"></span>
+            <button id="pm-ok" class="corner ok" title="Tamam">✓</button>
+            <button id="pm-cancel" class="corner no" title="İptal">✕</button>
+          </div>
+          <div id="pm-body"></div>
+        </section>
+      </aside>
 
-    <footer id="bottombar" class="bar">
-      <div class="group">
-        <button id="v-top" title="Üstten görünüş"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"/><path d="M12 9v6 M9 12h6"/></svg><span>Üst</span></button>
-        <button id="v-front" title="Önden görünüş"><svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10"/><path d="M5 8l3-3h11v10l-0 3"/></svg><span>Ön</span></button>
-        <button id="v-iso" title="İzometrik görünüş"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/></svg><span>İzo</span></button>
-        <button id="v-fit" title="Ekrana sığdır"><svg viewBox="0 0 24 24"><path d="M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5"/></svg><span>Sığdır</span></button>
-      </div>
-      <div class="group">
-        <button id="tree-btn" title="Özellik ağacı"><svg viewBox="0 0 24 24"><path d="M5 6h14 M5 12h14 M5 18h14"/></svg><span>Ağaç</span></button>
-        <button id="export-btn" title="Dışa aktar"><svg viewBox="0 0 24 24"><path d="M12 4v11 M7 10l5 5 5-5 M5 20h14"/></svg><span>Dışa Aktar</span></button>
-        <button id="new-btn" title="Yeni model"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z M14 3v4h4"/></svg><span>Yeni</span></button>
-      </div>
-    </footer>
-
-    <div id="hint"></div>
-    <div id="poly-actions" hidden>
-      <button id="poly-undo">Son noktayı sil</button>
-      <button id="poly-close" class="primary">Çokgeni kapat</button>
+      <main id="view">
+        <div id="hint"></div>
+        <div id="status"><span class="dot"></span><span id="status-text">Çekirdek yükleniyor…</span></div>
+        <div id="viewbar"></div>
+      </main>
     </div>
 
-    <div id="export-menu" class="popover" hidden>
-      <button data-fmt="step">STEP (.step) — katı model</button>
-      <button data-fmt="stl">STL (.stl) — 3D baskı</button>
+    <div id="file-menu" class="popover" hidden>
+      <button data-act="new">Yeni parça</button>
+      <button data-act="open">Aç (.icad)…</button>
+      <button data-act="save">Kaydet (.icad)</button>
+      <hr />
+      <button data-act="step">STEP olarak dışa aktar</button>
+      <button data-act="stl">STL olarak dışa aktar</button>
     </div>
-
-    <aside id="tree" class="drawer" hidden>
-      <div class="drawer-head"><strong>Özellik Ağacı</strong><button id="tree-close" aria-label="Kapat">✕</button></div>
-      <ol id="tree-list"></ol>
-      <p class="muted small">Bir adıma dokunarak ölçülerini değiştirebilirsiniz. Model, adımlardan her seferinde yeniden hesaplanır.</p>
-    </aside>
-
-    <section id="panel" class="sheet" hidden>
-      <div class="sheet-head"><strong id="panel-title">Ölçüler</strong></div>
-      <div id="panel-fields" class="fields"></div>
-      <div class="fields">
-        <label>Eskiz yüksekliği Z<input id="f-z" inputmode="decimal" autocomplete="off" /></label>
-        <label>Katı yüksekliği<input id="f-depth" inputmode="decimal" autocomplete="off" /></label>
-      </div>
-      <div class="seg" id="f-op">
-        <button data-op="add" class="active">Ekle (malzeme)</button>
-        <button data-op="cut">Çıkar (delik / cep)</button>
-      </div>
-      <p class="muted small">İpucu: "100/2" veya "40+12,5" gibi işlemler yazabilirsiniz. Negatif yükseklik aşağı doğru uzatır.</p>
-      <div class="sheet-actions">
-        <button id="panel-delete" class="danger" hidden>Sil</button>
-        <span class="spacer"></span>
-        <button id="panel-cancel">İptal</button>
-        <button id="panel-ok" class="primary">Katı Yap</button>
-      </div>
-    </section>
+    <input type="file" id="file-input" accept=".icad,.json,application/json" hidden />
 
     <div id="toast" hidden></div>
 
     <dialog id="help">
-      <h2>İmaj CAD — v0.1 deneme sürümü</h2>
-      <h3>Nasıl kullanılır?</h3>
+      <h2>İmaj CAD — v0.2</h2>
+      <h3>Çalışma mantığı (SolidWorks gibi)</h3>
       <ol>
-        <li><b>Dikdörtgen</b>: köşeden köşeye sürükleyin. <b>Daire</b>: merkezden dışa sürükleyin. <b>Çokgen</b>: noktalara tek tek dokunun, ilk noktaya dokunarak kapatın.</li>
-        <li>Açılan panelde ölçüleri yazın, yüksekliği girin ve <b>Katı Yap</b>'a basın.</li>
-        <li>Delik veya cep için katının üst yüzeyine çizin ve <b>Çıkar</b>'ı seçin. Eskiz otomatik olarak dokunduğunuz yüzeyin yüksekliğine yerleşir.</li>
-        <li><b>Ağaç</b>'tan geçmiş her adımı düzenleyebilir, <b>Dışa Aktar</b> ile STEP veya STL alabilirsiniz.</li>
+        <li><b>Eskiz</b>: Bir düzleme (Ön / Üst / Sağ) veya katının düz bir yüzüne dokunun, sonra <b>Eskiz</b>'e basın. Ya da önce Eskiz'e basıp düzlemi seçin.</li>
+        <li>Çizin. Yatay, dikey, çakışık gibi ilişkiler otomatik eklenir.</li>
+        <li><b>Akıllı Ölçü</b> ile ölçüleri verin. <span style="color:#1c4fd8">Mavi</span> = tanımlanmamış, siyah = tam tanımlı, <span style="color:#e03131">kırmızı</span> = aşırı tanımlı.</li>
+        <li>Sol paneldeki ✓ ile eskizden çıkın, <b>Ekstrüzyon</b> veya <b>Döndürme</b> ile katı oluşturun.</li>
+        <li>Ağaçtaki bir adıma dokunup <b>Düzenle</b> veya <b>Eskizi düzenle</b> ile geri dönebilirsiniz.</li>
       </ol>
-      <h3>Gezinme</h3>
-      <p><b>Dokunmatik:</b> 3D modunda tek parmak döndürür; iki parmak kaydırır ve yakınlaştırır. <b>Fare:</b> sol tık döndürür, sağ tık kaydırır, tekerlek yakınlaştırır. Ölçüler milimetredir.</p>
+      <h3>Kalem, parmak ve fare</h3>
+      <p><b>Kalem / sol tık:</b> seçer ve çizer (tıkla-tıkla veya sürükle). <b>Tek parmak:</b> modeli döndürür (eskizde kaydırır). <b>İki parmak:</b> kaydırır ve yakınlaştırır. Parmakla dokunmak da seçim yapar.<br />
+      <b>Fare:</b> orta tuş döndürür, sağ tuş kaydırır, tekerlek yakınlaştırır.</p>
       <h3>Lisanslar</h3>
-      <p class="small">Bu uygulama <b>Open CASCADE Technology</b> yazılımının sağladığı olanakları kullanır. OCCT, GNU LGPL 2.1 lisansı (Open CASCADE istisnası ile) altında dağıtılır; LGPL kapsamındaki haklarınız saklıdır. OCCT ayrı bir WebAssembly dosyası olarak yüklenir ve değiştirilebilir. Kaynak: <a href="https://dev.opencascade.org" target="_blank" rel="noopener">dev.opencascade.org</a>.<br />
+      <p class="small">Bu uygulama <b>Open CASCADE Technology</b> yazılımının sağladığı olanakları kullanır (GNU LGPL 2.1, Open CASCADE istisnası ile; LGPL kapsamındaki haklarınız saklıdır). Eskiz çözücüsü <b>FreeCAD PlaneGCS</b>'tir (GNU LGPL). Her ikisi de ayrı, değiştirilebilir WebAssembly dosyaları olarak yüklenir. Kaynaklar: <a href="https://dev.opencascade.org" target="_blank" rel="noopener">dev.opencascade.org</a>, <a href="https://github.com/Salusoft89/planegcs" target="_blank" rel="noopener">planegcs</a>.<br />
       Ayrıca <b>replicad</b> (MIT) ve <b>three.js</b> (MIT) kullanılmaktadır.</p>
-      <form method="dialog"><button class="primary">Kapat</button></form>
+      <form method="dialog"><button class="btn primary">Kapat</button></form>
     </dialog>
 
     <script type="module" src="/src/main.ts"></script>
