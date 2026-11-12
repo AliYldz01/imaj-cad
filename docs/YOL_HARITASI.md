@@ -192,3 +192,15 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 - [ ] Kaldırınca yerleştir + büyüteç hassasiyeti, yakalama yarıçapı varsayılanı
 - [ ] Uzun basma süresi (600 ms) ve titreşim uygun mu?
 - [ ] Sonuca göre varsayılan ayarları güncelle
+
+## v0.11 — Kalemsiz kullanım
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Şekil sihirbazı | Delikli plaka, flanş, burç/boru, kademeli mil, L braket, kutu profil, blok — ölçü yaz, parça oluşsun (Dosya menüsü ve ✚) | ✅ |
+| Sayıyla çizim | Çizgi (X,Y / uzunluk, açı), dikdörtgen (G×Y), daire (Ø); rakama basınca veya 123 düğmesiyle; ölçü ve yatay/dikey ilişki otomatik | ✅ |
+| Dokunmatik fare | Parmak imleci göreli ve yavaş kaydırır, kısa dokunuş tıklar | ✅ |
+| Parmakla katı | Eskizden çıkınca Ekstrüzyon / Kesme / Döndürme önerisi, seçim filtresi (Tümü / Yüz / Kenar) | ✅ |
+| Kaba çiz, düzelt | Neredeyse yatay/dikey çizgilere tek dokunuşla ilişki | ✅ |
+| Başlangıç rehberi | İlk açılışta kullanım şekli seçimi ve 5 adımlık ilk parça | ✅ |
+| Sonra | Model üzerinde sürüklenen derinlik oku, üst üste adaylar arasında dokunarak geçiş, fotoğraftan kenar izleme, sesle ölçü | ⬜ |

@@ -34,6 +34,8 @@ export interface InputPrefs {
   leftHanded: boolean;
   /** çizime başlayınca alt paneli küçült */
   autoMinSheet: boolean;
+  /** dokunmatik fare: parmak imleci göreli kaydırır, dokunuş tıklar */
+  touchpad: boolean;
 }
 
 const KEY = "imajcad.input";
@@ -55,6 +57,7 @@ export const DEFAULTS: InputPrefs = {
   viewCube: "auto",
   leftHanded: false,
   autoMinSheet: true,
+  touchpad: false,
 };
 
 export const PROFILE_INFO: Record<PenProfile, { name: string; desc: string }> = {

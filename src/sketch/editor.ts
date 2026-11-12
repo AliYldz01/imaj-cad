@@ -330,6 +330,120 @@ export class SketchEditor implements InputHandler {
     this.renderPanel();
   }
 
+  /** Sayıyla çizim: çizgi (X,Y / uzunluk, açı), dikdörtgen (G, Y), daire (Ø) */
+  numericEntry(first = "") {
+    const st = this.st, t = this.tool;
+    const r1 = (v: number) => Math.round(v * 100) / 100;
+    const at = (q: Vec2) => {
+      this.noInfer = true;
+      this.click(q, { clientX: 0, clientY: 0, pointerType: "mouse" });
+      this.noInfer = false;
+    };
+    const lastEnt = () => this.data.ents[this.data.ents.length - 1];
+    let fields: [string, number][] = [];
+    let apply: (v: number[]) => void;
+    const startXY = () => {
+      fields = [["X", 0], ["Y", 0]];
+      apply = (v) => at([v[0], v[1]]);
+    };
+    if (t === "line" || t === "centerline") {
+      if (!st.last) startXY();
+      else {
+        const c = this.cursor ?? add2(st.lastPos, [10, 0]);
+        fields = [["Uzunluk", r1(d2(st.lastPos, c))], ["Açı °", r1((ang(st.lastPos, c) * 180) / Math.PI)]];
+        apply = (v) => {
+          if (!(v[0] > 0)) return;
+          const a = (v[1] * Math.PI) / 180;
+          at(add2(st.lastPos, [v[0] * Math.cos(a), v[0] * Math.sin(a)]));
+          const l = lastEnt() as SLine;
+          if (l?.t !== "line") return;
+          this.op(() => {
+            const k = ((v[1] % 360) + 360) % 180;
+            if (k === 0) addRel(this.data, "horizontal", [l.id]);
+            else if (k === 90) addRel(this.data, "vertical", [l.id]);
+            this.data.dims.push({ id: nid(this.data, "d"), t: "dist", refs: [l.p1, l.p2], sub: "a", v: v[0], lp: mul2(add2(P(this.data, l.p1), P(this.data, l.p2)), 0.5) } as SDim);
+          });
+        };
+      }
+    } else if (t === "rect" || t === "crect") {
+      if (!st.aPos) startXY();
+      else {
+        fields = [["Genişlik", 50], ["Yükseklik", 30]];
+        apply = (v) => at(add2(st.aPos, t === "rect" ? [v[0], v[1]] : [v[0] / 2, v[1] / 2]));
+      }
+    } else if (t === "circle") {
+      if (!st.aPos) startXY();
+      else {
+        fields = [["Çap Ø", 20]];
+        apply = (v) => {
+          if (!(v[0] > 0)) return;
+          at(add2(st.aPos, [v[0] / 2, 0]));
+          const c = lastEnt();
+          if (c?.t === "circle") this.op(() => this.data.dims.push({ id: nid(this.data, "d"), t: "dia", refs: [c.id], v: v[0], lp: add2(P(this.data, c.c), [v[0] * 0.4, v[0] * 0.6]) } as SDim));
+        };
+      }
+    } else return this.host.toast("Sayıyla giriş: Çizgi, Dikdörtgen veya Daire aracında");
+    document.querySelector(".dim-prompt")?.remove();
+    const box = document.createElement("div");
+    box.className = "dim-prompt quick num-entry";
+    const ins = fields.map(([l, v], i) => {
+      const lb = document.createElement("label");
+      lb.textContent = l;
+      const inp = document.createElement("input");
+      inp.inputMode = "decimal";
+      inp.value = i === 0 && first ? first : String(v);
+      lb.appendChild(inp);
+      box.appendChild(lb);
+      return inp;
+    });
+    const ok = document.createElement("button");
+    ok.className = "ok";
+    ok.textContent = "✓";
+    const no = document.createElement("button");
+    no.className = "no";
+    no.textContent = "✕";
+    box.append(ok, no);
+    document.body.appendChild(box);
+    box.style.left = Math.max(8, innerWidth / 2 - box.offsetWidth / 2) + "px";
+    box.style.top = "70px";
+    const go = () => {
+      const v = ins.map((x) => evalNum(x.value.trim()));
+      if (v.some((x) => x === null)) return;
+      box.remove();
+      apply(v as number[]);
+      this.render();
+      this.renderPanel();
+    };
+    ok.addEventListener("click", go);
+    no.addEventListener("click", () => box.remove());
+    ins.forEach((x, i) =>
+      x.addEventListener("keydown", (ev) => {
+        ev.stopPropagation();
+        if (ev.key === "Enter") i < ins.length - 1 ? (ins[i + 1].focus(), ins[i + 1].select()) : go();
+        if (ev.key === "Escape") box.remove();
+      }),
+    );
+    ins[0].focus();
+    if (!first) ins[0].select();
+  }
+
+  /** Kaba eskizi düzelt: neredeyse yatay/dikey çizgilere ilişki ekle */
+  straighten() {
+    const sk = this.data;
+    let n = 0;
+    this.op(() => {
+      for (const e of sk.ents) {
+        if (e.t !== "line") continue;
+        if (relationsOf(sk, e.id).some((r) => ["horizontal", "vertical", "parallel", "perpendicular", "collinear"].includes(r.t))) continue;
+        const A = P(sk, e.p1), B = P(sk, e.p2);
+        const a = Math.abs(((Math.atan2(B[1] - A[1], B[0] - A[0]) * 180) / Math.PI + 360) % 180);
+        if (a < 6 || a > 174) addRel(sk, "horizontal", [e.id]), n++;
+        else if (Math.abs(a - 90) < 6) addRel(sk, "vertical", [e.id]), n++;
+      }
+    }, "Düzeltilemedi");
+    this.host.toast(n ? `${n} çizgi yatay/dikey yapıldı` : "Düzeltilecek eğik çizgi yok");
+  }
+
   /** Zincir / yarım çizim var mı (Esc davranışı için) */
   isDrawing() {
     return Object.keys(this.st).some((k) => k !== "inf" && this.st[k] != null);
@@ -3548,6 +3662,16 @@ export class SketchEditor implements InputHandler {
     });
     gd.append(gc, document.createTextNode(" Izgaraya yakala"));
     box.appendChild(gd);
+    if (["line", "centerline", "rect", "crect", "circle"].includes(this.tool)) {
+      const nb = h("button", "btn", "Sayıyla gir (123)");
+      nb.addEventListener("click", () => this.numericEntry());
+      box.appendChild(nb);
+    }
+    if (this.tool === "select" && this.data.ents.length) {
+      const sb = h("button", "btn", "Kaba çizimi düzelt (yatay/dikey)");
+      sb.addEventListener("click", () => this.straighten());
+      box.appendChild(sb);
+    }
     if (this.tool !== "select") box.appendChild(h("p", "pm-hint", "Ctrl basılı: otomatik ilişki/yakalama kapalı. Bir noktanın üzerinde bekleyin: mavi hizalama çizgileri çıkar."));
     if (this.dynAxis && getEnt(this.data, this.dynAxis)) {
       const b = h("button", "btn", "Dinamik aynayı kapat");

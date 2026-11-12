@@ -21,6 +21,7 @@ import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
 import { ICONS } from "./ui/icons";
+import { WIZARDS } from "./ui/wizards";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -521,6 +522,8 @@ const partInput: InputHandler = {
     partClick(e);
   },
 };
+/** seçim filtresi (parmakla kenar/yüz seçmeyi kolaylaştırır) */
+let selFilter: "all" | "face" | "edge" = "all";
 function pickWant() {
   if (mode.k === "pickSketchPlane") return { face: true, plane: true };
   if (mode.k === "pm") {
@@ -543,6 +546,8 @@ function pickWant() {
     return {};
   }
   if (mode.k === "measure") return { face: true, edge: true };
+  if (selFilter === "face") return { face: true };
+  if (selFilter === "edge") return { edge: true };
   return { face: true, edge: true, plane: true };
 }
 
@@ -688,6 +693,23 @@ function exitSketch(keep: boolean) {
   saveDoc();
   setTab("features");
   afterDocChange();
+  viewer.hideTouchpad();
+  if (keep && f && isNew && doc.features.includes(f)) {
+    // sonraki adım önerisi (parmakla kolay erişim)
+    if (f.data.ents.length && !consumerOf(f.id)) suggest([["Ekstrüzyon", () => newFeature("extrude")], ["Ekst. Kesme", () => newFeature("cutExtrude")], ["Döndürme", () => newFeature("revolve")]]);
+  }
+}
+/** ekranın altında kısa süreli öneri düğmeleri */
+function suggest(items: [string, () => void][]) {
+  document.querySelector(".suggest")?.remove();
+  const bar = h("div", "suggest");
+  for (const [l, fn] of items) {
+    const b = h("button", "btn", l);
+    b.addEventListener("click", () => (bar.remove(), fn()));
+    bar.appendChild(b);
+  }
+  document.body.appendChild(bar);
+  setTimeout(() => bar.remove(), 9000);
 }
 
 // =====================================================================
@@ -3588,6 +3610,8 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
     }
     if (act === "keys") return ($("#help") as HTMLDialogElement).showModal();
     if (act === "input") return openInputSettings();
+    if (act === "wizard") return openWizard();
+    if (act === "welcome") return openWelcome();
     if (mode.k === "sketch" && act !== "save") exitSketch(true);
     if (mode.k === "pm") cancelFeature();
     if (act === "new") {
@@ -3718,6 +3742,7 @@ window.addEventListener("keydown", (e) => {
   if (k === "z") return done(), viewer.zoomStep(e.shiftKey ? 1.25 : 0.8);
   if (k === "s" && !e.shiftKey) return done(), openShortcutBar();
   if (k === "a" && mode.k === "sketch") return done(), mode.editor.toggleLineArc();
+  if (/^[0-9.,-]$/.test(e.key) && mode.k === "sketch" && ["line", "centerline", "rect", "crect", "circle"].includes(mode.editor.tool)) return done(), mode.editor.numericEntry(e.key);
   if (e.key === "Escape") escAction();
   else if (e.key === "Delete") {
     if (mode.k === "sketch") mode.editor.deleteSelection();
@@ -4059,10 +4084,18 @@ function renderActBar() {
     b("✓", ed.isDrawing() ? "Bitir" : "Eskizden çık", () => (ed.isDrawing() ? ed.finishChain() : exitSketch(true)), "ok");
     b("✕", "İptal / Seç", () => escAction());
     if (ed.tool === "line") b("A", "Çizgi ↔ teğet yay", () => ed.toggleLineArc(), (ed as any).st?.arc ? "on" : "");
+    if (["line", "centerline", "rect", "crect", "circle"].includes(ed.tool)) b("123", "Sayıyla gir", () => ed.numericEntry(), "small");
   } else if (mode.k === "pm") {
     b("✓", "Tamam", () => pmOk(), "ok");
     b("✕", "İptal", () => pmCancel());
-  } else b("✕", "Seçimi temizle", () => escAction());
+  } else {
+    b("✕", "Seçimi temizle", () => escAction());
+    b(selFilter === "face" ? "Yüz" : selFilter === "edge" ? "Kenar" : "Tümü", "Seçim filtresi", () => {
+      selFilter = selFilter === "all" ? "face" : selFilter === "face" ? "edge" : "all";
+      toast("Seçim filtresi: " + (selFilter === "all" ? "tümü" : selFilter === "face" ? "yalnız yüz" : "yalnız kenar"));
+    }, "small" + (selFilter !== "all" ? " on" : ""));
+    b("✚", "Şekil sihirbazı", () => openWizard(), "small");
+  }
   b("Ctrl", "Ctrl basılı (çoklu seçim / yakalamayı kapat)", () => {
     viewer.mods.ctrl = !viewer.mods.ctrl;
   }, viewer.mods.ctrl ? "on small" : "small");
@@ -4076,7 +4109,7 @@ function renderActBar() {
 }
 setInterval(() => {
   // mod / araç değişince çubuğu güncelle (ucuz karşılaştırma)
-  const key = [mode.k, mode.k === "sketch" ? mode.editor.tool + mode.editor.isDrawing() + !!(mode.editor as any).st?.arc : "", viewer.mods.ctrl, actBarOn(), prefs.leftHanded].join("|");
+  const key = [selFilter, mode.k, mode.k === "sketch" ? mode.editor.tool + mode.editor.isDrawing() + !!(mode.editor as any).st?.arc : "", viewer.mods.ctrl, actBarOn(), prefs.leftHanded].join("|");
   if (key !== (actbar as any)._k) {
     (actbar as any)._k = key;
     renderActBar();
@@ -4223,6 +4256,7 @@ function openInputSettings() {
       dlg.appendChild(l);
     };
     chk("Dokun–ayarla–kaldırınca yerleştir", "placeOnLift");
+    chk("Dokunmatik fare (parmak imleci yavaşça kaydırır, kısa dokunuş tıklar — parmakla en hassas yöntem)", "touchpad");
     chk("Büyüteç", "loupe");
     sel("Büyüteç büyütmesi", "loupeZoom", [[2, "2×"], [2.5, "2,5×"], [3, "3×"], [4, "4×"]]);
     sel("Yakalama yarıçapı", "snapSize", [[0.7, "Küçük"], [1, "Orta"], [1.4, "Büyük"], [1.8, "Çok büyük"]]);
@@ -4252,6 +4286,100 @@ function openInputSettings() {
   dlg.addEventListener("close", () => dlg.remove());
   dlg.showModal();
 }
+// ---------- şekil sihirbazı ----------
+function openWizard() {
+  if (mode.k === "sketch") exitSketch(true);
+  if (mode.k === "pm") cancelFeature();
+  const dlg = document.createElement("dialog");
+  dlg.className = "input-dialog";
+  let cur = WIZARDS[0];
+  const vals: Record<string, Record<string, any>> = {};
+  const render = () => {
+    dlg.innerHTML = "";
+    dlg.appendChild(h("h2", "", "Şekil sihirbazı"));
+    dlg.appendChild(h("p", "pm-hint", "Ölçüleri yazın; parça eskiz + ekstrüzyon olarak oluşur ve sonradan düzenlenebilir."));
+    const grid = h("div", "wiz-types");
+    for (const w of WIZARDS) {
+      const b = h("button", "btn" + (w === cur ? " primary" : ""), w.name);
+      b.addEventListener("click", () => ((cur = w), render()));
+      grid.appendChild(b);
+    }
+    dlg.appendChild(grid);
+    const v = (vals[cur.id] ??= Object.fromEntries(cur.fields.map((f) => [f.k, f.v])));
+    for (const f of cur.fields) {
+      const l = h("label", "pm-field");
+      l.appendChild(h("span", "", f.label));
+      const inp = document.createElement("input");
+      if (typeof f.v === "number") inp.inputMode = "decimal";
+      inp.value = String(v[f.k]);
+      inp.addEventListener("input", () => (v[f.k] = typeof f.v === "number" ? evalNum(inp.value) ?? v[f.k] : inp.value));
+      l.appendChild(inp);
+      dlg.appendChild(l);
+    }
+    const bar = h("div", "cut-bar");
+    const cancel = h("button", "btn", "Kapat");
+    cancel.addEventListener("click", () => dlg.close());
+    const ok = h("button", "btn primary", "Oluştur");
+    ok.addEventListener("click", () => {
+      const fs = cur.build(v, uid);
+      if (!fs.length) return toast("Ölçüler okunamadı", true);
+      dlg.close();
+      commitDoc(() => doc.features.push(...fs));
+      treeSel = null;
+      viewer.viewStd("iso");
+      firstBuild = true;
+      toast(`${cur.name} oluşturuldu`);
+    });
+    bar.append(cancel, ok);
+    dlg.appendChild(bar);
+  };
+  render();
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+
+// ---------- ilk açılış rehberi ----------
+function openWelcome() {
+  const dlg = document.createElement("dialog");
+  dlg.className = "input-dialog";
+  dlg.innerHTML = `<h2>İmaj CAD'e hoş geldiniz</h2><p class="pm-hint">Nasıl kullanacaksınız? (Sonra Dosya › Kalem ve dokunmatik ayarları'ndan değiştirebilirsiniz)</p>`;
+  const opts: [string, Partial<typeof prefs>][] = [
+    ["🖱 Fare ve klavye (SolidWorks gibi)", { profile: "mouse" }],
+    ["✒ Kalem", { profile: "auto" }],
+    ["☝ Parmak — imleç parmağın üstünde", { profile: "finger", touchpad: false }],
+    ["☝ Parmak — dokunmatik fare (en hassas)", { profile: "finger", touchpad: true }],
+  ];
+  for (const [l, p] of opts) {
+    const b = h("button", "btn wide", l);
+    b.addEventListener("click", () => (savePrefs(p), dlg.querySelectorAll(".wide").forEach((x) => x.classList.remove("primary")), b.classList.add("primary")));
+    dlg.appendChild(b);
+  }
+  dlg.appendChild(h("h3", "", "İlk parça: 5 adım"));
+  const ol = document.createElement("ol");
+  ol.className = "small";
+  ol.innerHTML = "<li>Ağaçtan <b>Ön/Üst/Sağ Düzlem</b>'e dokunun → <b>Eskiz</b>.</li><li><b>Dikdörtgen</b> veya <b>Daire</b> çizin (ya da <b>123</b> ile ölçüyü yazın).</li><li><b>Akıllı Ölçü</b> ile ölçüleri düzeltin.</li><li>✓ ile eskizden çıkın → çıkan <b>Ekstrüzyon</b> önerisine dokunun.</li><li>Bir yüze dokunup <b>Delik Sihirbazı</b> veya yeni eskizle devam edin.</li>";
+  dlg.appendChild(ol);
+  const bar = h("div", "cut-bar");
+  const wiz = h("button", "btn", "Hiç çizmeden: şekil sihirbazı");
+  wiz.addEventListener("click", () => (dlg.close(), openWizard()));
+  const go = h("button", "btn primary", "Başla");
+  go.addEventListener("click", () => dlg.close());
+  bar.append(wiz, go);
+  dlg.appendChild(bar);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => {
+    dlg.remove();
+    try {
+      localStorage.setItem("imajcad.welcomed", "1");
+    } catch {}
+  });
+  dlg.showModal();
+}
+try {
+  if (!localStorage.getItem("imajcad.welcomed") && !(navigator as any).webdriver) setTimeout(openWelcome, 600);
+} catch {}
+
 // otomatik profilde kalem ilk algılandığında bilgi ver
 {
   let told = "";

@@ -133,11 +133,13 @@ export class Viewer {
   private lastPen = 0;
 
   /** olayı kaydırma ve ekran değiştiricileriyle sar */
-  private wrap(e: PointerEvent, dy = 0): PointerEvent {
+  private wrap(e: PointerEvent, dy = 0, abs?: [number, number]): PointerEvent {
     const m = this.mods;
-    if (!dy && !m.ctrl && !m.shift) return e;
+    if (!dy && !m.ctrl && !m.shift && !abs) return e;
     return new Proxy(e, {
       get: (t, k) => {
+        if (abs && k === "clientX") return abs[0];
+        if (abs && k === "clientY") return abs[1];
         if (k === "clientY") return t.clientY - dy;
         if (k === "ctrlKey") return t.ctrlKey || m.ctrl;
         if (k === "shiftKey") return t.shiftKey || m.shift;
@@ -157,7 +159,7 @@ export class Viewer {
     let multi = false;
     let gesture: { max: number; t: number; moved: boolean } | null = null;
     /** parmakla çizim (tek dokunuş araç olarak) */
-    let drawTouch: { id: number; t: number; moved: boolean; x: number; y: number } | null = null;
+    let drawTouch: { id: number; t: number; moved: boolean; x: number; y: number; tp?: boolean } | null = null;
     const blocked = new Set<number>();
     let lp: { timer: number; x: number; y: number; id: number; fired: boolean } | null = null;
     const clearLp = () => {
@@ -232,6 +234,14 @@ export class Viewer {
             activeType = "touch";
             activeDy = touchOffset();
             try { canvas.setPointerCapture(e.pointerId); } catch {}
+            if (prefs.touchpad) {
+              // dokunmatik fare: imleç göreli hareket eder, kısa dokunuş tıklar
+              drawTouch.tp = true;
+              const r = canvas.getBoundingClientRect();
+              if (!this.tp || this.tp[0] < r.left || this.tp[0] > r.right || this.tp[1] < r.top || this.tp[1] > r.bottom) this.tp = [r.left + r.width / 2, r.top + r.height / 2];
+              this.setDrawPt({ clientX: this.tp[0], clientY: this.tp[1], pointerType: "tp" });
+              return;
+            }
             const w = this.wrap(e, activeDy);
             this.setDrawPt(w);
             this.handler?.down?.(w);
@@ -266,9 +276,18 @@ export class Viewer {
           if (blocked.has(e.pointerId)) return void e.stopPropagation();
           if (drawTouch && drawTouch.id === e.pointerId) {
             e.stopPropagation();
-            if (Math.hypot(e.clientX - drawTouch.x, e.clientY - drawTouch.y) > 8) drawTouch.moved = true;
+            const ddx = e.clientX - drawTouch.x, ddy = e.clientY - drawTouch.y;
+            if (Math.hypot(e.clientX - drawTouch.x, e.clientY - drawTouch.y) > 8 || drawTouch.tp) drawTouch.moved = drawTouch.moved || Math.hypot(ddx, ddy) > 2;
             drawTouch.x = e.clientX;
             drawTouch.y = e.clientY;
+            if (drawTouch.tp && this.tp) {
+              const r = canvas.getBoundingClientRect();
+              const g = 0.35 + Math.min(1.2, Math.hypot(ddx, ddy) / 25);
+              this.tp = [Math.max(r.left, Math.min(r.right, this.tp[0] + ddx * g)), Math.max(r.top, Math.min(r.bottom, this.tp[1] + ddy * g))];
+              this.setDrawPt({ clientX: this.tp[0], clientY: this.tp[1], pointerType: "tp" });
+              this.handler?.hover?.(this.wrap(e, 0, this.tp));
+              return;
+            }
             if (lp?.fired) return;
             const w = this.wrap(e, activeDy);
             this.setDrawPt(w);
@@ -300,8 +319,18 @@ export class Viewer {
         if (blocked.delete(e.pointerId)) return void e.stopPropagation();
         if (drawTouch && drawTouch.id === e.pointerId) {
           e.stopPropagation();
+          const dt = drawTouch;
           drawTouch = null;
           active = null;
+          if (dt.tp && this.tp) {
+            if (!cancel && !fired && !dt.moved && performance.now() - dt.t < 350) {
+              const w = this.wrap(e, 0, this.tp);
+              this.handler?.down?.(w);
+              this.handler?.up?.(w);
+            }
+            this.setDrawPt({ clientX: this.tp[0], clientY: this.tp[1], pointerType: "tp" });
+            return;
+          }
           this.setDrawPt(null);
           if (!cancel && !fired) this.handler?.up?.(this.wrap(e, activeDy));
           return;
@@ -331,6 +360,13 @@ export class Viewer {
 
   // ---------- Büyüteç ve kaydırılmış imleç ----------
   private loupe: HTMLCanvasElement | null = null;
+  /** dokunmatik fare imleci */
+  private tp: [number, number] | null = null;
+  /** dokunmatik fare imlecini gizle (mod değişince) */
+  hideTouchpad() {
+    this.tp = null;
+    this.setDrawPt(null);
+  }
   private tcursor: HTMLDivElement | null = null;
   private setDrawPt(e: { clientX: number; clientY: number; pointerType: string } | null) {
     this.drawPt = e ? { x: e.clientX, y: e.clientY, type: e.pointerType } : null;
@@ -356,13 +392,13 @@ export class Viewer {
   private drawLoupe() {
     const d = this.drawPt, lc = this.loupe!, tc = this.tcursor!;
     if (!d) return;
-    const off = d.type === "touch" && touchOffset() > 0;
+    const off = (d.type === "touch" && touchOffset() > 0) || d.type === "tp";
     tc.style.display = off ? "block" : "none";
     if (off) {
       tc.style.left = d.x + "px";
       tc.style.top = d.y + "px";
     }
-    if (!prefs.loupe || (this.loupeOk && !this.loupeOk())) return void (lc.style.display = "none");
+    if (!prefs.loupe || d.type === "tp" || (this.loupeOk && !this.loupeOk())) return void (lc.style.display = "none");
     const src = this.renderer.domElement;
     const r = src.getBoundingClientRect();
     const sx = src.width / r.width;
