@@ -97,8 +97,8 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 ## 6. Montaj (M) — sıradaki modülün kapsamı
 
-| # | Önem | Yapılacak |
-|---|---|---|
+| # | Önem | Yapılacak | Durum |
+|---|---|---|---|
 | M1 | K | Bileşen ekle (dosya / açık belge), ilk bileşen sabit, sabitle/serbest, gizle/göster, saydam, bastır | 🟡 v0.16 (bastır yok) |
 | M2 | K | **Standart eşleşmeler**: çakışık, paralel, dik, teğet, eş merkezli, mesafe, açı, kilit; **hizalı / ters hizalı** | 🟡 v0.16 (teğet yok) |
 | M3 | K | Eşleşme arayüzü: seçime göre öneren mini çubuk, Alt ile hizalama çevir, eşleşme klasörü, hatalı eşleşme uyarısı, serbestlik göstergesi | 🟡 v0.16 serbestlik, hizalama çevir, eşleşme listesi; açılır mini çubuk yok |
