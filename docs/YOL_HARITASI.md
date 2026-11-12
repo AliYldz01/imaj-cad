@@ -329,3 +329,9 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Ayna (XY/YZ/ZX, noktadan geçen) | ✅ |
 | 3B ölçü–denklem bağı | ✅ |
 | Gruplar arası kırpma önceliği | ✅ |
+
+## v0.22.1
+
+| Özellik | Durum |
+|---|---|
+| Düzlemsel zincirde ortak profil yönü (ters U çerçeve köşeleri) | ✅ |

@@ -29,7 +29,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 3. Teknoloji ve mimari
 
-- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v28`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.22**).
+- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v29`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.22.1**).
 - **Geometri çekirdeği:** OpenCascade WASM — `replicad` (MIT) + `replicad-opencascadejs` (LGPL), **Web Worker**'da (`src/kernel.worker.ts`). Ham OCC `getOC()` ile.
 - **Eskiz çözücü:** PlaneGCS (`@salusoft89/planegcs`, LGPL) ana iş parçacığında (`src/sketch/solver.ts`).
 - **Görüntü:** three.js ortografik kamera, özel `NavControls` (`src/nav.ts`), kalın çizgiler LineSegments2.
@@ -86,6 +86,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - **v0.19.1:** profili konumlandır penceresi duyarlı (`.pierce-dialog`, SVG viewBox 1000, %100 genişlik), büyük dokunma alanı (görünmez r=62), çakışan noktalar elenir, geçerli delme noktası turuncu.
 - **v0.20 akıllı profil birleşimleri** (yalnız `ori: 2` elemanlar): worker `orientChains` (bağlı segmentleri uç uca aynı yöne çevirir → L/U kanatları köşede ters dönmez), `memberCore` artık gövdeleri döndürür, `memberTool` → `resolveJoints` (T birleşimi: serbest uç başka elemanın iç kısmına değerse o elemanın yüzünde kırpılır; gruplar arası köşe ve 3+ elemanlı köşe: aynı doğrultudaki çift > grup içi köşe çifti > en düşey eleman sürekli sayılır, gerekirse uzatılır, diğerleri `profileSupport` ile yüzünde kırpılır), sonra `applyTool`.
 - **v0.21:** 3B eskiz 2B gibi: `Sketch3DTool.mode` (line/rect/point/select/dim), `sel`, `addRel`, `relOptions`, `addDim`/`editDim`, `deleteSel`, ekran etiketleri `renderLabels` (`.s3-labels`, `.s3-dim` tıkla-düzenle, `.s3-rel`), `solver3d.ts`; PM: Araç seçici, tanım durumu, İlişki Ekle düğmeleri, İlişkiler/Ölçüler listeleri. Worker: `autoRotate` (köşeye gelen tekil elemanı `profileBias` ile 90° adımlarla döndürür; grup `auto` = rot/mirror/alignTo yoksa), X kesişim (`resolveJoints` sonu: sürekli elemanın dış kontur prizmasıyla kesilir, `xSplits` → kesim listesinde `key/2`).
+- **v0.22.1:** worker `planarize`: aynı gruptaki bağlı düzlemsel zincirde tüm segmentlerin profil Y ekseni = zincir düzlemi normali (2B eskiz gibi), ters U çerçevede köşeler eşleşir.
 - **v0.22:** 3B yay `arcs3 {a,b,m}` (`solver3d` `circum/arcPts`, `tan` ilişkisi, `rad` ölçüsü; compile'da yapı elemanı yay öğesi), araçlar `arc/trim/extend` (`Sketch3DTool.addArc/trim/extend/splits`), `fillet(pid,R)`, `mirror(ax)`; denklem anahtarı `<id>.dims3[i].v` (`applyEquations` → `solve3d`); grup `prio` (MemberGroup/MemberFeature `prio`, worker `resolveJoints` ve X kesişimde önce öncelik).
 
 ## 5. Sıradaki işler (öncelik sırasıyla)

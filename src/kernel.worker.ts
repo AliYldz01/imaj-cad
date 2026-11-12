@@ -1376,7 +1376,7 @@ type MemberPart = { prio?: number; keys: string[]; solids: (Shape | null)[]; lin
 function memberTool(f: Extract<KFeature, { type: "member" }>) {
   // SolidWorks grupları: her grup kendi profil konumu ve köşe işlemiyle (köşe işlemi grup içinde)
   const parts: MemberPart[] = [];
-  if (f.ori === 2) f = { ...f, items: autoRotate(f) };
+  if (f.ori === 2) f = { ...f, items: autoRotate({ ...f, items: planarize(f) }) };
   if (!f.gl || f.gl.length < 2) parts.push({ ...memberCore(f), g: 0 });
   else
     f.gl.forEach((gp, k) => {
@@ -1394,6 +1394,34 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
     memberReg.set(xs.key, { ...reg, b: xs.V, len: L1 });
   }
   for (const p of parts) for (const s of p.solids) if (s) for (const q of solidsOf(s)) applyTool(q, false, false);
+}
+/** düzlemsel bağlı zincirde (ör. ters U çerçeve) tüm segmentlerin profil dikey ekseni = zincir düzlemi normali (2B eskizdeki gibi; köşede profiller aynı yönde buluşur) */
+function planarize(f: Extract<KFeature, { type: "member" }>): MemberItem[] {
+  const items = f.items.map((it) => ({ ...it }));
+  const kk = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+  const par = items.map((_, i) => i);
+  const find = (i: number): number => (par[i] === i ? i : (par[i] = find(par[i])));
+  const at = new Map<string, number>();
+  items.forEach((it, i) => [it.a, it.b].forEach((p) => {
+    const k = kk(p);
+    if (at.has(k) && (items[at.get(k)!].g ?? 0) === (it.g ?? 0)) par[find(i)] = find(at.get(k)!);
+    else at.set(k, i);
+  }));
+  const comps = new Map<number, number[]>();
+  items.forEach((_, i) => comps.set(find(i), [...(comps.get(find(i)) ?? []), i]));
+  for (const ids of comps.values()) {
+    if (ids.length < 2) continue;
+    const gp = f.gl?.[items[ids[0]].g ?? 0];
+    if (gp ? gp.auto === false : f.auto === false) continue;
+    const ds = ids.map((i) => vnorm(vsub(items[i].b, items[i].a)));
+    let n: Vec3 | null = null;
+    for (let u = 0; u < ds.length && !n; u++) for (let w = u + 1; w < ds.length && !n; w++) if (vlen(vcross(ds[u], ds[w])) > 1e-3) n = vnorm(vcross(ds[u], ds[w]));
+    if (!n || ds.some((d) => Math.abs(vdot(d, n!)) > 1e-3)) continue;
+    // işaret: yukarı / öne / sağa bakan
+    if (n[1] < -1e-9 || (Math.abs(n[1]) < 1e-9 && (n[2] < -1e-9 || (Math.abs(n[2]) < 1e-9 && n[0] < 0)))) n = vmul(n, -1);
+    for (const i of ids) items[i].n = n;
+  }
+  return items;
 }
 /** profilin kesit ağırlık merkezi − sınır kutusu merkezi (profil koordinatlarında); simetrikse ~0 */
 function profileBias(loops: Loop[]): [number, number] {
