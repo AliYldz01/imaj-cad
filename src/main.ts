@@ -12,7 +12,8 @@ import type {
   EdgeRef, Feature, FaceRef, PartDoc, PlaneRef, SketchFeature, StdPlane, Vec3, ExtrudeFeature, RevolveFeature, HoleFeature, MeasureItem, Vec2,
   FlatResult, Sketch3DFeature,
 } from "./doc/types";
-import { lastSheetBase, sheetParamsBefore, bendAllowance } from "./sheet/sheet";
+import { lastSheetBase, sheetParamsBefore, bendAllowance, effK, GAUGE_TABLE } from "./sheet/sheet";
+import { loftFlatPattern, outlineDxf } from "./sheet/loftflat";
 import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
@@ -1542,6 +1543,25 @@ function renderFeaturePM(kind: string) {
         group(
           "Seçenekler",
           checkField("Düz yüzeyli (ruled)", d.ruled, (v) => ((d.ruled = v), upd())),
+          checkField("Sac geçiş parçası (loft büküm)", !!d.sheetT, (v) => ((d.sheetT = v ? lastSheetBase(doc.features)?.t ?? 2 : undefined), (d.ruled = v ? true : d.ruled), renderFeaturePM(kind), upd())),
+          ...(d.sheetT
+            ? [
+                numField("Sac kalınlığı", d.sheetT, (v) => ((d.sheetT = v), upd()), { min: 0.1, unit: "mm" }),
+                button("Açınım (DXF indir)", () => {
+                  try {
+                    const [sa, sb] = d.sketches.map((id: string) => getFeat(id) as SketchFeature);
+                    const fa = sa && resolveFrame(sa.plane, doc.features), fb = sb && resolveFrame(sb.plane, doc.features);
+                    if (!fa || !fb) return toast("İki profil eskizi gerekir", true);
+                    const la = extractLoops(sa.data).loops[0], lb = extractLoops(sb.data).loops[0];
+                    const fl = loftFlatPattern({ frame: fa, loop: la }, { frame: fb, loop: lb });
+                    download(new Blob([outlineDxf(fl.outline)], { type: "application/dxf" }), `${d.name || "gecis"}-acinim.dxf`);
+                    toast(`Açınım alanı ${fmtNum(fl.area / 100, 1)} cm² · dikiş boyu ${fmtNum(fl.seam, 1)} mm`);
+                  } catch (err: any) {
+                    toast("Açınım hesaplanamadı: " + err.message, true);
+                  }
+                }),
+              ]
+            : []),
           selectField("Merkez çizgisi", [{ v: "", t: "Yok" }, ...sketches.filter((s) => !d.sketches.includes(s.id)).map((s) => ({ v: s.id, t: s.name }))], d.center ?? "", (v) => {
             d.center = v || undefined;
             upd();
@@ -1688,7 +1708,7 @@ function renderFeaturePM(kind: string) {
         let custom: any;
         if (d.std === "sketch") custom = extractLoops((getFeat(d.size) as SketchFeature).data).loops;
         else if (d.std === "custom") custom = (doc.profiles ?? {})[d.size]?.loops;
-        const pr = placedProfile(std, d.size, d.align, d.mirror, d.rot, custom);
+        const pr = placedProfile(std, d.size, d.align, d.mirror, d.rot, custom, d.poff);
         const rho = MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85;
         info = `Kesit alanı ${fmtNum(pr.area / 100, 2)} cm² · ≈ ${fmtNum((pr.area * rho) / 1000, 2)} kg/m`;
       } catch {}
@@ -1757,6 +1777,8 @@ function renderFeaturePM(kind: string) {
         group(
           "Konum",
           selectField("Delme noktası", Object.entries(ALIGN_NAMES).map(([v, t]) => ({ v, t })), d.align, (v) => ((d.align = v), upd())),
+          numField("Delme noktası öteleme X", d.poff?.[0] ?? 0, (v) => ((d.poff = [v, d.poff?.[1] ?? 0]), upd()), { unit: "mm" }),
+          numField("Delme noktası öteleme Y", d.poff?.[1] ?? 0, (v) => ((d.poff = [d.poff?.[0] ?? 0, v]), upd()), { unit: "mm" }),
           numField("Döndürme açısı", d.rot, (v) => ((d.rot = v), upd()), { unit: "°", key: `${d.id}.rot` }),
           checkField("Profili aynala", d.mirror, (v) => ((d.mirror = v), upd())),
         ),
@@ -2164,14 +2186,28 @@ function renderFeaturePM(kind: string) {
           ),
         );
       const ba = h("p", "pm-hint", "");
-      const info = () => (ba.textContent = `90° büküm payı: ${fmtNum(bendAllowance(90, d.r, d.t, d.k), 3)} mm · Büküm kesintisi: ${fmtNum(2 * (d.r + d.t) - bendAllowance(90, d.r, d.t, d.k), 3)} mm`);
+      const info = () => {
+        const kk = effK(d);
+        ba.textContent = `Eşdeğer K: ${fmtNum(kk, 3)} · 90° büküm payı: ${fmtNum(bendAllowance(90, d.r, d.t, kk), 3)} mm · büküm düşümü: ${fmtNum(2 * (d.r + d.t) - bendAllowance(90, d.r, d.t, kk), 3)} mm`;
+      };
       info();
       body.appendChild(
         group(
           "Sac parametreleri",
           numField("Kalınlık", d.t, (v) => ((d.t = v), info(), upd()), { min: 0.01, unit: "mm", key: `${d.id}.t` }),
           numField("Büküm yarıçapı (iç)", d.r, (v) => ((d.r = v), info(), upd()), { min: 0.01, unit: "mm", key: `${d.id}.r` }),
-          numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), info(), upd()), { min: 0, key: `${d.id}.k` }),
+          selectField("Kalınlık tablosu", [{ v: "", t: "— özel —" }, ...GAUGE_TABLE.map((g) => ({ v: g.name, t: g.name }))], GAUGE_TABLE.find((g) => g.t === d.t && g.r === d.r && g.k === d.k)?.name ?? "", (v) => {
+            const g = GAUGE_TABLE.find((x) => x.name === v);
+            if (g) Object.assign(d, { t: g.t, r: g.r, k: g.k, bendMethod: "k" });
+            renderFeaturePM(kind);
+            upd();
+          }),
+          selectField("Büküm hesabı", [{ v: "k", t: "K-faktörü" }, { v: "ba", t: "Büküm payı (90°)" }, { v: "bd", t: "Büküm düşümü (90°)" }], d.bendMethod ?? "k", (v) => ((d.bendMethod = v as any), renderFeaturePM(kind), upd())),
+          (d.bendMethod ?? "k") === "k"
+            ? numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), info(), upd()), { min: 0, key: `${d.id}.k` })
+            : d.bendMethod === "ba"
+              ? numField("Büküm payı (90°)", d.ba ?? bendAllowance(90, d.r, d.t, d.k), (v) => ((d.ba = v), info(), upd()), { min: 0.01, unit: "mm" })
+              : numField("Büküm düşümü (90°)", d.bd ?? 2 * (d.r + d.t) - bendAllowance(90, d.r, d.t, d.k), (v) => ((d.bd = v), info(), upd()), { unit: "mm" }),
           checkField(open ? "Malzeme tarafını ters çevir" : "Kalınlık yönünü ters çevir", d.rev, (v) => ((d.rev = v), upd())),
           ba,
         ),
@@ -3657,6 +3693,8 @@ function commands(): Cmd[] {
       { id: "sheetjog", label: "Kademe", icon: "sheetjog", run: () => newFeature("sheetjog") },
       { id: "miterflange", label: "Gönye Flanş", icon: "miterflange", run: () => newFeature("miterflange") },
       { id: "closecorner", label: "Köşe Kapat", icon: "closecorner", run: () => newFeature("closecorner") },
+      { id: "breakR", label: "Köşe Kır (R)", icon: "fillet", run: () => (newFeature("fillet"), hint("Sac köşesi: kalınlık boyunca uzanan köşe kenarlarına dokunun")) },
+      { id: "breakC", label: "Köşe Kır (pah)", icon: "chamfer", run: () => (newFeature("chamfer"), hint("Sac köşesi: kalınlık boyunca uzanan köşe kenarlarına dokunun")) },
       { id: "tosheet", label: "Saca Dönüştür", icon: "tosheet", run: () => newFeature("tosheet") },
       "sep",
       { id: "cutExtrude", label: "Ekst. Kesme", icon: "cutExtrude", run: () => newFeature("cutExtrude") },

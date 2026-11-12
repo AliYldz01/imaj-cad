@@ -296,7 +296,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
               return pts;
             });
           }
-          kfeats.push({ id: f.id, type: "loft", cut: f.cut, ruled: f.ruled, profiles, center, guides });
+          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides });
           break;
         }
         case "rib": {
@@ -365,7 +365,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             custom = cp.loops;
             cname = cp.name;
           } else if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
-          const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot, custom);
+          const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot, custom, f.poff);
           const items: MemberItem[] = [];
           // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
           const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];

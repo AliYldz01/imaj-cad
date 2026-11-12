@@ -219,7 +219,7 @@ const mapLoop = (l: Loop, f: (p: Vec2) => Vec2): Loop => {
 };
 
 /** Hizalanmış, aynalanmış ve döndürülmüş profil: (0,0) eleman ekseni üzerindedir */
-export function placedProfile(std: ProfileStd, size: string, align: Align, mirror: boolean, rotDeg: number, custom?: Loop[]): { loops: Loop[]; area: number; R: number } {
+export function placedProfile(std: ProfileStd, size: string, align: Align, mirror: boolean, rotDeg: number, custom?: Loop[], off?: Vec2): { loops: Loop[]; area: number; R: number } {
   let loops = custom ?? rawProfile(std, size);
   const pts = loops.flatMap(sampleLoop);
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
@@ -240,8 +240,9 @@ export function placedProfile(std: ProfileStd, size: string, align: Align, mirro
   const a = (rotDeg * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
   loops = loops.map((l) =>
     mapLoop(l, (p) => {
-      let x = p[0] - ref[0];
-      const y = p[1] - ref[1];
+      // SolidWorks "profili konumlandır": delme noktasına ek öteleme
+      let x = p[0] - ref[0] - (off?.[0] ?? 0);
+      const y = p[1] - ref[1] - (off?.[1] ?? 0);
       if (mirror) x = -x;
       return [x * ca - y * sa, x * sa + y * ca];
     }),

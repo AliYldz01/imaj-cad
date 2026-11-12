@@ -234,6 +234,8 @@ export interface LoftFeature extends FeatBase {
   ruled: boolean;
   /** merkez çizgisi eskizi (isteğe bağlı) */
   center?: string;
+  /** sac geçiş parçası (loft büküm): sac kalınlığı — uçlar açık ince cidar */
+  sheetT?: number;
   /** kılavuz eğri eskizleri (isteğe bağlı) */
   guides?: string[];
 }
@@ -391,6 +393,10 @@ export interface SheetBaseFeature extends FeatBase {
   r: number;
   /** K faktörü (nötr eksen konumu, 0..1) */
   k: number;
+  /** büküm hesap yöntemi (SolidWorks): K-faktörü / büküm payı / büküm düşümü — BA/BD 90° için */
+  bendMethod?: "k" | "ba" | "bd";
+  ba?: number;
+  bd?: number;
   /** kalınlık yönünü ters çevir */
   rev: boolean;
   /** açık profil: ekstrüzyon derinliği */
@@ -479,6 +485,8 @@ export interface MemberFeature extends FeatBase {
   corner: CornerKind;
   /** gönye köşesinde boşluk */
   gap: number;
+  /** delme noktasına ek öteleme (profil koordinatlarında, mm) */
+  poff?: [number, number];
 }
 /** Kırp / uzat: hedef elemanları sınır elemanlara göre kırpar ve gerekiyorsa uzatır */
 export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean; /** sınır düz yüzler (ör. taban levhası) */ faces?: FaceRef[] }
@@ -615,7 +623,7 @@ export type KFeature =
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal" }
-  | { id: string; type: "loft"; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][] }
+  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][] }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean }

@@ -60,10 +60,10 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 | # | Önem | Eksik / hatalı | Yapılacak | Durum |
 |---|---|---|---|---|
-| S1 | K | Büküm hesabı yalnız K-faktörü | S1.1 **büküm payı** · S1.2 **büküm düşümü** · S1.3 **büküm tablosu** (kalınlık×yarıçap×açı) · S1.4 **kalınlık tablosu (gauge)** · S1.5 özellik başına özel büküm payı | ⬜ |
+| S1 | K | Büküm hesabı yalnız K-faktörü | S1.1 **büküm payı** · S1.2 **büküm düşümü** · S1.3 **büküm tablosu** (kalınlık×yarıçap×açı) · S1.4 **kalınlık tablosu (gauge)** · S1.5 özellik başına özel büküm payı | 🟡 v0.15: K / büküm payı / büküm düşümü (90°), kalınlık tablosu; açıya göre tablo yok |
 | S2 | Ö | Kenar flanş eksikleri | S2.1 **flanş profilini düzenle** (eskiz: delik, kenardan uzun flanş) · S2.2 boy: **kenara kadar ve birleştir**, köşeye kadar (dik/paralel) · S2.3 **büküme teğet** konumu · S2.4 **yan bükümleri kırp** · S2.5 **çok uzunluklu flanş** · S2.6 özel boşaltma türü | 🟡 |
-| S3 | Ö | Köşe işlemleri | S3.1 **köşe kırma/kesme** (radyüs/pah) · S3.2 **kaynaklı köşe** · S3.3 köşe boşaltma (2/3 büküm) | 🟡 |
-| S4 | Ö | Eksik sac özellikleri | S4.1 **loft büküm** (kare→yuvarlak geçiş, huni) · S4.2 **çapraz kırma** · S4.3 **havalandırma** · S4.4 **şekillendirme aletleri** (louver, kabartma, kılavuz) · S4.5 **tırnak–yuva** | ⬜ |
+| S3 | Ö | Köşe işlemleri | S3.1 **köşe kırma/kesme** (radyüs/pah) · S3.2 **kaynaklı köşe** · S3.3 köşe boşaltma (2/3 büküm) | 🟡 v0.15: köşe kır (R/pah) komutları; kaynaklı köşe yok |
+| S4 | Ö | Eksik sac özellikleri | S4.1 **loft büküm** (kare→yuvarlak geçiş, huni) · S4.2 **çapraz kırma** · S4.3 **havalandırma** · S4.4 **şekillendirme aletleri** (louver, kabartma, kılavuz) · S4.5 **tırnak–yuva** | 🟡 v0.15: loft büküm (geçiş/huni) + üçgenlemeli açınım DXF; diğerleri yok |
 | S5 | Ö | Düz desen çıktısı | Büküm çizgileri ayrı katman (yukarı/aşağı), **büküm notları** (açı, yön, iç yarıçap), sınır kutusu, DXF seçenekleri | 🟡 |
 | S6 | Ö | **Aç / Katla** ara özellikleri | Bükümü aç → kes → tekrar katla; sacda **normal kesim** | ⬜ |
 | S7 | İ | Otomatik boşaltma | Dikdörtgen / yırtma / oval, boşaltma oranı | 🟡 |
@@ -74,7 +74,7 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 | # | Önem | Eksik / hatalı | Yapılacak | Durum |
 |---|---|---|---|---|
 | W1 | Ö | Köşe işlemi tek tip | W1.1 **gruplar** (paralel/bitişik segment) · W1.2 **köşeye tıklayıp köşe başına işlem**: uç gönye / uç alın 1 / uç alın 2, **kırpma sırası**, köşeye özel **kaynak boşluğu** · W1.3 **gönye kırpılmış gövdeleri birleştir** · W1.4 **yay segmentlerini birleştir** | 🟡 |
-| W2 | Ö | Delme noktası kısıtlı | **Profili konumlandır**: profil eskizinde herhangi bir noktayı delme noktası seç | 🟡 |
+| W2 | Ö | Delme noktası kısıtlı | **Profili konumlandır**: profil eskizinde herhangi bir noktayı delme noktası seç | ✅ v0.15 delme noktası X/Y öteleme |
 | W3 | Ö | Kesim listesi özellikleri | Özellik penceresi (açıklama, malzeme, UZUNLUK, AÇI1/2, MİKTAR, TOPLAM UZUNLUK, özel alan), malzemeyi profilden aktar | 🟡 |
 | W4 | Ö | 3B eskiz ilişki/ölçü | **X/Y/Z boyunca**, ParallelYZ/ZX, çakışık, **3B akıllı ölçü**, **Tab ile düzlem değiştirerek çizim** | 🟡 |
 | W5 | İ | 3B eskiz araçları | 3B spline, kenar dönüştürme, kesişim eğrisi, helis/spiral, kompozit eğri | ⬜ |

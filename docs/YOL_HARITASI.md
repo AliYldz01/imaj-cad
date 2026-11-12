@@ -236,3 +236,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Çoğaltma / kabuk / radyüs | Örnek atla, dışa kabuk, çoklu yarıçap | ✅ |
 | Görünüm | Görüntü stilleri, saydam, Instant3D derinlik oku | ✅ |
 | Eskiz | Birleştir ilişkisi, hızlı yakalama filtresi, güç kırpma, çift yönlü öteleme | ✅ |
+
+## v0.15 — Paket C (kısmi)
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Sac | Büküm payı / düşümü, kalınlık tablosu, geçiş parçası (huni) + açınım DXF, köşe kır | ✅ |
+| Kaynaklı | Delme noktası ötelemesi | ✅ |

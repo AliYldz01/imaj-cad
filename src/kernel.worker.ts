@@ -2241,7 +2241,16 @@ async function buildFeature(f: KFeature) {
     case "sweep":
     case "loft": {
       if ((f.type === "extrude" && f.texts?.length) || false) await ensureFont();
-      const solid = f.type === "extrude" ? extrudeTool(f) : f.type === "revolve" ? revolveTool(f) : f.type === "sweep" ? sweepTool(f) : loftTool(f);
+      let solid = f.type === "extrude" ? extrudeTool(f) : f.type === "revolve" ? revolveTool(f) : f.type === "sweep" ? sweepTool(f) : loftTool(f);
+      if (f.type === "loft" && f.sheetT && f.sheetT > 0) {
+        // sac geçiş parçası: profil düzlemlerindeki uç yüzleri açık, sabit kalınlıklı cidar
+        const frames = f.profiles.map((p) => resolvePlane(p.pl));
+        const onEnd = (fc: any) => {
+          const c = fc.center, n = fc.normalAt();
+          return frames.some((fr) => Math.abs(vdot(vsub([c.x, c.y, c.z], fr.o), fr.n)) < 1e-3 && Math.abs(Math.abs(n.x * fr.n[0] + n.y * fr.n[1] + n.z * fr.n[2]) - 1) < 1e-4);
+        };
+        solid = solid.shell(f.sheetT, (ff: any) => ff.when(({ element }: any) => onEnd(element)));
+      }
       const merge = (f as any).merge !== false;
       tools.set(f.id, { solid, cut: f.cut, merge });
       applyTool(solid, f.cut, merge);
