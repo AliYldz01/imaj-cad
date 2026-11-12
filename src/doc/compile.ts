@@ -1,7 +1,7 @@
 // Belge özelliklerini çekirdeğin anlayacağı çözülmüş tanımlara çevirir.
 import type { Feature, Frame, KFeature, KPlane, PlaneRef, SketchFeature, Vec3 } from "./types";
 import { AXES, STD_FRAMES, offsetFrame } from "./math";
-import { extractLoops, extractPath, pointPos } from "../sketch/profile";
+import { extractLoops, extractPath, extractChains, pointPos, thinRegion } from "../sketch/profile";
 
 export function resolveFrame(ref: PlaneRef, feats: Feature[]): Frame | null {
   if (ref.k === "std") return STD_FRAMES[ref.n];
@@ -27,10 +27,22 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
     if (!sk) throw new Error("Eskiz bulunamadı");
     const pl = kplane(sk.plane, feats, sk.id);
     if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
-    const { loops, error } = extractLoops(sk.data);
+    const { loops, texts, error } = extractLoops(sk.data);
     if (error) throw new Error(`${sk.name}: ${error}`);
-    if (!loops.length) throw new Error(`${sk.name}: kapalı kontur yok`);
-    return { sk, pl, loops };
+    if (!loops.length && !texts.length) throw new Error(`${sk.name}: kapalı kontur yok`);
+    return { sk, pl, loops, texts };
+  };
+  /** İnce özellik: açık veya kapalı konturdan kalınlıklı bölge */
+  const thinOf = (id: string, t: number, mode: "one" | "rev" | "mid") => {
+    const sk = sketchOf(id);
+    if (!sk) throw new Error("Eskiz bulunamadı");
+    const pl = kplane(sk.plane, feats, sk.id);
+    if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+    const { chains, error } = extractChains(sk.data);
+    if (error) throw new Error(`${sk.name}: ${error}`);
+    if (!chains.length) throw new Error(`${sk.name}: eskiz boş`);
+    if (!(t > 0)) throw new Error("İnce özellik kalınlığı sıfırdan büyük olmalı");
+    return { sk, pl, loops: thinRegion(chains, t, mode) };
   };
 
   for (const f of feats) {
@@ -42,15 +54,15 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
           if (!resolveFrame(f.type === "sketch" ? f.plane : f.base, feats)) throw new Error("Düzlem referansı bulunamadı");
           break;
         case "extrude": {
-          const { pl, loops } = profileOf(f.sketch);
-          kfeats.push({ id: f.id, type: "extrude", cut: f.cut, pl, loops, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut });
+          const pr = f.thin ? { ...thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one"), texts: [] } : profileOf(f.sketch);
+          kfeats.push({ id: f.id, type: "extrude", cut: f.cut, pl: pr.pl, loops: pr.loops, texts: pr.texts, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut, twist: f.twist, merge: f.merge });
           break;
         }
         case "revolve": {
-          const { sk, pl, loops } = profileOf(f.sketch);
+          const { sk, pl, loops } = f.thin ? thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one") : profileOf(f.sketch);
           const ax = sk.data.ents.find((e) => e.id === f.axis);
           if (!ax || ax.t !== "line") throw new Error("Döndürme ekseni seçin (eskizde bir merkez çizgisi çizin)");
-          kfeats.push({ id: f.id, type: "revolve", cut: f.cut, pl, loops, axis: [pointPos(sk.data, ax.p1), pointPos(sk.data, ax.p2)], angle: f.angle, mid: f.mid, rev: f.rev });
+          kfeats.push({ id: f.id, type: "revolve", cut: f.cut, pl, loops, axis: [pointPos(sk.data, ax.p1), pointPos(sk.data, ax.p2)], angle: f.angle, mid: f.mid, rev: f.rev, merge: f.merge });
           break;
         }
         case "sweep": {
@@ -69,9 +81,50 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
             const { pl, loops } = profileOf(id);
             return { pl, loops };
           });
-          kfeats.push({ id: f.id, type: "loft", cut: f.cut, ruled: f.ruled, profiles });
+          let center: { pl: KPlane; segs: any[]; closed: boolean } | undefined;
+          if (f.center) {
+            const cs = sketchOf(f.center);
+            if (!cs) throw new Error("Merkez çizgisi eskizi bulunamadı");
+            const cpl = kplane(cs.plane, feats, cs.id);
+            const path = extractPath(cs.data);
+            if (path.error || !cpl) throw new Error(`${cs.name}: ${path.error ?? "düzlem yok"}`);
+            center = { pl: cpl, segs: path.segs, closed: path.closed };
+          }
+          kfeats.push({ id: f.id, type: "loft", cut: f.cut, ruled: f.ruled, profiles, center });
           break;
         }
+        case "rib": {
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Kaburga eskizini seçin");
+          const pl = kplane(sk.plane, feats, sk.id);
+          if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+          const { chains, error } = extractChains(sk.data);
+          if (error) throw new Error(`${sk.name}: ${error}`);
+          const open = chains.filter((c) => !c.closed);
+          if (open.length !== 1) throw new Error("Kaburga eskizi tek bir açık zincir (ör. bir çizgi) olmalı");
+          kfeats.push({ id: f.id, type: "rib", pl, chain: open[0].segs, normal: f.dir === "normal", flip: f.flip, t: f.t, side: f.side });
+          break;
+        }
+        case "dome":
+          if (!f.face) throw new Error("Kubbe yapılacak düz yüzü seçin");
+          kfeats.push({ id: f.id, type: "dome", face: f.face, h: f.h });
+          break;
+        case "wrap": {
+          if (!f.face) throw new Error("Silindirik yüzü seçin");
+          const { pl, loops, texts } = profileOf(f.sketch);
+          kfeats.push({ id: f.id, type: "wrap", pl, loops, texts, face: f.face, mode: f.mode, depth: f.depth });
+          break;
+        }
+        case "scale":
+          kfeats.push({ id: f.id, type: "scale", factor: f.factor, center: f.center });
+          break;
+        case "import":
+          kfeats.push({ id: f.id, type: "import", data: f.data });
+          break;
+        case "axis":
+        case "point":
+        case "csys":
+          break;
         case "hole": {
           if (!f.plane) throw new Error("Deliğin açılacağı yüzü seçin");
           const pl = kplane(f.plane, feats);
@@ -103,7 +156,9 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
         }
         case "cpattern": {
           const step = f.equal ? (Math.abs(f.angle - 360) < 1e-6 ? 360 / f.count : f.angle / Math.max(1, f.count - 1)) : f.angle;
-          kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: AXES[f.axis], count: f.count, angle: step });
+          const ra = f.refAxis ? feats.find((x) => x.id === f.refAxis) : null;
+          if (ra && ra.type === "axis") kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: ra.d, origin: ra.p, count: f.count, angle: step });
+          else kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: AXES[f.axis], count: f.count, angle: step });
           break;
         }
         case "mirror": {
@@ -125,6 +180,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
   return feats.filter(
     (f) =>
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
-      (f.type === "loft" && f.sketches.includes(sketchId)),
+      (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
+      ((f.type === "rib" || f.type === "wrap") && f.sketch === sketchId),
   );
 }

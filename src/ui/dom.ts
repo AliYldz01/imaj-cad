@@ -1,5 +1,11 @@
 // Panel formları için küçük DOM yardımcıları.
-import { evalNum, fmtNum } from "../doc/math";
+import { evalNum, fmtNum, hasVars } from "../doc/math";
+
+/** Denklem bağlantısı: alan anahtarına ifade kaydeder */
+let eqHook: { get(key: string): string | undefined; set(key: string, expr: string | null): void } | null = null;
+export function setEqHook(h: typeof eqHook) {
+  eqHook = h;
+}
 
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
@@ -8,18 +14,26 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text 
   return el;
 }
 
-export function numField(label: string, val: number, onChange: (v: number) => void, opts: { min?: number; unit?: string; int?: boolean } = {}) {
+export function numField(label: string, val: number, onChange: (v: number) => void, opts: { min?: number; unit?: string; int?: boolean; key?: string } = {}) {
   const l = h("label", "pm-field", label + (opts.unit ? ` (${opts.unit})` : ""));
   const inp = h("input");
-  inp.inputMode = "decimal";
   inp.autocomplete = "off";
-  inp.value = fmtNum(val, 4);
+  const ex = opts.key ? eqHook?.get(opts.key) : undefined;
+  inp.value = ex ? "=" + ex : fmtNum(val, 4);
+  if (ex) inp.classList.add("eq");
+  inp.title = "Sayı, işlem (100/2) veya değişkenli denklem (=L/2) yazabilirsiniz";
   inp.addEventListener("input", () => {
     let v = evalNum(inp.value);
     if (v !== null && opts.int) v = Math.round(v);
     const ok = v !== null && (opts.min === undefined || v >= opts.min);
     inp.classList.toggle("bad", !ok);
-    if (ok) onChange(v!);
+    if (!ok) return;
+    if (opts.key && eqHook) {
+      const isEq = hasVars(inp.value);
+      eqHook.set(opts.key, isEq ? inp.value.trim().replace(/^=/, "") : null);
+      inp.classList.toggle("eq", isEq);
+    }
+    onChange(v!);
   });
   inp.addEventListener("keydown", (e) => e.stopPropagation());
   l.appendChild(inp);

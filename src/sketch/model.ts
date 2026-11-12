@@ -1,5 +1,5 @@
 // Eskiz verisi üzerinde işlemler: varlık ekleme/silme, ölçü değerleri, uygulanabilir ilişkiler.
-import type { DimType, RelType, SArc, SCircle, SDim, SEnt, SLine, SRel, SketchData, Vec2 } from "../doc/types";
+import type { DimType, RelType, SArc, SCircle, SDim, SEllipse, SEnt, SLine, SRel, SketchData, Vec2 } from "../doc/types";
 import { ORIGIN } from "../doc/types";
 import { ang, d2, normAng } from "./geom";
 
@@ -54,6 +54,116 @@ export function entPoints(e: SEnt): string[] {
     case "line": return [e.p1, e.p2];
     case "circle": return [e.c];
     case "arc": return [e.c, e.s, e.e];
+    case "ellipse": return e.s && e.e ? [e.c, e.a, e.s, e.e] : [e.c, e.a];
+    case "spline": return [...new Set(e.pts)];
+    case "parabola": return [e.s, e.e, e.k];
+    case "text": return [e.p];
+  }
+}
+
+/** Elips geometrisi */
+export function ellipseGeo(sk: SketchData, e: SEllipse) {
+  const c = P(sk, e.c), a = P(sk, e.a);
+  const rx = Math.hypot(a[0] - c[0], a[1] - c[1]) || 1e-9;
+  const rot = Math.atan2(a[1] - c[1], a[0] - c[0]);
+  const at = (t: number): Vec2 => {
+    const x = rx * Math.cos(t), y = e.rb * Math.sin(t);
+    return [c[0] + x * Math.cos(rot) - y * Math.sin(rot), c[1] + x * Math.sin(rot) + y * Math.cos(rot)];
+  };
+  /** noktanın elips parametresi */
+  const param = (p: Vec2) => {
+    const dx = p[0] - c[0], dy = p[1] - c[1];
+    const lx = dx * Math.cos(rot) + dy * Math.sin(rot), ly = -dx * Math.sin(rot) + dy * Math.cos(rot);
+    return Math.atan2(ly / (e.rb || 1e-9), lx / rx);
+  };
+  return { c, rx, ry: e.rb, rot, at, param };
+}
+
+/** Türetilmiş noktaları (kısmi elips uçları) günceller */
+export function updateDerived(sk: SketchData) {
+  for (const e of sk.ents) {
+    if (e.t === "ellipse" && e.s && e.e && e.t0 !== undefined && e.t1 !== undefined) {
+      const g = ellipseGeo(sk, e);
+      const s = g.at(e.t0), en = g.at(e.t1);
+      if (sk.pts[e.s]) sk.pts[e.s] = { x: s[0], y: s[1] };
+      if (sk.pts[e.e]) sk.pts[e.e] = { x: en[0], y: en[1] };
+    }
+  }
+}
+
+/** Spline noktalarından kübik Bezier parçaları (Catmull-Rom) */
+export function splineBeziers(pts: Vec2[], closed: boolean): { a: Vec2; b: Vec2; c1: Vec2; c2: Vec2 }[] {
+  const n = pts.length;
+  const out: { a: Vec2; b: Vec2; c1: Vec2; c2: Vec2 }[] = [];
+  if (n < 2) return out;
+  const get = (i: number): Vec2 => (closed ? pts[((i % n) + n) % n] : pts[Math.max(0, Math.min(n - 1, i))]);
+  const segs = closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const p0 = get(i - 1), p1 = get(i), p2 = get(i + 1), p3 = get(i + 2);
+    out.push({
+      a: p1,
+      b: p2,
+      c1: [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6],
+      c2: [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6],
+    });
+  }
+  return out;
+}
+
+export const bez3 = (a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, t: number): Vec2 => {
+  const u = 1 - t;
+  return [u * u * u * a[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * b[0], u * u * u * a[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * b[1]];
+};
+export const bez2 = (a: Vec2, k: Vec2, b: Vec2, t: number): Vec2 => {
+  const u = 1 - t;
+  return [u * u * a[0] + 2 * u * t * k[0] + t * t * b[0], u * u * a[1] + 2 * u * t * k[1] + t * t * b[1]];
+};
+
+/** Varlığın çizim için örneklenmiş noktaları */
+export function entSamples(sk: SketchData, e: SEnt): Vec2[] {
+  const TAU = Math.PI * 2;
+  switch (e.t) {
+    case "line":
+      return [P(sk, e.p1), P(sk, e.p2)];
+    case "circle": {
+      const c = P(sk, e.c);
+      const out: Vec2[] = [];
+      for (let i = 0; i <= 72; i++) out.push([c[0] + e.r * Math.cos((i / 72) * TAU), c[1] + e.r * Math.sin((i / 72) * TAU)]);
+      return out;
+    }
+    case "arc": {
+      const c = P(sk, e.c);
+      const s = Math.atan2(P(sk, e.s)[1] - c[1], P(sk, e.s)[0] - c[0]);
+      const en = Math.atan2(P(sk, e.e)[1] - c[1], P(sk, e.e)[0] - c[0]);
+      const span = (((en - s) % TAU) + TAU) % TAU || TAU;
+      const n = Math.max(8, Math.ceil((span / TAU) * 72));
+      const out: Vec2[] = [];
+      for (let i = 0; i <= n; i++) out.push([c[0] + e.r * Math.cos(s + (span * i) / n), c[1] + e.r * Math.sin(s + (span * i) / n)]);
+      return out;
+    }
+    case "ellipse": {
+      const g = ellipseGeo(sk, e);
+      const t0 = e.t0 ?? 0;
+      let span = e.t1 !== undefined ? e.t1 - t0 : TAU;
+      span = ((span % TAU) + TAU) % TAU || TAU;
+      const out: Vec2[] = [];
+      for (let i = 0; i <= 72; i++) out.push(g.at(t0 + (span * i) / 72));
+      return out;
+    }
+    case "spline": {
+      const closed = e.pts.length > 2 && e.pts[0] === e.pts[e.pts.length - 1];
+      const pts = (closed ? e.pts.slice(0, -1) : e.pts).map((id) => P(sk, id));
+      const out: Vec2[] = [];
+      for (const b of splineBeziers(pts, closed)) for (let i = out.length ? 1 : 0; i <= 16; i++) out.push(bez3(b.a, b.c1, b.c2, b.b, i / 16));
+      return out;
+    }
+    case "parabola": {
+      const out: Vec2[] = [];
+      for (let i = 0; i <= 32; i++) out.push(bez2(P(sk, e.s), P(sk, e.k), P(sk, e.e), i / 32));
+      return out;
+    }
+    default:
+      return [];
   }
 }
 
@@ -93,7 +203,10 @@ export function cleanup(sk: SketchData) {
 /** Bir noktayı diğerinin yerine koyar (birleştirme) */
 export function replacePoint(sk: SketchData, from: string, to: string) {
   if (from === to) return;
-  for (const e of sk.ents as any[]) for (const k of ["p", "p1", "p2", "c", "s", "e"]) if (e[k] === from) e[k] = to;
+  for (const e of sk.ents as any[]) {
+    for (const k of ["p", "p1", "p2", "c", "s", "e", "a", "k"]) if (e[k] === from) e[k] = to;
+    if (Array.isArray(e.pts)) e.pts = e.pts.map((x: string) => (x === from ? to : x));
+  }
   for (const r of sk.rels) r.refs = r.refs.map((x) => (x === from ? to : x));
   for (const d of sk.dims) d.refs = d.refs.map((x) => (x === from ? to : x));
   // kendine bağlanan ilişkiler ve sıfır uzunluklu çizgiler

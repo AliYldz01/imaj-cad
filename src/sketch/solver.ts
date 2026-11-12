@@ -3,6 +3,7 @@ import { init_planegcs_module, GcsWrapper } from "@salusoft89/planegcs";
 import wasmUrl from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
 import type { SDim, SEnt, SRel, SketchData } from "../doc/types";
 import { ORIGIN } from "../doc/types";
+import { updateDerived } from "./model";
 
 let gcs: GcsWrapper | null = null;
 
@@ -39,7 +40,10 @@ function entMap(sk: SketchData) {
 /** Eskizi çözücü ilkellerine çevirir */
 function primitives(sk: SketchData, drag?: DragTarget): Prim[] {
   const out: Prim[] = [{ id: ORIGIN, type: "point", x: 0, y: 0, fixed: true }];
-  for (const [id, p] of Object.entries(sk.pts)) out.push({ id, type: "point", x: p.x, y: p.y, fixed: false });
+  // kısmi elips uçları türetilir: çözücüde sabit
+  const slaved = new Set<string>();
+  for (const e of sk.ents) if (e.t === "ellipse" && e.s && e.e) [e.s, e.e].forEach((x) => slaved.add(x));
+  for (const [id, p] of Object.entries(sk.pts)) out.push({ id, type: "point", x: p.x, y: p.y, fixed: slaved.has(id) });
   const P = (id: string) => (id === ORIGIN ? { x: 0, y: 0 } : sk.pts[id]);
   for (const e of sk.ents) {
     if (e.t === "line") out.push({ id: e.id, type: "line", p1_id: e.p1, p2_id: e.p2 });
@@ -55,7 +59,7 @@ function primitives(sk: SketchData, drag?: DragTarget): Prim[] {
   }
   const ents = entMap(sk);
   for (const r of sk.rels) out.push(...relPrims(r, ents, sk));
-  for (const d of sk.dims) out.push(...dimPrims(d, ents, sk));
+  for (const d of sk.dims) if (!d.ref) out.push(...dimPrims(d, ents, sk));
   if (drag?.pts)
     for (const [id, [x, y]] of Object.entries(drag.pts)) {
       out.push({ id: `drag#${id}#x`, type: "coordinate_x", p_id: id, x, temporary: true });
@@ -196,6 +200,7 @@ export function solve(sk: SketchData, drag?: DragTarget, apply = true): SolveRes
   if (ok && apply) {
     gcs.apply_solution();
     readBack(sk);
+    updateDerived(sk);
   }
   return { ok, dof: gcs.gcs.dof(), conflicts, redundant };
 }
@@ -214,7 +219,8 @@ function readBack(sk: SketchData) {
 
 /**
  * Hangi noktaların / yarıçapların tam tanımlı olduğunu bulur:
- * her noktayı geçici olarak çekip hareket edip etmediğine bakar.
+ * her koordinata (ve yarıçapa) kalıcı küçük bir kaydırma kısıtı ekleyip
+ * eskizin hâlâ çözülebilir olup olmadığına bakar. Çözülebiliyorsa o değer serbesttir.
  */
 export function analyze(sk: SketchData, dof: number): { pts: Set<string>; radii: Set<string> } {
   const pts = new Set<string>([ORIGIN]);
@@ -228,25 +234,30 @@ export function analyze(sk: SketchData, dof: number): { pts: Set<string>; radii:
   }
   let scale = 1;
   for (const p of Object.values(sk.pts)) scale = Math.max(scale, Math.abs(p.x), Math.abs(p.y));
-  const delta = scale * 0.01 + 0.5;
-  const copy: SketchData = JSON.parse(JSON.stringify(sk));
+  const delta = scale * 0.003 + 0.1;
+  const base = primitives(sk);
+  const movable = (extra: Prim): boolean => {
+    gcs!.clear_data();
+    gcs!.push_primitives_and_params([...base, extra] as any);
+    const st = gcs!.solve();
+    if (st !== 0 && st !== 1) return false;
+    return gcs!.get_gcs_conflicting_constraints().length === 0 && gcs!.get_gcs_redundant_constraints().every((c: string) => !c.startsWith("probe"));
+  };
+  const slaved = new Set<string>();
+  for (const e of sk.ents) if (e.t === "ellipse" && e.s && e.e) [e.s, e.e].forEach((x) => slaved.add(x));
   for (const id of allPts) {
+    if (slaved.has(id)) {
+      pts.add(id);
+      continue;
+    }
     const p = sk.pts[id];
-    gcs.clear_data();
-    gcs.push_primitives_and_params(primitives(copy, { pts: { [id]: [p.x + delta, p.y + delta * 0.7] } }) as any);
-    gcs.solve();
-    gcs.apply_solution();
-    const q = (gcs.sketch_index.get_primitives() as any[]).find((x) => x.id === id);
-    const moved = q ? Math.hypot(q.x - p.x, q.y - p.y) : 0;
-    if (moved < delta * 1e-4) pts.add(id);
+    const fx = movable({ id: "probe", type: "coordinate_x", p_id: id, x: p.x + delta });
+    const fy = !fx && movable({ id: "probe", type: "coordinate_y", p_id: id, y: p.y + delta });
+    if (!fx && !fy) pts.add(id);
   }
   for (const c of curves) {
-    gcs.clear_data();
-    gcs.push_primitives_and_params(primitives(copy, { radius: { [c.id]: c.r + delta } }) as any);
-    gcs.solve();
-    gcs.apply_solution();
-    const q = (gcs.sketch_index.get_primitives() as any[]).find((x) => x.id === c.id);
-    if (q && Math.abs(q.radius - c.r) < delta * 1e-4) radii.add(c.id);
+    const extra = c.t === "circle" ? { id: "probe", type: "circle_radius", c_id: c.id, radius: c.r + delta } : { id: "probe", type: "arc_radius", a_id: c.id, radius: c.r + delta };
+    if (!movable(extra)) radii.add(c.id);
   }
   return { pts, radii };
 }

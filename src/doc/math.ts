@@ -58,15 +58,46 @@ export const fmtNum = (v: number, digits = 3) => {
   return (Math.round(v * p) / p).toString().replace(".", ",");
 };
 
-/** "100/2", "40+12,5" gibi basit ifadeleri hesaplar */
-export function evalNum(s: string): number | null {
-  const t = s.trim().replace(/,/g, ".");
+/** Global değişken çözücü (denklemler) */
+let varResolver: (name: string) => number | undefined = () => undefined;
+export function setVarResolver(fn: (name: string) => number | undefined) {
+  varResolver = fn;
+}
+
+const FUNCS: Record<string, (x: number) => number> = {
+  sin: (x) => Math.sin((x * Math.PI) / 180),
+  cos: (x) => Math.cos((x * Math.PI) / 180),
+  tan: (x) => Math.tan((x * Math.PI) / 180),
+  sqrt: Math.sqrt,
+  karekök: Math.sqrt,
+  abs: Math.abs,
+  round: Math.round,
+};
+
+/** "100/2", "40+12,5", "kalinlik*2", "=L/2+5" gibi ifadeleri hesaplar */
+export function evalNum(s: string, extra?: (name: string) => number | undefined): number | null {
+  let t = s.trim().replace(/^=/, "").replace(/,/g, ".");
   if (!t) return null;
-  if (!/^[0-9+\-*/(). ]+$/.test(t)) return null;
+  let bad = false;
+  t = t.replace(/[A-Za-zçğıöşüÇĞİÖŞÜ_][A-Za-z0-9çğıöşüÇĞİÖŞÜ_]*/g, (name) => {
+    if (FUNCS[name]) return `F.${name === "karekök" ? "sqrt" : name}`;
+    if (name === "pi" || name === "PI") return String(Math.PI);
+    const v = extra?.(name) ?? varResolver(name);
+    if (v === undefined || !isFinite(v)) {
+      bad = true;
+      return "0";
+    }
+    return `(${v})`;
+  });
+  if (bad) return null;
+  if (!/^[0-9+\-*/(). eEF.a-z]+$/.test(t)) return null;
   try {
-    const v = Function(`"use strict";return (${t});`)();
+    const v = Function("F", `"use strict";return (${t});`)(FUNCS);
     return typeof v === "number" && isFinite(v) ? v : null;
   } catch {
     return null;
   }
 }
+
+/** İfade değişken içeriyor mu? */
+export const hasVars = (s: string) => /[A-Za-zçğıöşüÇĞİÖŞÜ_]/.test(s.replace(/^=/, "").replace(/\b(sin|cos|tan|sqrt|abs|round|pi|PI|karekök)\b/g, ""));

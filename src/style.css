@@ -101,6 +101,15 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .pm-row .btn { margin-bottom: 4px; }
 .pm-result { font-size: 14px; line-height: 1.6; background: #f1f6ff; border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
 .pm-result div { white-space: nowrap; }
+.pm-row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.pm-row3 .pm-field { margin: 4px 0; }
+.pm-field input.eq { background: #fff9db; }
+.eq-table { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.eq-row { display: grid; grid-template-columns: 1fr auto 2fr 70px auto; gap: 6px; align-items: center; }
+.eq-row input { font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.eq-val { font-size: 13px; color: var(--muted); text-align: right; }
+#tree li.rollbar { border-top: 3px solid #1c64d1; padding: 2px 10px; font-size: 11px; color: #1c64d1; }
+#tree li.rollbar:empty, #tree li.rollbar span:empty { display: none; }
 .seg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin: 6px 0; }
 .seg button { flex: 1; min-height: 38px; border: 0; background: #fff; cursor: pointer; font-size: 13px; }
 .seg button.active { background: var(--ink); color: #fff; }
@@ -120,6 +129,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .labels .dim.err { color: var(--danger); border-color: #f1a5a5; }
 .labels .dim.sel { color: #0b7bc4; border-color: #0ca5e9; }
 .labels .dim.preview { color: var(--accent); pointer-events: none; }
+.labels .dim.ref { color: #6b7686; font-weight: 500; }
+.labels .sk-text { position: absolute; left: 0; top: 0; white-space: pre; font-family: "DejaVu Sans", system-ui, sans-serif; pointer-events: none; }
 .labels .rel { font-size: 11px; line-height: 15px; min-width: 16px; height: 16px; text-align: center; background: #d3f9d8; color: #2b8a3e; border: 1px solid #8ce99a; border-radius: 3px; cursor: pointer; }
 .labels .rel.sel { background: #0ca5e9; color: #fff; border-color: #0ca5e9; }
 .labels .rel.err { background: #ffe3e3; color: var(--danger); border-color: #ffa8a8; }

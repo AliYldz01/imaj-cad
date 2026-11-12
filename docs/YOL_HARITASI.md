@@ -15,20 +15,20 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Özellik ağacı (eskizler özelliğin altında) | FeatureManager Design Tree | ✅ |
 | Özellik / eskiz düzenleme, silme | Edit Feature / Edit Sketch | ✅ |
 | Eskizi düzenlerken model o adıma geri sarılır | Rollback | ✅ |
-| Geri sarma çubuğu (ağaçta sürüklenebilir) | Rollback Bar | ⬜ |
+| Geri sarma çubuğu (ağaçta sürüklenebilir) | Rollback Bar | ✅ |
 | Özellik özellik paneli + ✓ / ✕ onay köşesi | PropertyManager, Confirmation Corner | ✅ |
 | Komut sekmeleri (Özellikler / Eskiz) | CommandManager | ✅ |
 | Görünüşler: Ön, Üst, Sağ, İzometrik, Normal, Sığdır | View Orientation | ✅ |
 | Kesit görünüşü | Section View | ✅ |
-| Global değişkenler ve denklemler | Equations | ⬜ |
+| Global değişkenler ve denklemler | Equations | ✅ |
 | Malzeme, kütle özellikleri | Material, Mass Properties | ✅ |
 | Ölçüm aracı | Measure | ✅ |
 | Özellik yeniden adlandırma | Rename | ✅ |
 | Yüze çizilen eskiz, model değişince yüzü takip eder | Sketch on face | ✅ |
-| Çoklu gövde | Multibody | ⬜ |
+| Çoklu gövde | Multibody | ✅ |
 | Dosya kaydet / aç (.icad) | Save / Open | ✅ |
 | STEP / STL dışa aktarma | Export | ✅ |
-| STEP içe aktarma | Import | ⬜ |
+| STEP içe aktarma | Import | ✅ |
 
 ## 2. Eskiz (2D)
 
@@ -47,12 +47,12 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Teğet yay | ✅ |
 | 3 noktalı yay | ✅ |
 | Düz kanal (slot) | ✅ |
-| Merkez noktalı kanal / yay kanal | ⬜ |
+| Merkez noktalı kanal / yay kanal | ✅ |
 | Çokgen (çember içine) | ✅ |
 | Nokta | ✅ |
-| Elips, kısmi elips, parabol | ⬜ |
-| Spline | ⬜ |
-| Metin | ⬜ |
+| Elips, kısmi elips, parabol | ✅ |
+| Spline | ✅ |
+| Metin | ✅ |
 
 ### Eskiz araçları
 | Araç | Durum |
@@ -63,11 +63,11 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Uzat | ✅ |
 | Varlıkları ötele (offset) | ✅ |
 | Varlıkları dönüştür (kenarı eskize al: çizgi, daire, yay) | ✅ |
-| Kesişim eğrisi | ⬜ |
+| Kesişim eğrisi | ✅ |
 | Varlıkları aynala | ✅ |
 | Doğrusal / dairesel eskiz çoğaltma | ✅ |
 | Taşı / kopyala / döndür | ✅ |
-| Ölçekle | ⬜ |
+| Ölçekle | ✅ |
 | Yapı geometrisine çevir | ✅ |
 | Sürükleyerek düzenleme (çözücü ile) | ✅ |
 
@@ -97,8 +97,8 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Ölçü değerine işlem yazma (`100/2`) | ✅ |
 | Tanımlılık renkleri: mavi (eksik), siyah (tam), kırmızı (aşırı) | ✅ |
 | Serbestlik derecesi (DOF) göstergesi | ✅ |
-| Referans (sürülen) ölçü | ⬜ |
-| Tam tanımla (otomatik) | ⬜ |
+| Referans (sürülen) ölçü | ✅ |
+| Tam tanımla (otomatik) | ✅ |
 
 ## 3. Katı özellikler (Part)
 
@@ -107,36 +107,36 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Ekstrüzyon (Boss/Base) | Kör, Orta düzlem, Tümünden geçen, Yön 2, Ters çevir | ✅ |
 | Ekstrüzyon kesme | Kör, Tümünden geçen, Orta düzlem, Yön 2 | ✅ |
 | Ekstrüzyon: Yüzeye kadar, Yüzeyden ötele (paralel düz yüz) | | ✅ |
-| Ekstrüzyon: Sonrakine kadar, eğri yüzeye kadar | | ⬜ |
+| Ekstrüzyon: Sonrakine kadar, eğri yüzeye kadar | | ✅ |
 | Ekstrüzyon: Koniklik (tek konturlu profil) | | ✅ |
-| Ekstrüzyon: İnce özellik | | ⬜ |
+| Ekstrüzyon: İnce özellik | | ✅ |
 | Döndürme (Revolve) / Döndürerek kesme | Açı, Orta düzlem, Ters | ✅ |
 | Süpürme (Sweep) / Süpürerek kesme | Profil + yol eskizi | ✅ |
 | Loft / Loft kesme | Tek konturlu profiller, düz yüzeyli seçenek | ✅ |
-| Loft: kılavuz eğriler | | ⬜ |
+| Loft: kılavuz eğriler | | ⬜ (çekirdek kısıtı; ileride) |
 | Radyüs (Fillet) | Sabit yarıçap, kenar seçimi | ✅ |
 | Radyüs / Pah: yüz seçimi (yüzün tüm kenarları) | | ✅ |
-| Radyüs: değişken, tam yuvarlak | | ⬜ |
+| Radyüs: değişken, tam yuvarlak | | ✅ |
 | Pah (Chamfer) | Mesafe | ✅ |
-| Pah: mesafe–açı, mesafe–mesafe | | ⬜ |
+| Pah: mesafe–açı, mesafe–mesafe | | ✅ |
 | Kabuk (Shell) | Kalınlık, kaldırılacak yüzler | ✅ |
 | Doğrusal çoğaltma | Yön (X/Y/Z), aralık, adet | ✅ |
 | Dairesel çoğaltma | Eksen (X/Y/Z), adet, açı | ✅ |
 | Ayna | Ön / Üst / Sağ düzlem | ✅ |
 | Ayna: yüze veya referans düzleme göre | | ✅ |
 | Delik sihirbazı | Düz, havşalı, konik havşalı, kılavuz; M3–M24 ISO tabloları | ✅ |
-| Delik: kozmetik diş, boru dişi, inç ölçüler | | ⬜ |
+| Delik: kozmetik diş, boru dişi, inç ölçüler | | ✅ |
 | Koniklik (Draft) | Nötr düzlem, yüz seçimi | ✅ |
-| Kaburga (Rib) | | ⬜ |
-| Kubbe, Sarma, Eğme | | ⬜ |
+| Kaburga (Rib) | | ✅ |
+| Kubbe, Sarma, Ölçekle (Eğme yerine) | | ✅ |
 | Referans düzlem (ötelenmiş) | | ✅ |
-| Referans eksen, nokta, koordinat sistemi | | ⬜ |
+| Referans eksen, nokta, koordinat sistemi | | ✅ |
 
 ## 4. Sonraki modüller
 
 | Modül | İçerik | Durum |
 |---|---|---|
-| Sac metal | Taban flanş, kenar flanş, büküm, K-faktörü, açınım, DXF | ⬜ |
+| Sac metal **(sıradaki: v0.5)** | Taban flanş, kenar flanş, büküm, K-faktörü, açınım, DXF | ⬜ |
 | Kaynaklı yapı / profil | İskelet eskiz, profil kütüphanesi, köşe işlemleri, kesim listesi | ⬜ |
 | Montaj | Bileşen ekleme, çakışık/eş merkezli/mesafe eşleşmeleri, patlatma | ⬜ |
 | Teknik resim | Görünüşler, kesit, ölçülendirme, antet, PDF | ⬜ |

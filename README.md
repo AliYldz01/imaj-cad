@@ -6,15 +6,16 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 
 **Canlı sürüm:** https://aliyldz01.github.io/imaj-cad/
 
-## v0.3 — SolidWorks mantığında eskiz ve parça
+## v0.4 — Parça modülü tamamlandı
 
 Ayrıntılı özellik listesi ve sonraki adımlar: [docs/YOL_HARITASI.md](docs/YOL_HARITASI.md)
 
-- **Parça belgesi:** Orijin, Ön / Üst / Sağ düzlem, FeatureManager ağacı (eskizler özelliğin altında), düzenle / bastır / sil, geri sarma
-- **Eskiz:** çizgi, merkez çizgisi, köşe / merkez / 3 noktalı dikdörtgen, paralelkenar, daire, çevre dairesi, merkez / teğet / 3 noktalı yay, kanal, çokgen, nokta, eskiz radyüsü ve pahı, kırp, uzat, ötele, aynala, doğrusal / dairesel çoğaltma, taşı / kopyala / döndür, varlıkları dönüştür, yapı geometrisi
+- **Parça belgesi:** Orijin, Ön / Üst / Sağ düzlem, FeatureManager ağacı (eskizler özelliğin altında), düzenle / bastır / sil, geri sarma çubuğu (araya özellik ekleme), çoklu gövde, global değişkenler ve denklemler, STEP içe aktarma
+- **Eskiz:** çizgi, merkez çizgisi, köşe / merkez / 3 noktalı dikdörtgen, paralelkenar, daire, çevre dairesi, merkez / teğet / 3 noktalı yay, kanal, çokgen, nokta, eskiz radyüsü ve pahı, kırp, uzat, ötele, aynala, doğrusal / dairesel çoğaltma, taşı / kopyala / döndür, varlıkları dönüştür, kesişim eğrisi, ölçekle, merkez noktalı / yay kanal, elips, kısmi elips, parabol, spline, metin, yapı geometrisi
 - **İlişkiler:** otomatik (yatay, dikey, çakışık, üzerinde, orta nokta, teğet) ve elle (paralel, dik, eşit, doğrudaş, eş merkezli, simetrik, sabit)
-- **Akıllı ölçü:** uzunluk, yatay / dikey / hizalı mesafe, çap, yarıçap, açı, nokta–çizgi; tanımlılık renkleri (mavi / siyah / kırmızı) ve serbestlik derecesi
-- **Katı özellikler:** ekstrüzyon ve kesme (kör, tümünden geçen, yüzeye kadar, yüzeyden ötele, orta düzlem, iki yön, koniklik), döndürme, süpürme, loft (hepsinin kesme türü), delik sihirbazı (M3–M24), radyüs, pah, kabuk, koniklik, doğrusal ve dairesel çoğaltma, ayna, referans düzlem
+- **Akıllı ölçü:** uzunluk, yatay / dikey / hizalı mesafe, çap, yarıçap, açı, nokta–çizgi; referans (sürülen) ölçü, denklemli ölçü, tam tanımla, tanımlılık renkleri (mavi / siyah / kırmızı) ve serbestlik derecesi
+- **Katı özellikler:** ekstrüzyon ve kesme (kör, tümünden geçen, sonrakine kadar, düz / eğri yüzeye kadar, yüzeyden ötele, orta düzlem, iki yön, koniklik, burulma, ince özellik), döndürme, süpürme, loft (merkez çizgili; hepsinin kesme türü), delik sihirbazı (ISO M3–M24, boru dişi G, inç UNC, kozmetik diş), radyüs (sabit, değişken, tam yuvarlak), pah (eşit, mesafe–mesafe, mesafe–açı), kabuk, koniklik, kaburga, kubbe, sarma (kabartma / oyma), ölçekle, doğrusal ve dairesel çoğaltma, ayna, referans düzlem / eksen / nokta / koordinat sistemi
+- **Henüz yok:** loft kılavuz eğrileri; esnet (Flex) — kullandığımız çekirdek derlemesi desteklemediği için yerine Ölçekle eklendi
 - **Değerlendir:** ölçme (uzunluk, çap, alan, mesafe, açı), kütle özellikleri ve malzeme, kesit görünüşü
 - Düzlemsel yüze eskiz, STEP / STL dışa aktarma, `.icad` kaydet / aç, otomatik kayıt, çevrimdışı çalışma
 - Kalem / fare çizer ve seçer; parmak döndürür, kaydırır ve yakınlaştırır

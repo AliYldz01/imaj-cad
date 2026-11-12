@@ -1,7 +1,7 @@
 // Eskiz düzenleyici: SolidWorks mantığında çizim araçları, otomatik ilişkiler,
 // akıllı ölçü, sürükleyerek düzenleme, kırpma, radyüs ve tanımlılık renkleri.
 import * as THREE from "three";
-import type { Frame, RelType, SArc, SCircle, SDim, SEnt, SLine, SketchData, Vec2, Vec3 } from "../doc/types";
+import type { Frame, RelType, SArc, SCircle, SDim, SEnt, SLine, SketchData, Vec2, Vec3, SectionItem, SEllipse, SText } from "../doc/types";
 import { ORIGIN } from "../doc/types";
 import { evalNum, fmtNum, toLocal, toWorld, dot, sub } from "../doc/math";
 import type { InputHandler, Viewer } from "../viewer";
@@ -9,7 +9,7 @@ import { solve, analyze, type SolveResult } from "./solver";
 import { offsetEnts, mirrorEnts, linearPattern, circularPattern, moveEnts, centroid } from "./ops";
 import {
   P, addArc, addCircle, addLine, addPointEnt, addPt, addRel, applicableRelations, arcAngles, cleanup, deleteIds,
-  entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf,
+  entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf, entSamples, ellipseGeo,
 } from "./model";
 import {
   add2, ang, arcMid, circle3, circleCircle, crs2, d2, dot2, inArc, len2, lineCircle, lineLine, mul2, nearestOnArc,
@@ -20,7 +20,8 @@ export type SkTool =
   | "select" | "line" | "centerline" | "rect" | "crect" | "circle" | "carc" | "tarc" | "arc3"
   | "slot" | "polygon" | "point" | "fillet" | "trim" | "dim"
   | "rect3" | "para" | "circle3" | "schamfer" | "extend" | "convert"
-  | "offset" | "mirror" | "spat" | "scpat" | "move";
+  | "offset" | "mirror" | "spat" | "scpat" | "move"
+  | "cslot" | "aslot" | "ellipse" | "pellipse" | "parabola" | "spline" | "text" | "isect";
 
 /** Seçim üzerinde çalışan işlem araçları */
 export const OP_TOOLS: SkTool[] = ["offset", "mirror", "spat", "scpat", "move"];
@@ -51,7 +52,15 @@ export const TOOL_NAMES: Record<SkTool, string> = {
   mirror: "Varlıkları Aynala",
   spat: "Doğrusal Eskiz Çoğaltma",
   scpat: "Dairesel Eskiz Çoğaltma",
-  move: "Taşı / Kopyala / Döndür",
+  move: "Taşı / Kopyala / Döndür / Ölçekle",
+  cslot: "Merkez Noktalı Kanal",
+  aslot: "Yay Kanal",
+  ellipse: "Elips",
+  pellipse: "Kısmi Elips",
+  parabola: "Parabol",
+  spline: "Spline",
+  text: "Metin",
+  isect: "Kesişim Eğrisi",
 };
 
 const HINTS: Partial<Record<SkTool, string>> = {
@@ -80,7 +89,15 @@ const HINTS: Partial<Record<SkTool, string>> = {
   mirror: "Aynalanacak öğeleri ve ayna ekseni olacak merkez çizgisini seçin, sonra Uygula.",
   spat: "Çoğaltılacak öğeleri seçin, yön ve aralığı girip Uygula'ya basın.",
   scpat: "Çoğaltılacak öğeleri seçin. Merkez: seçili nokta veya orijin.",
-  move: "Taşınacak öğeleri seçin, ötelemeyi / açıyı girip Uygula'ya basın.",
+  move: "Taşınacak öğeleri seçin, ötelemeyi / açıyı / ölçeği girip Uygula'ya basın.",
+  cslot: "Kanal merkezi → bir uç merkezi → genişlik.",
+  aslot: "Yay merkezi → başlangıç → bitiş → genişlik.",
+  ellipse: "Merkez → büyük eksen ucu → küçük eksen.",
+  pellipse: "Merkez → büyük eksen ucu → küçük eksen → başlangıç → bitiş.",
+  parabola: "Başlangıç → bitiş → tepe noktası.",
+  spline: "Noktalara dokunun; bitirmek için iki kez dokunun veya Bitir'e basın. İlk noktaya dönerseniz kapanır.",
+  text: "Metni ve boyutu aşağıda yazın, sonra metnin konacağı yere dokunun.",
+  isect: "Dokunduğunuzda eskiz düzleminin katıyla kesişimi eskize eklenir.",
 };
 
 const C = {
@@ -110,6 +127,8 @@ export interface EditorHost {
   toast(msg: string, err?: boolean): void;
   status(text: string, kind: "ok" | "under" | "over"): void;
   changed(): void;
+  /** eskiz düzleminin katıyla kesişimi */
+  section?: (f: Frame) => Promise<SectionItem[]>;
 }
 
 export class SketchEditor implements InputHandler {
@@ -133,7 +152,8 @@ export class SketchEditor implements InputHandler {
     offD: 5, offRev: false,
     n1: 3, s1: 20, a1: 0, n2: 1, s2: 20, a2: 90,
     cn: 6, ctotal: 360,
-    mdx: 20, mdy: 0, mang: 0, mcopy: false,
+    mdx: 20, mdy: 0, mang: 0, mcopy: false, mscale: 1,
+    text: "İMAJ", textSize: 10, textAngle: 0,
   };
 
   constructor(private host: EditorHost, public frame: Frame, public data: SketchData) {
@@ -221,7 +241,7 @@ export class SketchEditor implements InputHandler {
       Object.assign(this.data, JSON.parse(before));
       this.resolve();
       this.render();
-      this.host.toast(failMsg, true);
+      if (failMsg) this.host.toast(failMsg, true);
       return false;
     }
     this.resolve();
@@ -315,7 +335,22 @@ export class SketchEditor implements InputHandler {
       const { c, s, e: en } = arcAngles(sk, e);
       return nearestOnArc(p, c, e.r, s, en);
     }
-    return null;
+    if (e.t === "text") {
+      const q = P(sk, e.p);
+      const w = e.size * 0.6 * e.text.length;
+      const a = (e.angle * Math.PI) / 180;
+      const lx = (p[0] - q[0]) * Math.cos(a) + (p[1] - q[1]) * Math.sin(a);
+      const ly = -(p[0] - q[0]) * Math.sin(a) + (p[1] - q[1]) * Math.cos(a);
+      const inside = lx >= 0 && lx <= w && ly >= 0 && ly <= e.size;
+      return { q, d: inside ? 0 : d2(p, q) };
+    }
+    const pts = entSamples(sk, e);
+    let best: { q: Vec2; d: number } | null = null;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const r = nearestOnSeg(p, pts[i], pts[i + 1]);
+      if (!best || r.d < best.d) best = { q: r.q, d: r.d };
+    }
+    return best;
   }
 
   private snapGrid(v: number) {
@@ -436,7 +471,7 @@ export class SketchEditor implements InputHandler {
     return ["line", "centerline", "rect", "crect", "circle", "polygon"].includes(this.tool) && !this.chainActive();
   }
   private chainActive() {
-    return !!(this.st.last || this.st.a || this.st.c);
+    return !!(this.st.last || this.st.aPos || this.st.infs?.length);
   }
 
   // ---------------- Önizleme ----------------
@@ -710,7 +745,8 @@ export class SketchEditor implements InputHandler {
         this.st = {};
         return this.render();
       }
-      case "slot": {
+      case "slot":
+      case "cslot": {
         if (!st.aPos) {
           st.ainf = this.infer(p);
           st.aPos = st.ainf.p;
@@ -722,11 +758,17 @@ export class SketchEditor implements InputHandler {
           if (d2(st.aPos, st.bPos) < 1e-6) st.bPos = null;
           return this.render();
         }
-        const a = st.aPos as Vec2, b = st.bPos as Vec2;
+        let a = st.aPos as Vec2;
+        const b = st.bPos as Vec2;
+        let ainf = st.ainf as Inference;
+        const binf = st.binf as Inference;
+        if (this.tool === "cslot") {
+          a = [2 * a[0] - b[0], 2 * a[1] - b[1]];
+          ainf = { p: a };
+        }
         const u = norm2(sub2(b, a));
         const n = perp(u);
         const w = Math.max(1e-3, Math.abs(dot2(sub2(p, a), n)));
-        const ainf = st.ainf as Inference, binf = st.binf as Inference;
         this.op(() => {
           const c1 = this.makePoint(ainf);
           const c2 = this.makePoint(binf);
@@ -808,6 +850,99 @@ export class SketchEditor implements InputHandler {
         });
         return this.render();
       }
+      case "aslot": {
+        st.infs = st.infs ?? [];
+        st.infs.push(this.infer(p));
+        if (st.infs.length === 1) st.aPos = st.infs[0].p;
+        if (st.infs.length === 2) {
+          st.bPos = st.infs[1].p;
+          st.sweep = 0;
+          st.lastAng = ang(st.aPos, st.bPos);
+        }
+        if (st.infs.length === 3) {
+          this.trackSweep(st.infs[2].p);
+          st.e3 = st.infs[2].p;
+        }
+        if (st.infs.length < 4) return this.render();
+        const geo = this.arcSlotGeo(st.aPos, st.bPos, st.sweep, st.infs[3].p);
+        this.st = {};
+        if (!geo) return this.host.toast("Geçersiz yay kanal", true);
+        const ci = this.st.infs?.[0] as Inference | undefined;
+        void ci;
+        this.op(() => this.buildArcSlot(geo));
+        return this.render();
+      }
+      case "ellipse":
+      case "pellipse": {
+        st.infs = st.infs ?? [];
+        st.infs.push(this.infer(p));
+        const n = st.infs.length;
+        if (n === 1) st.aPos = st.infs[0].p;
+        if (n === 2) st.bPos = st.infs[1].p;
+        const need = this.tool === "ellipse" ? 3 : 5;
+        if (n === 3) st.rb = Math.max(1e-3, this.minorFrom(st.aPos, st.bPos, st.infs[2].p));
+        if (n < need) return this.render();
+        const [ci, ai] = st.infs as Inference[];
+        const rb = st.rb;
+        const isP = this.tool === "pellipse";
+        const pts = st.infs.map((x: Inference) => x.p);
+        this.st = {};
+        this.op(() => {
+          const c = this.makePoint(ci);
+          const a = addPt(sk, ai.p);
+          const el: SEllipse = { id: nid(sk, "e"), t: "ellipse", c, a, rb };
+          if (isP) {
+            sk.ents.push(el);
+            const g = ellipseGeo(sk, el);
+            let t0 = g.param(pts[3]), t1 = g.param(pts[4]);
+            if (normAng(t1 - t0) < 1e-6) t1 = t0 + Math.PI;
+            el.t0 = t0;
+            el.t1 = t1;
+            el.s = addPt(sk, g.at(t0));
+            el.e = addPt(sk, g.at(t1));
+          } else sk.ents.push(el);
+          addLine(sk, c, a, true);
+        });
+        return this.render();
+      }
+      case "parabola": {
+        st.infs = st.infs ?? [];
+        st.infs.push(this.infer(p));
+        if (st.infs.length === 1) st.aPos = st.infs[0].p;
+        if (st.infs.length === 2) st.bPos = st.infs[1].p;
+        if (st.infs.length < 3) return this.render();
+        const [si, ei, pk] = st.infs as Inference[];
+        const k: Vec2 = [2 * pk.p[0] - (si.p[0] + ei.p[0]) / 2, 2 * pk.p[1] - (si.p[1] + ei.p[1]) / 2];
+        this.st = {};
+        this.op(() => {
+          const s0 = this.makePoint(si), e0 = this.makePoint(ei);
+          sk.ents.push({ id: nid(sk, "q"), t: "parabola", s: s0, e: e0, k: addPt(sk, k) });
+        });
+        return this.render();
+      }
+      case "spline": {
+        st.infs = st.infs ?? [];
+        const inf = this.infer(p);
+        const first = st.infs[0] as Inference | undefined;
+        const closing = first && st.infs.length >= 3 && d2(inf.p, first.p) < this.tolPx * this.wpp();
+        if ((dbl && st.infs.length >= 2) || closing) return this.finishSpline(!!closing);
+        st.infs.push(inf);
+        st.lastPos = inf.p;
+        this.renderPanel();
+        return this.render();
+      }
+      case "text": {
+        const inf = this.infer(p);
+        const o = this.opts;
+        if (!o.text.trim()) return this.host.toast("Önce metni yazın", true);
+        this.op(() => {
+          const pid = this.makePoint(inf);
+          sk.ents.push({ id: nid(sk, "x"), t: "text", p: pid, text: o.text, size: o.textSize, angle: o.textAngle });
+        });
+        return;
+      }
+      case "isect":
+        return this.intersectionCurve();
       case "schamfer":
         return this.chamferAt(p);
       case "extend":
@@ -941,7 +1076,7 @@ export class SketchEditor implements InputHandler {
   }
 
   toggleConstruction() {
-    const ents = [...this.sel].map((id) => getEnt(this.data, id)).filter((e) => e && e.t !== "point") as SEnt[];
+    const ents = [...this.sel].map((id) => getEnt(this.data, id)).filter((e) => e && e.t !== "point" && e.t !== "text") as SEnt[];
     if (!ents.length) return this.host.toast("Önce çizgi, daire veya yay seçin");
     const on = !ents.every((e) => e.cons);
     this.op(() => ents.forEach((e) => (on ? (e.cons = true) : delete e.cons)));
@@ -1006,6 +1141,170 @@ export class SketchEditor implements InputHandler {
     return [a, b, add2(b, mul2(n, w)), add2(a, mul2(n, w))];
   }
 
+  /** Küçük yarıçap: noktanın büyük eksene uzaklığı */
+  private minorFrom(c: Vec2, a: Vec2, p: Vec2) {
+    const u = norm2(sub2(a, c));
+    return Math.abs(crs2(u, sub2(p, c)));
+  }
+
+  private arcSlotGeo(c: Vec2, s: Vec2, sweep: number, wp: Vec2) {
+    const r = d2(c, s);
+    const w = Math.abs(d2(c, wp) - r);
+    if (r < 1e-6 || w < 1e-6 || w >= r || Math.abs(sweep) < 1e-6) return null;
+    let a0 = ang(c, s), a1 = a0 + sweep;
+    if (sweep < 0) [a0, a1] = [a1, a0];
+    return { c, r, w, a0, a1 };
+  }
+
+  private buildArcSlot(g: { c: Vec2; r: number; w: number; a0: number; a1: number }) {
+    const sk = this.data;
+    const U = (t: number, rr: number): Vec2 => [g.c[0] + rr * Math.cos(t), g.c[1] + rr * Math.sin(t)];
+    const c = addPt(sk, g.c);
+    const S = addPt(sk, U(g.a0, g.r)), E = addPt(sk, U(g.a1, g.r));
+    const cl = addArc(sk, c, S, E, true);
+    cl.r = g.r;
+    const o1 = addPt(sk, U(g.a0, g.r + g.w)), o2 = addPt(sk, U(g.a1, g.r + g.w));
+    const i1 = addPt(sk, U(g.a0, g.r - g.w)), i2 = addPt(sk, U(g.a1, g.r - g.w));
+    const outer = addArc(sk, c, o1, o2);
+    const inner = addArc(sk, c, i1, i2);
+    // uç kapakları: dışa doğru yarım daireler. Kapak merkezi, radyal yapı çizgisinin orta noktasıdır.
+    const capS = addArc(sk, S, i1, o1);
+    const capE = addArc(sk, E, o2, i2);
+    capS.r = capE.r = g.w;
+    for (const [a, b, m] of [[i1, o1, S], [i2, o2, E]] as [string, string, string][]) {
+      const rl = addLine(sk, a, b, true);
+      addRel(sk, "midpoint", [m, rl.id]);
+      addRel(sk, "onLine", [c, rl.id]);
+    }
+    void outer;
+    void inner;
+  }
+
+  private finishSpline(closed: boolean) {
+    const infs = (this.st.infs ?? []) as Inference[];
+    this.st = {};
+    if (infs.length < 2) return this.render();
+    const sk = this.data;
+    this.op(() => {
+      const ids = infs.map((x) => this.makePoint(x));
+      if (closed) ids.push(ids[0]);
+      sk.ents.push({ id: nid(sk, "s"), t: "spline", pts: ids });
+    });
+    this.render();
+    this.renderPanel();
+  }
+
+  private async intersectionCurve() {
+    if (!this.host.section) return;
+    const items = await this.host.section(this.frame);
+    if (!items.length) return this.host.toast("Eskiz düzlemi katıyı kesmiyor", true);
+    const sk = this.data;
+    const L = (w: Vec3) => toLocal(this.frame, w);
+    const pt = (q: Vec2) => {
+      for (const id of [ORIGIN, ...Object.keys(sk.pts)]) if (d2(P(sk, id), q) < 1e-6) return id;
+      const id = addPt(sk, q);
+      addRel(sk, "fix", [id], { fx: q[0], fy: q[1] });
+      return id;
+    };
+    this.op(() => {
+      for (const it of items) {
+        if (it.k === "line") addLine(sk, pt(L(it.s)), pt(L(it.e)));
+        else if (it.k === "circle") {
+          const c = pt(L(it.c));
+          if (it.closed) {
+            const ci = addCircle(sk, c, it.r);
+            sk.dims.push({ id: nid(sk, "d"), t: "dia", refs: [ci.id], v: it.r * 2, lp: add2(L(it.c), [it.r, it.r]) });
+          } else {
+            const cc = L(it.c), s0 = L(it.s), e0 = L(it.e), m0 = L(it.m);
+            const ccw = inArc(ang(cc, m0), ang(cc, s0), ang(cc, e0));
+            const a = ccw ? addArc(sk, c, pt(s0), pt(e0)) : addArc(sk, c, pt(e0), pt(s0));
+            a.r = it.r;
+          }
+        } else {
+          const ids = it.pts.map((w) => pt(L(w)));
+          for (let i = 0; i < ids.length - 1; i++) if (ids[i] !== ids[i + 1]) addLine(sk, ids[i], ids[i + 1]);
+        }
+      }
+    });
+    this.host.toast(`${items.length} kesişim eğrisi eklendi`);
+  }
+
+  /** Tam tanımla: orijine göre yatay/dikey ölçüler ve yarıçaplar ekler */
+  fullyDefine() {
+    const sk = this.data;
+    this.snapshot();
+    const before = JSON.stringify(sk);
+    let added = 0;
+    const tryDim = (d: SDim) => {
+      const before = solve(sk, undefined, false).dof;
+      sk.dims.push(d);
+      const r = solve(sk, undefined, false);
+      if (!r.ok || r.conflicts.length || r.dof >= before) {
+        sk.dims.pop();
+        return false;
+      }
+      added++;
+      return true;
+    };
+    let res = solve(sk);
+    let def = analyze(sk, res.dof);
+    // yarıçaplar
+    for (const e of sk.ents) {
+      if ((e.t === "circle" || e.t === "arc") && !def.radii.has(e.id)) {
+        const c = P(sk, e.c);
+        tryDim({ id: nid(sk, "d"), t: e.t === "circle" ? "dia" : "rad", refs: [e.id], v: e.t === "circle" ? e.r * 2 : e.r, lp: add2(c, [e.r * 0.8, e.r * 0.9]) });
+      }
+    }
+    res = solve(sk);
+    def = analyze(sk, res.dof);
+    let k = 0;
+    for (const id of Object.keys(sk.pts)) {
+      if (def.pts.has(id)) continue;
+      const q = P(sk, id);
+      k++;
+      const okx = Math.abs(q[0]) > 1e-9 && tryDim({ id: nid(sk, "d"), t: "dist", sub: "h", refs: q[0] >= 0 ? [ORIGIN, id] : [id, ORIGIN], v: Math.abs(q[0]), lp: [q[0] / 2, Math.min(0, q[1]) - 8 - (k % 5) * 6] });
+      const oky = Math.abs(q[1]) > 1e-9 && tryDim({ id: nid(sk, "d"), t: "dist", sub: "v", refs: q[1] >= 0 ? [ORIGIN, id] : [id, ORIGIN], v: Math.abs(q[1]), lp: [Math.min(0, q[0]) - 8 - (k % 5) * 6, q[1] / 2] });
+      if (okx || oky) {
+        res = solve(sk);
+        def = analyze(sk, res.dof);
+      }
+      if (res.dof === 0) break;
+    }
+    // orijinde duran ama tanımsız noktalar için sabitle
+    res = solve(sk);
+    def = analyze(sk, res.dof);
+    for (const id of Object.keys(sk.pts)) {
+      if (res.dof === 0) break;
+      if (def.pts.has(id)) continue;
+      const q = P(sk, id);
+      const before = solve(sk, undefined, false).dof;
+      sk.rels.push({ id: nid(sk, "r"), t: "fix", refs: [id], fx: q[0], fy: q[1] });
+      const r = solve(sk, undefined, false);
+      if (!r.ok || r.conflicts.length || r.dof >= before) sk.rels.pop();
+      else added++;
+      res = solve(sk);
+      def = analyze(sk, res.dof);
+    }
+    if (!added) {
+      this.undoStack.pop();
+      Object.assign(sk, JSON.parse(before));
+    }
+    this.resolve();
+    this.render();
+    this.renderPanel();
+    this.host.changed();
+    this.host.toast(added ? `${added} ölçü/ilişki eklendi` : "Eklenecek ölçü bulunamadı");
+  }
+
+  toggleRefDim(id: string) {
+    const d = this.data.dims.find((x) => x.id === id);
+    if (!d) return;
+    this.op(() => {
+      d.ref = !d.ref;
+      if (!d.ref) d.v = Math.abs(measure(this.data, d)) * (d.t === "dist" && d.sub !== "a" ? Math.sign(measure(this.data, d)) || 1 : 1);
+    }, "Sürücü ölçü eskizi aşırı tanımlar");
+  }
+
   // ---------------- Eskiz pahı ----------------
   private chamferAt(p: Vec2) {
     const sk = this.data;
@@ -1046,7 +1345,7 @@ export class SketchEditor implements InputHandler {
     const L = d2(from, to);
     let best: { p: Vec2; t: number; by: string } | null = null;
     for (const o of sk.ents) {
-      if (o.id === e.id || o.t === "point") continue;
+      if (o.id === e.id || (o.t !== "line" && o.t !== "circle" && o.t !== "arc")) continue;
       let cands: Vec2[] = [];
       if (o.t === "line") {
         const x = lineLine(from, to, P(sk, o.p1), P(sk, o.p2));
@@ -1150,7 +1449,7 @@ export class SketchEditor implements InputHandler {
       }
       case "move":
         if (!ents.length) return "Taşınacak öğeleri seçin";
-        moveEnts(sk, ents, { dx: o.mdx, dy: o.mdy, ang: o.mang, c: centroid(sk, ents), copy: o.mcopy });
+        moveEnts(sk, ents, { dx: o.mdx, dy: o.mdy, ang: o.mang, c: centroid(sk, ents), copy: o.mcopy, scale: o.mscale });
         return null;
     }
     return null;
@@ -1191,7 +1490,7 @@ export class SketchEditor implements InputHandler {
     const h = this.hitTest(p, this.tolPx, { pts: false });
     if (!h) return;
     const e = getEnt(sk, h.id)!;
-    if (e.t === "point") return;
+    if (e.t !== "line" && e.t !== "circle" && e.t !== "arc") return this.op(() => deleteIds(sk, [e.id]));
     // e üzerindeki kesişim noktaları (parametre ile)
     const cuts = this.intersections(e);
     const exact = (q: Vec2) => {
@@ -1281,7 +1580,7 @@ export class SketchEditor implements InputHandler {
       return true;
     };
     for (const o of sk.ents) {
-      if (o.id === e.id || o.t === "point") continue;
+      if (o.id === e.id || (o.t !== "line" && o.t !== "circle" && o.t !== "arc")) continue;
       let pts: Vec2[] = [];
       if (e.t === "line") {
         const A = P(sk, e.p1), B = P(sk, e.p2);
@@ -1326,15 +1625,29 @@ export class SketchEditor implements InputHandler {
     const cur = measure(this.data, spec);
     this.promptValue(e.clientX, e.clientY, Math.abs(cur), spec.t === "angle" ? "°" : "", (v) => {
       if (spec.t !== "angle" && v <= 0 && spec.t !== "dist") return this.host.toast("Değer sıfırdan büyük olmalı", true);
-      const ok = this.op(() => {
+      const make = (): SDim => {
         const d: SDim = { id: nid(this.data, "d"), ...spec, v: spec.t === "dist" && spec.sub !== "a" ? v * Math.sign(cur || 1) : v };
         if (d.t === "dist" && d.sub !== "a" && cur < 0) {
           d.refs = [d.refs[1], d.refs[0]];
           d.v = v;
         }
-        this.data.dims.push(d);
-      }, "Bu ölçü eskizi aşırı tanımlar. Önce çakışan ilişkiyi veya ölçüyü silin.");
-      if (ok) this.host.changed();
+        const ex = this.lastExpr;
+        if (ex) d.expr = ex;
+        return d;
+      };
+      const ok = this.op(() => this.data.dims.push(make()), "");
+      if (ok) return this.host.changed();
+      // SolidWorks gibi: aşırı tanımlıyorsa referans ölçü olarak eklemeyi öner
+      if (confirm("Bu ölçü eskizi aşırı tanımlar. Referans (sürülen) ölçü olarak eklensin mi?")) {
+        this.op(() => {
+          const d = make();
+          d.ref = true;
+          d.v = Math.abs(cur);
+          delete d.expr;
+          this.data.dims.push(d);
+        });
+        this.host.changed();
+      }
     });
   }
 
@@ -1392,16 +1705,25 @@ export class SketchEditor implements InputHandler {
   }
 
   editDim(d: SDim, x: number, y: number) {
+    if (d.ref) return this.host.toast("Referans ölçü geometriye göre değişir; düzenlenemez. Sürücü yapmak için seçip 'Sürücü ölçü' deyin.");
     this.promptValue(x, y, Math.abs(d.v), d.t === "angle" ? "°" : "", (v) => {
+      const ex = this.lastExpr;
       if (v <= 0 && d.t !== "dist") return this.host.toast("Değer sıfırdan büyük olmalı", true);
       const old = d.v;
       const ok = this.op(() => {
         const dd = this.data.dims.find((x) => x.id === d.id);
-        if (dd) dd.v = dd.t === "dist" && dd.sub !== "a" ? v * Math.sign(old || 1) : v;
+        if (dd) {
+          dd.v = dd.t === "dist" && dd.sub !== "a" ? v * Math.sign(old || 1) : v;
+          if (ex) dd.expr = ex;
+          else delete dd.expr;
+        }
       }, "Bu değer eskizde çözülemiyor");
       if (ok) this.host.changed();
     });
   }
+
+  /** son girilen değer değişken içeren bir ifadeyse (ör. "=kalinlik*2") */
+  lastExpr: string | null = null;
 
   private promptValue(x: number, y: number, cur: number, unit: string, done: (v: number) => void) {
     document.querySelector(".dim-prompt")?.remove();
@@ -1418,11 +1740,13 @@ export class SketchEditor implements InputHandler {
     inp.select();
     const close = () => box.remove();
     const apply = () => {
-      const v = evalNum(inp.value);
+      const raw = inp.value.trim();
+      const v = evalNum(raw);
       if (v === null) {
         inp.classList.add("bad");
         return;
       }
+      this.lastExpr = /[a-zA-ZçğıöşüÇĞİÖŞÜ_]/.test(raw.replace(/^=/, "")) ? raw.replace(/^=/, "") : null;
       close();
       done(v);
     };
@@ -1456,23 +1780,7 @@ export class SketchEditor implements InputHandler {
   }
 
   private entPolyline(e: SEnt): Vec2[] {
-    const sk = this.data;
-    if (e.t === "line") return [P(sk, e.p1), P(sk, e.p2)];
-    if (e.t === "circle") {
-      const c = P(sk, e.c);
-      const out: Vec2[] = [];
-      for (let i = 0; i <= 72; i++) out.push([c[0] + e.r * Math.cos((i / 72) * TAU), c[1] + e.r * Math.sin((i / 72) * TAU)]);
-      return out;
-    }
-    if (e.t === "arc") {
-      const { c, s, e: en } = arcAngles(sk, e);
-      const span = normAng(en - s) || TAU;
-      const n = Math.max(8, Math.ceil((span / TAU) * 72));
-      const out: Vec2[] = [];
-      for (let i = 0; i <= n; i++) out.push([c[0] + e.r * Math.cos(s + (span * i) / n), c[1] + e.r * Math.sin(s + (span * i) / n)]);
-      return out;
-    }
-    return [];
+    return entSamples(this.data, e);
   }
 
   private segs(poly: Vec2[]): number[] {
@@ -1496,6 +1804,10 @@ export class SketchEditor implements InputHandler {
     this.addLines([[0, 0], [0, o * 2]], C.origin, 1.5);
 
     for (const e of sk.ents) {
+      if (e.t === "text") {
+        this.drawText(e);
+        continue;
+      }
       if (e.t === "point") continue;
       const col = this.entColor(e);
       this.addLines(this.entPolyline(e), col, this.sel.has(e.id) || this.hov?.id === e.id ? 3 : 2, !!e.cons);
@@ -1627,6 +1939,64 @@ export class SketchEditor implements InputHandler {
           this.addLines([A, B, Cc, D, A], pc);
         }
         break;
+      case "aslot":
+        if (st.aPos && !st.bPos) this.addLines([st.aPos, cur], pc, 1, true);
+        if (st.aPos && st.bPos) {
+          if (!st.e3) this.trackSweep(cur);
+          const r = d2(st.aPos, st.bPos), s0 = ang(st.aPos, st.bPos), sw = st.sweep;
+          const pts: Vec2[] = [];
+          for (let i = 0; i <= 48; i++) pts.push([st.aPos[0] + r * Math.cos(s0 + (sw * i) / 48), st.aPos[1] + r * Math.sin(s0 + (sw * i) / 48)]);
+          this.addLines(pts, pc, st.e3 ? 1 : 2, !!st.e3);
+          if (st.e3) {
+            const g = this.arcSlotGeo(st.aPos, st.bPos, st.sweep, cur);
+            if (g) for (const rr of [g.r - g.w, g.r + g.w]) {
+              const q: Vec2[] = [];
+              for (let i = 0; i <= 48; i++) q.push([g.c[0] + rr * Math.cos(g.a0 + ((g.a1 - g.a0) * i) / 48), g.c[1] + rr * Math.sin(g.a0 + ((g.a1 - g.a0) * i) / 48)]);
+              this.addLines(q, pc);
+            }
+          }
+        }
+        break;
+      case "ellipse":
+      case "pellipse":
+        if (st.aPos && !st.bPos) this.addLines([st.aPos, cur], pc, 1, true);
+        if (st.aPos && st.bPos) {
+          const rb = st.rb ?? this.minorFrom(st.aPos, st.bPos, cur);
+          const tmp = { id: "_", t: "ellipse" as const, c: "_c", a: "_a", rb };
+          const fake: SketchData = { pts: { _c: { x: st.aPos[0], y: st.aPos[1] }, _a: { x: st.bPos[0], y: st.bPos[1] } }, ents: [], rels: [], dims: [], seq: 0 };
+          const g = ellipseGeo(fake, tmp);
+          const ptsE: Vec2[] = [];
+          let t0 = 0, span = TAU;
+          if (st.infs?.length === 4) {
+            t0 = g.param(st.infs[3].p);
+            span = normAng(g.param(cur) - t0) || TAU;
+          }
+          for (let i = 0; i <= 72; i++) ptsE.push(g.at(t0 + (span * i) / 72));
+          this.addLines(ptsE, pc, st.infs?.length >= 3 ? 1 : 2, st.infs?.length === 3);
+        }
+        break;
+      case "parabola":
+        if (st.aPos && !st.bPos) this.addLines([st.aPos, cur], pc, 1, true);
+        if (st.aPos && st.bPos) {
+          const k: Vec2 = [2 * cur[0] - (st.aPos[0] + st.bPos[0]) / 2, 2 * cur[1] - (st.aPos[1] + st.bPos[1]) / 2];
+          const q: Vec2[] = [];
+          for (let i = 0; i <= 32; i++) {
+            const t = i / 32, u = 1 - t;
+            q.push([u * u * st.aPos[0] + 2 * u * t * k[0] + t * t * st.bPos[0], u * u * st.aPos[1] + 2 * u * t * k[1] + t * t * st.bPos[1]]);
+          }
+          this.addLines(q, pc);
+        }
+        break;
+      case "spline":
+        if (st.infs?.length) {
+          const fake: SketchData = { pts: {}, ents: [], rels: [], dims: [], seq: 0 };
+          const ids = [...st.infs.map((x: Inference) => x.p), cur].map((q: Vec2, i: number) => {
+            fake.pts["s" + i] = { x: q[0], y: q[1] };
+            return "s" + i;
+          });
+          this.addLines(entSamples(fake, { id: "_", t: "spline", pts: ids }), pc);
+        }
+        break;
       case "circle3":
         if (st.infs?.length === 1) this.addLines([st.infs[0].p, cur], pc, 1, true);
         if (st.infs?.length === 2) {
@@ -1649,10 +2019,28 @@ export class SketchEditor implements InputHandler {
     return out;
   }
 
+  private drawText(e: SText) {
+    const el = document.createElement("div");
+    const col = this.entColor(e);
+    el.className = "sk-text";
+    el.textContent = e.text;
+    el.style.color = "#" + col.toString(16).padStart(6, "0");
+    const px = e.size / this.wpp();
+    el.style.fontSize = px * 1.05 + "px";
+    el.style.lineHeight = "1";
+    this.labelBox.appendChild(el);
+    const q = P(this.data, e.p);
+    // metin taban çizgisi sol alt köşededir
+    this.anchors.push({ el, w: this.W(q), dx: 0, dy: 0, text: { angle: e.angle } } as any);
+  }
+
   // ---------------- Ölçü çizimi ----------------
   private renderDims() {
     const bad = new Set([...this.result.conflicts, ...this.result.redundant]);
-    for (const d of this.data.dims) this.drawDim(d, bad.has(d.id) ? C.over : this.sel.has(d.id) ? C.sel : C.dim, false);
+    for (const d of this.data.dims) {
+      if (d.ref) d.v = Math.abs(measure(this.data, d));
+      this.drawDim(d, bad.has(d.id) ? C.over : this.sel.has(d.id) ? C.sel : C.dim, false);
+    }
   }
 
   private arrow(at: Vec2, dir: Vec2, color: number) {
@@ -1740,8 +2128,8 @@ export class SketchEditor implements InputHandler {
       text = fmtNum(Math.abs(d.v), 2);
     }
     const el = document.createElement("div");
-    el.className = "dim" + (preview ? " preview" : "") + (color === C.over ? " err" : color === C.sel ? " sel" : "");
-    el.textContent = text;
+    el.className = "dim" + (preview ? " preview" : "") + (color === C.over ? " err" : color === C.sel ? " sel" : "") + (d.ref ? " ref" : "");
+    el.textContent = d.ref ? `(${text})` : d.expr ? `Σ ${text}` : text;
     this.labelBox.appendChild(el);
     this.anchors.push({ el, w: this.W(L) });
     if (!preview) this.wireDimLabel(el, d);
@@ -1826,9 +2214,12 @@ export class SketchEditor implements InputHandler {
 
   private placeLabels() {
     const v = this.host.viewer;
-    for (const a of this.anchors) {
+    for (const a of this.anchors as any[]) {
       const [x, y] = v.toScreen(a.w);
-      a.el.style.transform = `translate(${x + (a.dx ?? 0)}px, ${y + (a.dy ?? 0)}px) translate(-50%, -50%)`;
+      if (a.text) {
+        a.el.style.transformOrigin = "0 100%";
+        a.el.style.transform = `translate(${x}px, ${y}px) translate(0, -100%) rotate(${-a.text.angle}deg)`;
+      } else a.el.style.transform = `translate(${x + (a.dx ?? 0)}px, ${y + (a.dy ?? 0)}px) translate(-50%, -50%)`;
     }
   }
 
@@ -1850,6 +2241,16 @@ export class SketchEditor implements InputHandler {
     if (this.tool === "polygon") box.appendChild(this.numField("Kenar sayısı", this.opts.sides, (v) => (this.opts.sides = Math.max(3, Math.round(v)))));
     if (this.tool === "fillet") box.appendChild(this.numField("Yarıçap", this.opts.filletR, (v) => (this.opts.filletR = v)));
     if (this.tool === "schamfer") box.appendChild(this.numField("Mesafe", this.opts.chamferD, (v) => (this.opts.chamferD = v)));
+    if (this.tool === "spline" && this.st.infs?.length >= 2) {
+      const b = h("button", "btn primary", "Spline'ı bitir");
+      b.addEventListener("click", () => this.finishSpline(false));
+      box.appendChild(b);
+    }
+    if (this.tool === "text") {
+      box.appendChild(this.textField("Metin", this.opts.text, (v) => (this.opts.text = v)));
+      box.appendChild(this.numField("Yükseklik (mm)", this.opts.textSize, (v) => (this.opts.textSize = v)));
+      box.appendChild(this.numField("Açı (°)", this.opts.textAngle, (v) => (this.opts.textAngle = v), { any: true }));
+    }
     if (OP_TOOLS.includes(this.tool)) this.opPanel(box, h);
     if ((this.tool === "line" || this.tool === "centerline") && this.st.last) {
       const b = h("button", "btn", "Zinciri bitir");
@@ -1867,7 +2268,7 @@ export class SketchEditor implements InputHandler {
       const ids = [...this.sel];
       const names = ids.map((id) => {
         const e = getEnt(sk, id);
-        if (e) return { line: "Çizgi", circle: "Daire", arc: "Yay", point: "Nokta" }[e.t] + (e.cons ? " (yapı)" : "");
+        if (e) return ({ line: "Çizgi", circle: "Daire", arc: "Yay", point: "Nokta", ellipse: "Elips", spline: "Spline", parabola: "Parabol", text: "Metin" } as Record<string, string>)[e.t] + (e.cons ? " (yapı)" : "");
         if (id === ORIGIN) return "Orijin";
         if (sk.pts[id]) return "Nokta";
         const r = sk.rels.find((x) => x.id === id);
@@ -1883,6 +2284,23 @@ export class SketchEditor implements InputHandler {
 
       if (ids.length === 1) {
         const e = getEnt(sk, ids[0]);
+        if (e?.t === "ellipse") {
+          const g = ellipseGeo(sk, e);
+          box.appendChild(h("p", "pm-hint", `Büyük yarıçap ${fmtNum(g.rx, 2)} (merkez–uç ölçüsüyle)`));
+          box.appendChild(this.numField("Küçük yarıçap", e.rb, (v) => this.op(() => (e.rb = v))));
+        }
+        if (e?.t === "text") {
+          box.appendChild(this.textField("Metin", e.text, (v) => this.op(() => (e.text = v))));
+          box.appendChild(this.numField("Yükseklik", e.size, (v) => this.op(() => (e.size = v))));
+          box.appendChild(this.numField("Açı (°)", e.angle, (v) => this.op(() => (e.angle = v)), { any: true }));
+        }
+        const dd = sk.dims.find((x) => x.id === ids[0]);
+        if (dd) {
+          const b = h("button", "btn", dd.ref ? "Sürücü ölçü yap" : "Referans ölçü yap");
+          b.addEventListener("click", () => this.toggleRefDim(dd.id));
+          box.appendChild(b);
+          if (dd.expr) box.appendChild(h("p", "pm-hint", `Denklem: ${dd.expr}`));
+        }
         if (e?.t === "line") {
           const A = P(sk, e.p1), B = P(sk, e.p2);
           box.appendChild(h("p", "pm-hint", `Uzunluk ${fmtNum(d2(A, B), 2)} · Açı ${fmtNum((Math.atan2(B[1] - A[1], B[0] - A[0]) * 180) / Math.PI, 2)}°`));
@@ -1974,12 +2392,28 @@ export class SketchEditor implements InputHandler {
         num("X öteleme", "mdx", { any: true });
         num("Y öteleme", "mdy", { any: true });
         num("Döndürme açısı (°)", "mang", { any: true });
+        num("Ölçek", "mscale", { min: 1e-6 });
         chk("Kopyala (orijinali koru)", "mcopy");
         break;
     }
     const b = h("button", "btn primary", "Uygula");
     b.addEventListener("click", () => this.applyOp());
     box.appendChild(b);
+  }
+
+  private textField(label: string, val: string, set: (v: string) => void) {
+    const l = document.createElement("label");
+    l.className = "pm-field";
+    l.textContent = label;
+    const inp = document.createElement("input");
+    inp.value = val;
+    inp.addEventListener("change", () => {
+      set(inp.value);
+      this.render();
+    });
+    inp.addEventListener("keydown", (ev) => ev.stopPropagation());
+    l.appendChild(inp);
+    return l;
   }
 
   private numField(label: string, val: number, set: (v: number) => void, o: { min?: number; any?: boolean } = {}) {

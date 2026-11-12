@@ -5,21 +5,26 @@
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
-  setOC, drawCircle, draw, Plane, genericSweep, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
+  importSTEP, basicFaceExtrusion, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
-  EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData, Seg, Vec2, Vec3,
+  EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
+  Seg, SectionItem, TextItem, Vec2, Vec3,
 } from "./doc/types";
+import { thinRegion } from "./sketch/profile";
 
 type Shape = any;
-let body: Shape | null = null;
+/** Çoklu gövde: her eleman ayrı bir katı */
+let bodies: Shape[] = [];
 let frames: Record<string, Frame> = {};
+let fontReady: Promise<void> | null = null;
 
 const post = (msg: KernelResponse, transfer: Transferable[] = []) =>
   (self as unknown as DedicatedWorkerGlobalScope).postMessage(msg, transfer);
 const errMsg = (e: unknown) => {
   const m = String((e as Error)?.message ?? e);
-  return /^\d+$/.test(m) ? "Geometri işlemi başarısız (OpenCascade hatası)" : m;
+  return /^\d+$/.test(m) || m === "[object WebAssembly.Exception]" ? "Geometri işlemi başarısız (OpenCascade hatası)" : m;
 };
 
 async function init() {
@@ -45,19 +50,37 @@ const toWorld = (f: Frame, p: Vec2): Vec3 => {
   return vadd(f.o, vadd(vmul(f.x, p[0]), vmul(y, p[1])));
 };
 const tup = (v: any): Vec3 => v.toTuple() as Vec3;
+const solidsOf = (s: Shape): Shape[] => {
+  try {
+    const arr = s.solids as Shape[] | undefined;
+    return arr && arr.length ? arr : [s];
+  } catch {
+    return [s];
+  }
+};
 
 function makePlane(f: Frame, shift = 0) {
   return new Plane(vadd(f.o, vmul(f.n, shift)), f.x, f.n);
 }
 
+/** Tüm gövdeler tek şekil olarak */
+function all(): Shape | null {
+  if (!bodies.length) return null;
+  // makeCompound girdileri siler: kopyalarla çalış
+  return bodies.length === 1 ? bodies[0] : makeCompound(bodies.map((b) => b.clone()));
+}
+const freeAll = (a: Shape) => { if (bodies.length > 1) try { a.delete(); } catch {} };
+const allFaces = () => bodies.flatMap((b) => b.faces as any[]);
+const allEdges = () => bodies.flatMap((b) => b.edges as any[]);
+
 /** Yüz üzerindeki eskizler: modeldeki yüzü bul, çerçeveyi yüzün güncel konumuna taşı */
 function resolvePlane(pl: KPlane): Frame {
   const f = pl.frame;
-  if (!pl.face || !body) return f;
+  if (!pl.face || !bodies.length) return f;
   const n = pl.face.n ?? f.n;
   let best: Vec3 | null = null;
   let bd = Infinity;
-  for (const face of body.faces as any[]) {
+  for (const face of allFaces()) {
     if (String(face.geomType) !== "PLANE") continue;
     const c = tup(face.center);
     let fn: Vec3;
@@ -81,86 +104,179 @@ function resolvePlane(pl: KPlane): Frame {
   return nf;
 }
 
-function loopDrawing(l: Loop) {
-  if ("circle" in l) return drawCircle(l.circle.r).translate(l.circle.c[0], l.circle.c[1]);
-  let pen: any = draw(l.segs[0].a);
-  for (const s of l.segs) {
+function penSegs(pen: any, segs: Seg[]) {
+  for (const s of segs) {
     if (s.t === "l") pen = pen.lineTo(s.b);
-    else pen = pen.threePointsArcTo(s.b, s.m);
+    else if (s.t === "a") pen = pen.threePointsArcTo(s.b, s.m);
+    else if (s.t === "c") pen = pen.cubicBezierCurveTo(s.b, s.c1, s.c2);
+    else if (s.t === "q") pen = pen.quadraticBezierCurveTo(s.b, s.k);
+    else if (s.t === "e") pen = pen.ellipseTo(s.b, s.rx, s.ry, s.rot, s.long, s.sweep);
   }
-  return pen.close();
+  return pen;
 }
 
-function profile(loops: Loop[]) {
-  if (!loops.length) throw new Error("Eskizde kapalı kontur yok");
+function loopDrawing(l: Loop) {
+  if ("circle" in l) return drawCircle(l.circle.r).translate(l.circle.c[0], l.circle.c[1]);
+  if ("ellipse" in l) {
+    const { c, rx, ry, rot } = l.ellipse;
+    return drawEllipse(rx, ry).rotate(rot, [0, 0]).translate(c[0], c[1]);
+  }
+  return penSegs(draw(l.segs[0].a), l.segs).close();
+}
+
+function textDrawing(t: TextItem) {
+  let d: any = drawText(t.text, { startX: t.x, startY: t.y, fontSize: t.size });
+  if (t.angle) d = d.rotate(t.angle, [t.x, t.y]);
+  return d;
+}
+
+function profile(loops: Loop[], texts: TextItem[] = []) {
+  if (!loops.length && !texts.length) throw new Error("Eskizde kapalı kontur yok");
   let d: any = null;
   for (const l of loops) {
     const ld = loopDrawing(l);
     if (!d) d = ld;
     else d = l.depth % 2 === 0 ? d.fuse(ld) : d.cut(ld);
   }
+  for (const t of texts) {
+    const td = textDrawing(t);
+    d = d ? d.fuse(td) : td;
+  }
   return d;
 }
 
 function bodySize() {
-  if (!body) return 1000;
-  const bb = body.boundingBox.bounds as [Vec3, Vec3];
+  const a = all();
+  if (!a) return 1000;
+  const bb = a.boundingBox.bounds as [Vec3, Vec3];
   return Math.max(1000, 4 * vlen(vsub(bb[1], bb[0])) + 4 * Math.max(...bb[0].map(Math.abs), ...bb[1].map(Math.abs)));
 }
 
-/** Özelliklerin "takım" katıları: çoğaltma ve aynada yeniden kullanılır */
-const tools = new Map<string, { solid: Shape; cut: boolean }>();
+const bbOverlap = (a: Shape, b: Shape) => {
+  const A = a.boundingBox.bounds, B = b.boundingBox.bounds;
+  for (let i = 0; i < 3; i++) if (A[1][i] < B[0][i] - 1e-6 || B[1][i] < A[0][i] - 1e-6) return false;
+  return true;
+};
 
-function applyTool(solid: Shape, cut: boolean) {
+/** Hacimsel örtüşme (yalnızca yüzeyde değme sayılmaz) */
+const bbOverlapStrict = (a: Shape, b: Shape) => {
+  const A = a.boundingBox.bounds, B = b.boundingBox.bounds;
+  for (let i = 0; i < 3; i++) if (A[1][i] <= B[0][i] + 1e-6 || B[1][i] <= A[0][i] + 1e-6) return false;
+  return true;
+};
+
+/** Özelliklerin "takım" katıları: çoğaltma ve aynada yeniden kullanılır */
+const tools = new Map<string, { solid: Shape; cut: boolean; merge: boolean }>();
+
+function applyTool(solid: Shape, cut: boolean, merge = true) {
   if (cut) {
-    if (!body) throw new Error("Kesilecek bir katı yok");
-    body = body.cut(solid);
-  } else body = body ? body.fuse(solid) : solid;
+    if (!bodies.length) throw new Error("Kesilecek bir katı yok");
+    bodies = bodies.flatMap((b) => (bbOverlap(b, solid) ? solidsOf(b.cut(solid)) : [b]));
+    return;
+  }
+  if (!merge) {
+    bodies.push(solid);
+    return;
+  }
+  // SolidWorks gibi: dokunduğu gövdelerle birleşir, dokunmuyorsa yeni gövde olur
+  const touch = bodies.filter((b) => bbOverlap(b, solid));
+  const rest = bodies.filter((b) => !touch.includes(b));
+  let merged = solid;
+  for (const b of touch) merged = merged.fuse(b);
+  bodies = [...rest, ...solidsOf(merged)];
 }
 
-function planarFace(ref: FaceRef): { c: Vec3; n: Vec3 } | null {
-  if (!body) return null;
-  let best: { c: Vec3; n: Vec3 } | null = null;
+/** Hash'leri içeren gövdeye işlem uygular */
+function onOwner(hashes: Set<number>, kind: "edges" | "faces", fn: (b: Shape) => Shape) {
+  let done = false;
+  bodies = bodies.map((b) => {
+    const has = (b[kind] as any[]).some((x) => hashes.has(x.hashCode));
+    if (!has) return b;
+    done = true;
+    return fn(b);
+  });
+  if (!done) throw new Error("Seçim modelde bulunamadı");
+}
+
+function planarFace(ref: FaceRef): { c: Vec3; n: Vec3; face: any } | null {
+  let best: { c: Vec3; n: Vec3; face: any } | null = null;
   let bd = Infinity;
-  for (const face of body.faces as any[]) {
-    if (String(face.geomType) !== "PLANE") continue;
+  for (const face of allFaces()) {
     const c = tup(face.center);
     const d = vlen(vsub(c, ref.c));
     if (d < bd) {
       bd = d;
-      best = { c, n: vnorm(tup(face.normalAt(c))) };
+      const planar = String(face.geomType) === "PLANE";
+      best = { c, n: planar ? vnorm(tup(face.normalAt(c))) : [0, 0, 0], face };
     }
   }
   return best && bd < 2 ? best : null;
 }
 
-function extrudeTool(f: Extract<KFeature, { type: "extrude" }>) {
+/** Profil yüzüne değen parçalar */
+function touching(pieces: Shape[], ref: Shape) {
+  return pieces.filter((p) => {
+    try {
+      return measureDistanceBetween(p, ref) < 1e-4;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false): Shape {
   const frame = resolvePlane(f.pl);
-  const sign = (f.rev ? -1 : 1) * (f.cut ? -1 : 1);
+  const sign = (f.rev ? -1 : 1) * (f.cut ? -1 : 1) * (flipped ? -1 : 1);
   const through = bodySize();
-  const sk = (shift: number) => profile(f.loops).sketchOnPlane(makePlane(frame, shift));
+  const sk = (shift: number) => profile(f.loops, f.texts).sketchOnPlane(makePlane(frame, shift));
   let d1 = f.d1;
+  let clipFace: any = null;
   if (f.end === "surface" || f.end === "offset") {
     if (!f.face) throw new Error("Hedef yüzü seçin");
     const pf = planarFace(f.face);
-    if (!pf) throw new Error("Hedef yüz bulunamadı (düz bir yüz seçin)");
-    if (Math.abs(Math.abs(vdot(pf.n, frame.n)) - 1) > 1e-6) throw new Error("Hedef yüz eskiz düzlemine paralel olmalı");
-    d1 = vdot(vsub(pf.c, frame.o), vmul(frame.n, sign)) - (f.end === "offset" ? f.offd ?? 0 : 0);
-    if (d1 <= 1e-6) throw new Error("Hedef yüz bu yönde değil; yönü ters çevirin");
+    if (!pf) throw new Error("Hedef yüz bulunamadı");
+    if (vlen(pf.n) > 0 && Math.abs(Math.abs(vdot(pf.n, frame.n)) - 1) < 1e-6) {
+      d1 = vdot(vsub(pf.c, frame.o), vmul(frame.n, sign)) - (f.end === "offset" ? f.offd ?? 0 : 0);
+      if (d1 <= 1e-6) throw new Error("Hedef yüz bu yönde değil; yönü ters çevirin");
+    } else {
+      // eğri / eğik yüz: uzun takımı yüzün ötesinden kırp
+      if (f.end === "offset") throw new Error("Yüzeyden ötele yalnızca paralel düz yüzlerde kullanılabilir");
+      clipFace = pf.face;
+    }
   }
   let solid: Shape;
-  if (f.draft && f.draft > 0 && (f.end === "blind" || f.end === "surface" || f.end === "offset")) {
-    if (f.loops.length > 1) throw new Error("Koniklik şimdilik tek konturlu profillerde destekleniyor");
+  if (clipFace) {
+    const long = sk(0).extrude(sign * through);
+    const beyond = basicFaceExtrusion(clipFace, new Vector(vmul(frame.n, sign * through)));
+    const pieces = solidsOf(long.cut(beyond));
+    const base = sk(0).face();
+    const keep = touching(pieces, base);
+    if (!keep.length) throw new Error("Hedef yüz profili kesmiyor");
+    solid = keep.reduce((a, b) => a.fuse(b));
+  } else if (f.end === "next") {
+    const long = sk(0).extrude(sign * through);
+    const a = all();
+    if (!a) throw new Error("Sonrakine kadar için önce bir katı gerekir");
+    const pieces = solidsOf(f.cut ? long.intersect(a) : long.cut(a));
+    const keep = touching(pieces, sk(0).face());
+    if (!keep.length) throw new Error("Profil yönünde bir yüz bulunamadı");
+    solid = keep.reduce((x, y) => x.fuse(y));
+  } else if (f.draft && f.draft > 0 && (f.end === "blind" || f.end === "surface" || f.end === "offset")) {
+    if (f.loops.length > 1 || f.texts?.length) throw new Error("Koniklik şimdilik tek konturlu profillerde destekleniyor");
     const off = d1 * Math.tan((f.draft * Math.PI) / 180) * (f.draftOut ? 1 : -1);
     const s1 = sk(0);
     const s2 = profile(f.loops).offset(off, { lineJoinType: "miter" }).sketchOnPlane(makePlane(frame, sign * d1));
     solid = s1.loftWith(s2, { ruled: true });
-  } else if (f.end === "mid") solid = sk((-sign * f.d1) / 2).extrude(sign * f.d1);
+  } else if (f.end === "mid") solid = sk((-sign * f.d1) / 2).extrude(sign * f.d1, f.twist ? { twistAngle: f.twist } : undefined);
   else if (f.end === "through") solid = sk(0).extrude(sign * through);
-  else solid = sk(0).extrude(sign * d1);
-  if (f.dir2 && f.end !== "mid") {
+  else solid = sk(0).extrude(sign * d1, f.twist ? { twistAngle: f.twist } : undefined);
+  if (f.dir2 && (f.end === "blind" || f.end === "through")) {
     const d2 = f.end2 === "through" ? through : f.d2;
     if (d2 > 0) solid = solid.fuse(sk(0).extrude(-sign * d2));
+  }
+  // Kesme hiçbir gövdeye değmiyorsa (ör. standart düzlemde eskiz) malzeme tarafına çevir
+  if (f.cut && !flipped && !f.dir2 && (f.end === "blind" || f.end === "through") && bodies.length && !bodies.some((b) => bbOverlapStrict(b, solid))) {
+    return extrudeTool(f, true);
   }
   return solid;
 }
@@ -178,11 +294,7 @@ function revolveTool(f: Extract<KFeature, { type: "revolve" }>) {
 }
 
 function pathWire(segs: Seg[], closed: boolean, frame: Frame) {
-  let pen: any = draw(segs[0].a);
-  for (const s of segs) {
-    if (s.t === "l") pen = pen.lineTo(s.b);
-    else pen = pen.threePointsArcTo(s.b, s.m);
-  }
+  const pen = penSegs(draw(segs[0].a), segs);
   const d = closed ? pen.close() : pen.done();
   return (d.sketchOnPlane(makePlane(frame)) as any).wire;
 }
@@ -204,10 +316,22 @@ function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
 
 function loftTool(f: Extract<KFeature, { type: "loft" }>) {
   if (f.profiles.length < 2) throw new Error("Loft için en az iki profil eskizi seçin");
-  const sks = f.profiles.map((p) => {
-    if (p.loops.length !== 1) throw new Error("Her loft profili tek bir kapalı kontur olmalı");
-    return loopDrawing(p.loops[0]).sketchOnPlane(makePlane(resolvePlane(p.pl))) as any;
-  });
+  for (const p of f.profiles) if (p.loops.length !== 1) throw new Error("Her loft profili tek bir kapalı kontur olmalı");
+  if (f.center) {
+    // merkez çizgisi boyunca: OCCT boru kabuğu, birden çok kesit
+    const oc = getOC() as any;
+    const spine = pathWire(f.center.segs, f.center.closed, resolvePlane(f.center.pl));
+    const ps = new oc.BRepOffsetAPI_MakePipeShell(spine.wrapped);
+    ps.SetMode(false);
+    for (const p of f.profiles) {
+      const w = (loopDrawing(p.loops[0]).sketchOnPlane(makePlane(resolvePlane(p.pl))) as any).wire;
+      ps.Add(w.wrapped, false, true);
+    }
+    ps.Build(new oc.Message_ProgressRange());
+    if (!ps.MakeSolid()) throw new Error("Merkez çizgili loft katı oluşturamadı");
+    return cast(ps.Shape());
+  }
+  const sks = f.profiles.map((p) => loopDrawing(p.loops[0]).sketchOnPlane(makePlane(resolvePlane(p.pl))) as any);
   return sks[0].loftWith(sks.slice(1), { ruled: f.ruled });
 }
 
@@ -231,32 +355,106 @@ function holeTool(f: Extract<KFeature, { type: "hole" }>) {
     const h = (Rc - R) / Math.tan(((f.cangle || 90) * Math.PI) / 360);
     pts = [[0, -e], [Rc + e, -e], [Rc, 0], [R, h], [R, D], [0, D + tip]];
   } else pts = [[0, -e], [R, -e], [R, D], [0, D + tip]];
-  let all: Shape | null = null;
+  let res: Shape | null = null;
   for (const p of f.pts) {
     const P = toWorld(frame, p);
     let pen: any = draw(pts[0]);
     for (let i = 1; i < pts.length; i++) pen = pen.lineTo(pts[i]);
-    const sk = pen.close().sketchOnPlane(new Plane(P, u, nrm));
-    const t = sk.revolve(v, { origin: P, angle: 360 });
-    all = all ? all.fuse(t) : t;
+    const t = pen.close().sketchOnPlane(new Plane(P, u, nrm)).revolve(v, { origin: P, angle: 360 });
+    res = res ? res.fuse(t) : t;
   }
-  return all!;
+  return res!;
+}
+
+function ribTool(f: Extract<KFeature, { type: "rib" }>) {
+  const frame = resolvePlane(f.pl);
+  const a = all();
+  if (!a) throw new Error("Kaburga için önce bir katı gerekir");
+  const chains = [{ segs: f.chain, closed: false }];
+  const big = bodySize();
+  if (f.normal) {
+    // eskize dik: kalın profili sonraki yüze kadar uzat
+    const mode = f.side === "mid" ? "mid" : f.side === "one" ? "one" : "rev";
+    const loops = thinRegion(chains, f.t, mode);
+    const sk = profile(loops).sketchOnPlane(makePlane(frame));
+    const sign = f.flip ? -1 : 1;
+    const long = sk.extrude(sign * big);
+    const keep = touching(solidsOf(long.cut(a)), profile(loops).sketchOnPlane(makePlane(frame)).face());
+    if (!keep.length) throw new Error("Kaburga bir yüze ulaşmıyor; yönü ters çevirin");
+    return keep.reduce((x, y) => x.fuse(y));
+  }
+  // eskize paralel: çizgi ile gövde arasındaki bölge, eskiz düzlemine göre kalınlıkta
+  const band = thinRegion(chains, big / 4, f.flip ? "rev" : "one");
+  const shift = f.side === "mid" ? -f.t / 2 : f.side === "one" ? 0 : -f.t;
+  const slab = profile(band).sketchOnPlane(makePlane(frame, shift)).extrude(f.t);
+  const pieces = solidsOf(slab.cut(a));
+  const wire = pathWire(f.chain, false, frame);
+  // bant kenarına (uzak tarafa) ulaşan parçalar kapalı değildir
+  const far = big / 8;
+  const chainPts = f.chain.flatMap((sg) => [toWorld(frame, sg.a), toWorld(frame, sg.b)]);
+  const bounded = (p: Shape) => {
+    const bb = p.boundingBox.bounds as [Vec3, Vec3];
+    const corners: Vec3[] = [bb[0], bb[1]];
+    return corners.every((c) => chainPts.some((q) => vlen(vsub(c, q)) < far));
+  };
+  const keep = touching(pieces, wire).filter((p) => touching([p], a).length && bounded(p));
+  if (!keep.length) throw new Error("Kaburga gövdeyle kapalı bir bölge oluşturmuyor; malzeme tarafını ters çevirin");
+  keep.sort((x, y) => measureShapeVolumeProperties(x).volume - measureShapeVolumeProperties(y).volume);
+  return keep[0];
+}
+
+function domeTool(f: Extract<KFeature, { type: "dome" }>) {
+  const pf = planarFace(f.face);
+  if (!pf || !vlen(pf.n)) throw new Error("Kubbe için düz bir yüz seçin");
+  const face = pf.face;
+  const w0 = face.outerWire();
+  const c = pf.c;
+  const secs = [30, 60].map((deg) => {
+    const t = (deg * Math.PI) / 180;
+    return new Sketch(w0.clone().scale(Math.cos(t), c).translate(vmul(pf.n, f.h * Math.sin(t))));
+  });
+  const base = new Sketch(w0.clone());
+  return (base as any).loftWith(secs, { ruled: false, endPoint: vadd(c, vmul(pf.n, f.h)) });
+}
+
+function cylinderOf(face: any): { c: Vec3; ax: Vec3; r: number } | null {
+  for (const e of face.edges as any[]) {
+    if (String(e.geomType) !== "CIRCLE") continue;
+    const c = circle3d(tup(e.pointAt(0)), tup(e.pointAt(1 / 3)), tup(e.pointAt(2 / 3)));
+    if (c) return c;
+  }
+  return null;
+}
+
+function wrapTool(f: Extract<KFeature, { type: "wrap" }>) {
+  const pf = planarFace(f.face);
+  if (!pf || String(pf.face.geomType) !== "CYLINDRE") throw new Error("Sarma için silindirik bir yüz seçin");
+  const cyl = cylinderOf(pf.face);
+  if (!cyl) throw new Error("Silindir ekseni bulunamadı");
+  const frame = resolvePlane(f.pl);
+  // takım yalnızca eskiz tarafındaki yüzeye uygulanır: eskiz düzleminden eksene kadar
+  const dn = vdot(vsub(cyl.c, frame.o), frame.n);
+  const dir = dn < 0 ? -1 : 1;
+  const margin = f.depth + 1;
+  const tool = profile(f.loops, f.texts).sketchOnPlane(makePlane(frame, -dir * margin)).extrude(dir * (Math.abs(dn) + margin));
+  const big = bodySize();
+  const L = big;
+  const base = vsub(cyl.c, vmul(cyl.ax, L / 2));
+  const C = (r: number) => makeCylinder(r, L, base, cyl.ax);
+  const ring = f.mode === "deboss" ? C(cyl.r).cut(C(Math.max(0.01, cyl.r - f.depth))) : C(cyl.r + f.depth).cut(C(cyl.r));
+  return { solid: tool.intersect(ring), cut: f.mode === "deboss" };
 }
 
 /** Saklanan geometrik referansa en yakın kenarları bulur */
 function matchEdges(refs: EdgeRef[]): Set<number> {
-  const edges = body.edges as any[];
-  const info = edges.map((e) => ({ h: e.hashCode, m: tup(e.pointAt(0.5)) }));
+  const info = allEdges().map((e) => ({ h: e.hashCode, m: tup(e.pointAt(0.5)) }));
   const out = new Set<number>();
   for (const r of refs) {
     let best: (typeof info)[0] | null = null;
     let bd = Infinity;
     for (const i of info) {
       const d = vlen(vsub(i.m, r.m));
-      if (d < bd) {
-        bd = d;
-        best = i;
-      }
+      if (d < bd) [bd, best] = [d, i];
     }
     if (best && bd < 2) out.add(best.h);
   }
@@ -264,18 +462,14 @@ function matchEdges(refs: EdgeRef[]): Set<number> {
 }
 
 function matchFaces(refs: FaceRef[]): Set<number> {
-  const faces = body.faces as any[];
-  const info = faces.map((f) => ({ h: f.hashCode, c: tup(f.center) }));
+  const info = allFaces().map((f) => ({ h: f.hashCode, c: tup(f.center) }));
   const out = new Set<number>();
   for (const r of refs) {
     let best: (typeof info)[0] | null = null;
     let bd = Infinity;
     for (const i of info) {
       const d = vlen(vsub(i.c, r.c));
-      if (d < bd) {
-        bd = d;
-        best = i;
-      }
+      if (d < bd) [bd, best] = [d, i];
     }
     if (best && bd < 2) out.add(best.h);
   }
@@ -284,56 +478,131 @@ function matchFaces(refs: FaceRef[]): Set<number> {
 
 function edgesOfFaces(set: Set<number>) {
   const out = new Set<number>();
-  for (const f of body.faces as any[]) if (set.has(f.hashCode)) for (const e of f.edges as any[]) out.add(e.hashCode);
+  for (const f of allFaces()) if (set.has(f.hashCode)) for (const e of f.edges as any[]) out.add(e.hashCode);
   return out;
 }
 
-function buildFeature(f: KFeature) {
+/** Kenara komşu yüzler */
+function facesOfEdge(body: Shape, edgeHash: number) {
+  return (body.faces as any[]).filter((f) => (f.edges as any[]).some((e) => e.hashCode === edgeHash));
+}
+
+function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number } {
+  const face = allFaces().find((f) => faceSet.has(f.hashCode));
+  if (!face) throw new Error("Tam yuvarlak için orta yüzü seçin");
+  const lines = (face.edges as any[]).filter((e) => String(e.geomType) === "LINE");
+  let best: { a: any; b: any; d: number; len: number } | null = null;
+  for (let i = 0; i < lines.length; i++)
+    for (let j = i + 1; j < lines.length; j++) {
+      const A = lines[i], B = lines[j];
+      const da = vnorm(vsub(tup(A.endPoint), tup(A.startPoint))), db = vnorm(vsub(tup(B.endPoint), tup(B.startPoint)));
+      if (Math.abs(Math.abs(vdot(da, db)) - 1) > 1e-6) continue;
+      const w = vsub(tup(B.startPoint), tup(A.startPoint));
+      const d = vlen(vsub(w, vmul(da, vdot(w, da))));
+      const len = Math.min(measureLength(A), measureLength(B));
+      if (!best || len > best.len) best = { a: A, b: B, d, len };
+    }
+  if (!best) throw new Error("Seçili yüzde paralel iki kenar bulunamadı");
+  return { edges: new Set([best.a.hashCode, best.b.hashCode]), r: (best.d / 2) * 0.995 };
+}
+
+async function buildFeature(f: KFeature) {
   switch (f.type) {
     case "extrude":
     case "revolve":
     case "sweep":
     case "loft": {
+      if ((f.type === "extrude" && f.texts?.length) || false) await ensureFont();
       const solid = f.type === "extrude" ? extrudeTool(f) : f.type === "revolve" ? revolveTool(f) : f.type === "sweep" ? sweepTool(f) : loftTool(f);
-      tools.set(f.id, { solid, cut: f.cut });
-      applyTool(solid, f.cut);
+      const merge = (f as any).merge !== false;
+      tools.set(f.id, { solid, cut: f.cut, merge });
+      applyTool(solid, f.cut, merge);
+      return;
+    }
+    case "rib": {
+      const solid = ribTool(f);
+      tools.set(f.id, { solid, cut: false, merge: true });
+      applyTool(solid, false);
       return;
     }
     case "hole": {
-      if (!body) throw new Error("Delik için önce bir katı oluşturun");
+      if (!bodies.length) throw new Error("Delik için önce bir katı oluşturun");
       const solid = holeTool(f);
-      tools.set(f.id, { solid, cut: true });
+      tools.set(f.id, { solid, cut: true, merge: true });
       applyTool(solid, true);
+      return;
+    }
+    case "dome": {
+      const solid = domeTool(f);
+      applyTool(solid, false);
+      return;
+    }
+    case "wrap": {
+      if (f.texts?.length) await ensureFont();
+      const { solid, cut } = wrapTool(f);
+      applyTool(solid, cut);
+      return;
+    }
+    case "import": {
+      const shape = await importSTEP(new Blob([f.data], { type: "application/step" }));
+      const parts = solidsOf(shape);
+      if (!parts.length) throw new Error("STEP dosyasında katı bulunamadı");
+      parts.forEach((p) => applyTool(p, false, false));
+      return;
+    }
+    case "scale": {
+      if (!bodies.length) throw new Error("Ölçeklenecek katı yok");
+      const c: Vec3 = f.center === "origin" ? [0, 0, 0] : (measureShapeVolumeProperties(all()).centerOfMass as Vec3);
+      bodies = bodies.map((b) => b.scale(f.factor, c));
       return;
     }
     case "fillet":
     case "chamfer": {
-      if (!body) throw new Error("Önce bir katı oluşturun");
+      if (!bodies.length) throw new Error("Önce bir katı oluşturun");
+      if (f.type === "fillet" && f.kind === "full") {
+        const { edges, r } = fullRoundEdges(matchFaces(f.faces ?? []));
+        onOwner(edges, "edges", (b) => b.fillet((e: any) => (edges.has(e.hashCode) ? r : null)));
+        return;
+      }
       const set = matchEdges(f.edges);
       if (f.faces?.length) edgesOfFaces(matchFaces(f.faces)).forEach((h) => set.add(h));
       if (!set.size) throw new Error("Seçili kenarlar modelde bulunamadı");
       const v = f.type === "fillet" ? f.r : f.d;
       if (!(v > 0)) throw new Error("Değer sıfırdan büyük olmalı");
-      const fn = (e: any) => (set.has(e.hashCode) ? v : null);
-      body = f.type === "fillet" ? body.fillet(fn) : body.chamfer(fn);
+      if (f.type === "fillet") {
+        const rad = f.kind === "var" ? ([f.r, f.r2 ?? f.r] as [number, number]) : f.r;
+        onOwner(set, "edges", (b) => b.fillet((e: any) => (set.has(e.hashCode) ? rad : null)));
+      } else {
+        const kind = f.kind ?? "equal";
+        onOwner(set, "edges", (b) =>
+          b.chamfer((e: any) => {
+            if (!set.has(e.hashCode)) return null;
+            if (kind === "equal") return f.d;
+            const faces = facesOfEdge(b, e.hashCode);
+            const ref = faces[f.flip ? 1 : 0] ?? faces[0];
+            const sel = (ff: any) => ff.when(({ element }: any) => element.hashCode === ref.hashCode);
+            return kind === "dd" ? { distances: [f.d, f.d2 ?? f.d], selectedFace: sel } : { distance: f.d, angle: f.angle ?? 45, selectedFace: sel };
+          }),
+        );
+      }
       return;
     }
     case "shell": {
-      if (!body) throw new Error("Önce bir katı oluşturun");
+      if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       const set = matchFaces(f.faces);
       if (!set.size) throw new Error("Kaldırılacak yüz seçin");
-      body = body.shell(Math.abs(f.t), (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode)));
+      onOwner(set, "faces", (b) => b.shell(Math.abs(f.t), (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode))));
       return;
     }
     case "draft": {
-      if (!body) throw new Error("Önce bir katı oluşturun");
+      if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       const set = matchFaces(f.faces);
       if (!set.size) throw new Error("Koniklik verilecek yüzleri seçin");
-      body = body.draft((f.rev ? -1 : 1) * f.angle, (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode)), makePlane(f.frame));
+      onOwner(set, "faces", (b) => b.draft((f.rev ? -1 : 1) * f.angle, (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode)), makePlane(f.frame)));
       return;
     }
     case "lpattern": {
-      const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean }[];
+      const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean; merge: boolean }[];
       if (!items.length) throw new Error("Çoğaltılacak özellik seçin");
       const [d1, d2] = [f.dirs[0], f.dirs[1] ?? { v: [0, 0, 0] as Vec3, count: 1, spacing: 0 }];
       for (const it of items)
@@ -341,29 +610,35 @@ function buildFeature(f: KFeature) {
           for (let j = 0; j < Math.max(1, d2.count); j++) {
             if (!i && !j) continue;
             const off = vadd(vmul(d1.v, i * d1.spacing), vmul(d2.v, j * d2.spacing));
-            applyTool(it.solid.clone().translate(off), it.cut);
+            applyTool(it.solid.clone().translate(off), it.cut, it.merge);
           }
       return;
     }
     case "cpattern": {
-      const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean }[];
+      const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean; merge: boolean }[];
       if (!items.length) throw new Error("Çoğaltılacak özellik seçin");
-      for (const it of items) for (let i = 1; i < f.count; i++) applyTool(it.solid.clone().rotate(f.angle * i, [0, 0, 0], f.axis), it.cut);
+      for (const it of items) for (let i = 1; i < f.count; i++) applyTool(it.solid.clone().rotate(f.angle * i, f.origin ?? [0, 0, 0], f.axis), it.cut, it.merge);
       return;
     }
     case "mirror": {
       const plane = makePlane(f.frame);
       if (f.body) {
-        if (!body) throw new Error("Aynalanacak katı yok");
-        body = body.fuse(body.clone().mirror(plane));
+        if (!bodies.length) throw new Error("Aynalanacak katı yok");
+        bodies = bodies.flatMap((b) => solidsOf(b.fuse(b.clone().mirror(plane))));
         return;
       }
-      const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean }[];
+      const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean; merge: boolean }[];
       if (!items.length) throw new Error("Aynalanacak özellik seçin");
-      for (const it of items) applyTool(it.solid.clone().mirror(plane), it.cut);
+      for (const it of items) applyTool(it.solid.clone().mirror(plane), it.cut, it.merge);
       return;
     }
   }
+}
+
+let fontUrl = "";
+function ensureFont() {
+  if (!fontReady) fontReady = loadFont(fontUrl).then(() => undefined);
+  return fontReady;
 }
 
 function circle3d(a: Vec3, b: Vec3, c: Vec3): { c: Vec3; r: number; ax: Vec3 } | null {
@@ -423,24 +698,27 @@ function toMesh(shape: Shape): MeshData {
     faces: faceInfo,
     edges: edgeInfo,
     bbox: { min: bb[0], max: bb[1] },
+    bodies: bodies.length,
   };
 }
 
-function build(id: number, features: KFeature[]) {
+async function build(id: number, features: KFeature[]) {
   const errors: { featureId: string; message: string }[] = [];
-  body = null;
+  bodies = [];
   frames = {};
   tools.clear();
   for (const f of features) {
     try {
-      buildFeature(f);
+      await buildFeature(f);
     } catch (e) {
       errors.push({ featureId: f.id, message: errMsg(e) });
     }
   }
-  if (!body) return post({ id, type: "built", mesh: null, errors, frames });
+  const a = all();
+  if (!a) return post({ id, type: "built", mesh: null, errors, frames });
   try {
-    const mesh = toMesh(body);
+    const mesh = toMesh(a);
+    freeAll(a);
     post({ id, type: "built", mesh, errors, frames }, [
       mesh.vertices.buffer,
       mesh.normals.buffer,
@@ -460,14 +738,14 @@ const f3 = (v: number) => (Math.round(v * 1000) / 1000).toString().replace(".", 
 function measure(id: number, items: MeasureItem[]) {
   const lines: string[] = [];
   try {
-    if (!body) throw new Error("Model yok");
+    if (!bodies.length) throw new Error("Model yok");
     const resolve = (it: MeasureItem) => {
       if (it.k === "edge") {
         const set = matchEdges([it.ref]);
-        return (body.edges as any[]).find((e) => set.has(e.hashCode));
+        return allEdges().find((e) => set.has(e.hashCode));
       }
       const set = matchFaces([it.ref]);
-      return (body.faces as any[]).find((f) => set.has(f.hashCode));
+      return allFaces().find((f) => set.has(f.hashCode));
     };
     const shapes = items.map(resolve);
     if (shapes.some((s) => !s)) throw new Error("Seçim modelde bulunamadı");
@@ -483,8 +761,7 @@ function measure(id: number, items: MeasureItem[]) {
       } else {
         lines.push(`${tag}Yüz alanı: ${f3(measureArea(s))} mm²`);
         if (String(s.geomType) === "CYLINDRE") {
-          const ed = (s.edges as any[]).find((x) => String(x.geomType) === "CIRCLE");
-          const c = ed && circle3d(tup(ed.pointAt(0)), tup(ed.pointAt(1 / 3)), tup(ed.pointAt(2 / 3)));
+          const c = cylinderOf(s);
           if (c) lines.push(`${tag}Silindir çapı: ${f3(c.r * 2)} mm`);
         }
       }
@@ -513,33 +790,88 @@ function measure(id: number, items: MeasureItem[]) {
 }
 
 function props(id: number) {
-  if (!body) return post({ id, type: "props", props: null });
+  const a = all();
+  if (!a) return post({ id, type: "props", props: null });
   try {
-    const vp = measureShapeVolumeProperties(body);
-    const bb = body.boundingBox.bounds;
-    const p: MassProps = { volume: vp.volume, area: measureArea(body), com: vp.centerOfMass as Vec3, bbox: { min: bb[0], max: bb[1] } };
+    let vol = 0;
+    const com: Vec3 = [0, 0, 0];
+    for (const b of bodies) {
+      const vp = measureShapeVolumeProperties(b);
+      vol += vp.volume;
+      const c = vp.centerOfMass as Vec3;
+      for (let i = 0; i < 3; i++) com[i] += c[i] * vp.volume;
+    }
+    for (let i = 0; i < 3; i++) com[i] /= vol || 1;
+    const bb = a.boundingBox.bounds;
+    freeAll(a);
+    const p: MassProps = { volume: vol, area: bodies.reduce((s, b) => s + measureArea(b), 0), com, bbox: { min: bb[0], max: bb[1] } };
     post({ id, type: "props", props: p });
   } catch {
     post({ id, type: "props", props: null });
   }
 }
 
-function exportShape(id: number, format: "step" | "stl") {
-  if (!body) return post({ id, type: "exported", blob: null, message: "Dışa aktarılacak katı yok" });
+function section(id: number, fr: Frame) {
+  const items: SectionItem[] = [];
   try {
-    const blob: Blob = format === "step" ? body.blobSTEP() : body.blobSTL({ binary: true, tolerance: 0.02, angularTolerance: 0.2 });
+    const a = all();
+    if (a) {
+      const oc = getOC() as any;
+      const pln = new oc.gp_Pln(new oc.gp_Pnt(...fr.o), new oc.gp_Dir(...fr.n));
+      const sec = new oc.BRepAlgoAPI_Section(a.wrapped, pln, true);
+      const sh = cast(sec.Shape()) as any;
+      freeAll(a);
+      for (const e of sh.edges as any[]) {
+        const type = String(e.geomType);
+        const s = tup(e.startPoint), en = tup(e.endPoint);
+        if (type === "LINE") items.push({ k: "line", s, e: en });
+        else if (type === "CIRCLE") {
+          const c = circle3d(tup(e.pointAt(0)), tup(e.pointAt(1 / 3)), tup(e.pointAt(2 / 3)));
+          if (c) items.push({ k: "circle", c: c.c, r: c.r, closed: vlen(vsub(s, en)) < 1e-6, s, e: en, m: tup(e.pointAt(0.5)) });
+        } else {
+          const pts: Vec3[] = [];
+          for (let i = 0; i <= 24; i++) pts.push(tup(e.pointAt(i / 24)));
+          items.push({ k: "poly", pts });
+        }
+      }
+    }
+  } catch {
+    /* kesişim yok */
+  }
+  post({ id, type: "section", items });
+}
+
+function exportShape(id: number, format: "step" | "stl") {
+  const a = all();
+  if (!a) return post({ id, type: "exported", blob: null, message: "Dışa aktarılacak katı yok" });
+  try {
+    const blob: Blob = format === "step" ? a.blobSTEP() : a.blobSTL({ binary: true, tolerance: 0.02, angularTolerance: 0.2 });
+    freeAll(a);
     post({ id, type: "exported", blob });
   } catch (e) {
     post({ id, type: "exported", blob: null, message: errMsg(e) });
   }
 }
 
+// İstekler sırayla işlenir (yapım zaman uyumsuz olabilir)
+let queue: Promise<void> = Promise.resolve();
 self.onmessage = (ev: MessageEvent<KernelRequest>) => {
   const req = ev.data;
-  if (req.type === "build") build(req.id, req.features);
-  else if (req.type === "export") exportShape(req.id, req.format);
-  else if (req.type === "measure") measure(req.id, req.items);
-  else if (req.type === "props") props(req.id);
+  queue = queue.then(async () => {
+   try {
+    if (req.type === "build") {
+      if (req.fontUrl) fontUrl = req.fontUrl;
+      await build(req.id, req.features);
+    } else if (req.type === "export") exportShape(req.id, req.format);
+    else if (req.type === "measure") measure(req.id, req.items);
+    else if (req.type === "props") props(req.id);
+    else if (req.type === "section") section(req.id, req.frame);
+   } catch (e) {
+    // Hata kuyruğu kilitlemesin; isteği yanıtsız bırakma
+    const t = req.type === "build" ? "built" : req.type === "export" ? "exported" : req.type === "measure" ? "measured" : req.type;
+    post({ id: (req as any).id, type: t, mesh: null, errors: [{ featureId: "", message: errMsg(e) }], frames: {}, blob: null, message: errMsg(e), lines: [errMsg(e)], items: [] } as any);
+   }
+  });
 };
 
 init();

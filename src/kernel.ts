@@ -1,5 +1,5 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem } from "./doc/types";
 
 export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame> };
 
@@ -40,7 +40,8 @@ export class Kernel {
 
   async build(features: KFeature[]): Promise<BuildResult> {
     await this.ready;
-    const r = await this.request<BuildResult>({ type: "build", features } as any);
+    const fontUrl = new URL("fonts/DejaVuSans.ttf", document.baseURI).href;
+    const r = await this.request<BuildResult>({ type: "build", features, fontUrl } as any);
     return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {} };
   }
 
@@ -53,6 +54,12 @@ export class Kernel {
     await this.ready;
     const r = await this.request<{ lines: string[] }>({ type: "measure", items } as any);
     return r.lines;
+  }
+
+  async section(frame: Frame): Promise<SectionItem[]> {
+    await this.ready;
+    const r = await this.request<{ items: SectionItem[] }>({ type: "section", frame } as any);
+    return r.items;
   }
 
   async props(): Promise<MassProps | null> {

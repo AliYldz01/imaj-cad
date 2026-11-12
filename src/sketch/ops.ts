@@ -2,7 +2,7 @@
 // ötele (offset), aynala, doğrusal / dairesel çoğaltma, taşı / kopyala / döndür.
 import type { SArc, SEnt, SLine, SketchData, Vec2 } from "../doc/types";
 import { ORIGIN } from "../doc/types";
-import { P, addArc, addCircle, addLine, addPt, addRel, entPoints, nid } from "./model";
+import { P, addArc, addCircle, addLine, addPt, addRel, entPoints, nid, ellipseGeo } from "./model";
 import { add2, ang, circleCircle, crs2, d2, dot2, lineCircle, lineLine, mul2, norm2, perp, polyArea, sub2 } from "./geom";
 
 const isCurve = (e: SEnt) => e.t === "line" || e.t === "arc" || e.t === "circle";
@@ -12,7 +12,7 @@ export function copyEnts(
   sk: SketchData,
   ents: SEnt[],
   map: (p: Vec2) => Vec2,
-  opts: { reverse?: boolean; copyRels?: boolean; skipHV?: boolean; keep?: (pid: string) => boolean } = {},
+  opts: { reverse?: boolean; copyRels?: boolean; skipHV?: boolean; keep?: (pid: string) => boolean; scale?: number } = {},
 ): Map<string, string> {
   const idMap = new Map<string, string>();
   const ptOf = (pid: string) => {
@@ -26,12 +26,33 @@ export function copyEnts(
     return nidp;
   };
   for (const e of ents) {
+    const k = opts.scale ?? 1;
     if (e.t === "line") idMap.set(e.id, addLine(sk, ptOf(e.p1), ptOf(e.p2), e.cons).id);
-    else if (e.t === "circle") idMap.set(e.id, addCircle(sk, ptOf(e.c), e.r, e.cons).id);
+    else if (e.t === "circle") idMap.set(e.id, addCircle(sk, ptOf(e.c), e.r * k, e.cons).id);
+    else if (e.t === "ellipse" || e.t === "spline" || e.t === "parabola" || e.t === "text") {
+      const ne: any = JSON.parse(JSON.stringify(e));
+      ne.id = nid(sk, e.t[0]);
+      for (const key of ["c", "a", "s", "e", "k", "p"]) if (typeof ne[key] === "string") ne[key] = ptOf(ne[key]);
+      if (ne.pts) ne.pts = ne.pts.map(ptOf);
+      if (e.t === "ellipse") ne.rb = e.rb * k;
+      if (e.t === "text") ne.size = e.size * k;
+      sk.ents.push(ne);
+      if (ne.t === "ellipse" && ne.s && ne.e) {
+        const g = ellipseGeo(sk, ne);
+        let [t0, t1] = [g.param(P(sk, ne.s)), g.param(P(sk, ne.e))];
+        if (opts.reverse) {
+          [ne.s, ne.e] = [ne.e, ne.s];
+          [t0, t1] = [t1, t0];
+        }
+        ne.t0 = t0;
+        ne.t1 = t1;
+      }
+      idMap.set(e.id, ne.id);
+    }
     else if (e.t === "arc") {
       const c = ptOf(e.c), s = ptOf(e.s), en = ptOf(e.e);
       const a = opts.reverse ? addArc(sk, c, en, s, e.cons) : addArc(sk, c, s, en, e.cons);
-      a.r = e.r;
+      a.r = e.r * k;
       idMap.set(e.id, a.id);
     } else if (e.t === "point") {
       const p = ptOf(e.p);
@@ -109,10 +130,25 @@ export function circularPattern(sk: SketchData, ents: SEnt[], o: { c: Vec2; n: n
 }
 
 /** Taşı / kopyala / döndür */
-export function moveEnts(sk: SketchData, ents: SEnt[], o: { dx: number; dy: number; ang: number; c: Vec2; copy: boolean }) {
+export function moveEnts(sk: SketchData, ents: SEnt[], o: { dx: number; dy: number; ang: number; c: Vec2; copy: boolean; scale?: number }) {
   const rot = rotateFn(o.c, o.ang);
-  const f = (p: Vec2): Vec2 => add2(rot(p), [o.dx, o.dy]);
-  if (o.copy) return copyEnts(sk, ents, f, { copyRels: true, skipHV: Math.abs(o.ang) > 1e-9 });
+  const k = o.scale ?? 1;
+  const f = (p: Vec2): Vec2 => {
+    const q = rot(p);
+    return add2([o.c[0] + (q[0] - o.c[0]) * k, o.c[1] + (q[1] - o.c[1]) * k], [o.dx, o.dy]);
+  };
+  if (o.copy) return copyEnts(sk, ents, f, { copyRels: true, skipHV: Math.abs(o.ang) > 1e-9, scale: k });
+  if (Math.abs(k - 1) > 1e-12) {
+    for (const e of ents) {
+      if (e.t === "circle" || e.t === "arc") e.r *= k;
+      if (e.t === "ellipse") e.rb *= k;
+      if (e.t === "text") e.size *= k;
+    }
+    // ölçek değişince uzunluk ölçüleri geçersiz olur
+    const pts = new Set<string>();
+    ents.forEach((e) => entPoints(e).forEach((p) => pts.add(p)));
+    sk.dims = sk.dims.filter((d) => !d.refs.some((r) => pts.has(r) || ents.some((e) => e.id === r)));
+  }
   const pts = new Set<string>();
   ents.forEach((e) => entPoints(e).forEach((p) => p !== ORIGIN && pts.add(p)));
   for (const id of pts) {

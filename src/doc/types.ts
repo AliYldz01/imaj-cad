@@ -21,7 +21,7 @@ export type PlaneRef =
 
 // ---------------- Eskiz ----------------
 
-export type EntType = "point" | "line" | "circle" | "arc";
+export type EntType = "point" | "line" | "circle" | "arc" | "ellipse" | "spline" | "parabola" | "text";
 
 interface EntBase {
   id: string;
@@ -33,7 +33,15 @@ export interface SLine extends EntBase { t: "line"; p1: string; p2: string }
 export interface SCircle extends EntBase { t: "circle"; c: string; r: number }
 /** Yay: merkez c, başlangıç s, bitiş e; s'den e'ye saat yönünün tersine */
 export interface SArc extends EntBase { t: "arc"; c: string; s: string; e: string; r: number }
-export type SEnt = SPointEnt | SLine | SCircle | SArc;
+/** Elips: merkez c, büyük eksen ucu a, küçük yarıçap rb. t0/t1 varsa kısmi elips (s, e uç noktaları türetilir) */
+export interface SEllipse extends EntBase { t: "ellipse"; c: string; a: string; rb: number; t0?: number; t1?: number; s?: string; e?: string }
+/** Noktalardan geçen spline */
+export interface SSpline extends EntBase { t: "spline"; pts: string[] }
+/** Parabol (ikinci derece Bezier): başlangıç, bitiş, kontrol noktası */
+export interface SParabola extends EntBase { t: "parabola"; s: string; e: string; k: string }
+/** Eskiz metni */
+export interface SText extends EntBase { t: "text"; p: string; text: string; size: number; angle: number }
+export type SEnt = SPointEnt | SLine | SCircle | SArc | SEllipse | SSpline | SParabola | SText;
 
 export type RelType =
   | "coincident" // nokta-nokta
@@ -76,6 +84,10 @@ export interface SDim {
   lp: Vec2;
   /** açı ölçüsü: l1'den l2'ye yön işareti (+1 / -1) */
   sgn?: number;
+  /** referans (sürülen) ölçü: geometriyi değiştirmez */
+  ref?: boolean;
+  /** değer bir denklemden geliyorsa ifadesi */
+  expr?: string;
 }
 
 export interface SketchData {
@@ -109,7 +121,7 @@ export interface SketchFeature extends FeatBase {
   data: SketchData;
 }
 
-export type EndCond = "blind" | "mid" | "through" | "surface" | "offset";
+export type EndCond = "blind" | "mid" | "through" | "surface" | "offset" | "next";
 
 export interface ExtrudeFeature extends FeatBase {
   type: "extrude";
@@ -128,6 +140,15 @@ export interface ExtrudeFeature extends FeatBase {
   /** Koniklik açısı (derece, 0 = yok) */
   draft?: number;
   draftOut?: boolean;
+  /** İnce özellik */
+  thin?: boolean;
+  thinT?: number;
+  /** ince özellik yönü: tek taraf / ters / orta */
+  thinMode?: "one" | "rev" | "mid";
+  /** Bükümlü ekstrüzyon açısı */
+  twist?: number;
+  /** false: ayrı gövde oluştur (çoklu gövde) */
+  merge?: boolean;
 }
 
 export interface RevolveFeature extends FeatBase {
@@ -139,10 +160,32 @@ export interface RevolveFeature extends FeatBase {
   angle: number;
   mid: boolean;
   rev: boolean;
+  thin?: boolean;
+  thinT?: number;
+  thinMode?: "one" | "rev" | "mid";
+  merge?: boolean;
 }
 
-export interface FilletFeature extends FeatBase { type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[] }
-export interface ChamferFeature extends FeatBase { type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[] }
+export interface FilletFeature extends FeatBase {
+  type: "fillet";
+  r: number;
+  edges: EdgeRef[];
+  faces?: FaceRef[];
+  /** sabit / değişken (başlangıç r, bitiş r2) / tam yuvarlak (seçili orta yüz) */
+  kind?: "const" | "var" | "full";
+  r2?: number;
+}
+export interface ChamferFeature extends FeatBase {
+  type: "chamfer";
+  d: number;
+  edges: EdgeRef[];
+  faces?: FaceRef[];
+  /** eşit mesafe / iki mesafe / mesafe-açı */
+  kind?: "equal" | "dd" | "da";
+  d2?: number;
+  angle?: number;
+  flip?: boolean;
+}
 
 export interface SweepFeature extends FeatBase {
   type: "sweep";
@@ -158,14 +201,21 @@ export interface LoftFeature extends FeatBase {
   sketches: string[];
   cut: boolean;
   ruled: boolean;
+  /** merkez çizgisi eskizi (isteğe bağlı) */
+  center?: string;
 }
 
 export type HoleType = "simple" | "cbore" | "csink" | "tap";
+export type HoleStd = "iso" | "pipe" | "inch";
 export interface HoleFeature extends FeatBase {
   type: "hole";
   htype: HoleType;
-  /** standart boyut (M3…M24) veya "custom" */
+  /** standart boyut (M3…M24, G1/4, 1/4-20…) veya "custom" */
   size: string;
+  /** standart: ISO metrik / boru dişi (G) / inç (UNC) */
+  std?: HoleStd;
+  /** kozmetik diş göster */
+  cosmetic?: boolean;
   /** delik çapı (özel boyutta veya standarttan hesaplanır) */
   d: number;
   depth: number;
@@ -180,6 +230,35 @@ export interface HoleFeature extends FeatBase {
   /** yüz düzlemindeki merkez noktaları */
   pts: Vec2[];
 }
+/** Kaburga: açık eskizden, gövdeye kadar uzanan ince duvar */
+export interface RibFeature extends FeatBase {
+  type: "rib";
+  sketch: string;
+  t: number;
+  /** kalınlık: orta / tek taraf / diğer taraf */
+  side: "mid" | "one" | "rev";
+  /** uzama yönü: eskize paralel / eskize dik */
+  dir: "parallel" | "normal";
+  flip: boolean;
+}
+export interface DomeFeature extends FeatBase { type: "dome"; face: FaceRef | null; h: number }
+/** Sarma (projeksiyon yöntemi): eskiz silindirik yüze kabartma / oyma */
+export interface WrapFeature extends FeatBase {
+  type: "wrap";
+  sketch: string;
+  face: FaceRef | null;
+  mode: "emboss" | "deboss";
+  depth: number;
+}
+/** Ölçekle: gövdeyi bir noktaya göre düzgün ölçekler */
+export interface ScaleFeature extends FeatBase { type: "scale"; factor: number; center: "origin" | "centroid" }
+/** STEP içe aktarma */
+export interface ImportFeature extends FeatBase { type: "import"; file: string; data: string }
+/** Referans eksen / nokta / koordinat sistemi (yalnızca görüntü ve referans) */
+export interface RefAxisFeature extends FeatBase { type: "axis"; p: Vec3; d: Vec3 }
+export interface RefPointFeature extends FeatBase { type: "point"; p: Vec3 }
+export interface CoordSysFeature extends FeatBase { type: "csys"; o: Vec3; x: Vec3; y: Vec3 }
+
 export interface DraftFeature extends FeatBase {
   type: "draft";
   angle: number;
@@ -209,6 +288,8 @@ export interface CPatternFeature extends FeatBase {
   type: "cpattern";
   feats: string[];
   axis: AxisName;
+  /** referans eksen özelliği (varsa axis yerine kullanılır) */
+  refAxis?: string;
   count: number;
   angle: number;
   /** eşit aralık: toplam açıyı adede böl */
@@ -242,7 +323,15 @@ export type Feature =
   | SweepFeature
   | LoftFeature
   | HoleFeature
-  | DraftFeature;
+  | DraftFeature
+  | RibFeature
+  | DomeFeature
+  | WrapFeature
+  | ScaleFeature
+  | ImportFeature
+  | RefAxisFeature
+  | RefPointFeature
+  | CoordSysFeature;
 
 export type FeatureType = Feature["type"];
 
@@ -253,28 +342,48 @@ export interface PartDoc {
   seq: Record<string, number>;
   /** malzeme anahtarı (bkz. MATERIALS) */
   material?: string;
+  /** geri sarma çubuğu: bu indeksten sonraki özellikler hesaplanmaz */
+  rollback?: number | null;
+  /** global değişkenler: ad -> ifade */
+  vars?: Record<string, string>;
+  /** özellik alanlarına bağlı denklemler: "özellikId.alan" -> ifade */
+  eqs?: Record<string, string>;
 }
 
 // ---------------- Çekirdeğe giden çözülmüş tanımlar ----------------
 
-export type Seg = { t: "l"; a: Vec2; b: Vec2 } | { t: "a"; a: Vec2; b: Vec2; m: Vec2 };
-export type Loop = { circle: { c: Vec2; r: number }; depth: number } | { segs: Seg[]; depth: number };
+export type Seg =
+  | { t: "l"; a: Vec2; b: Vec2 }
+  | { t: "a"; a: Vec2; b: Vec2; m: Vec2 }
+  | { t: "c"; a: Vec2; b: Vec2; c1: Vec2; c2: Vec2 }
+  | { t: "q"; a: Vec2; b: Vec2; k: Vec2 }
+  | { t: "e"; a: Vec2; b: Vec2; rx: number; ry: number; rot: number; long: boolean; sweep: boolean };
+export type Loop =
+  | { circle: { c: Vec2; r: number }; depth: number }
+  | { ellipse: { c: Vec2; rx: number; ry: number; rot: number }; depth: number }
+  | { segs: Seg[]; depth: number };
+export interface TextItem { text: string; x: number; y: number; size: number; angle: number }
 
 /** Eskiz düzlemi: yüz üzerindeyse çekirdek yüzü bulup çerçeveyi günceller */
 export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 
 export type KFeature =
-  | { id: string; type: "extrude"; cut: boolean; pl: KPlane; loops: Loop[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean }
-  | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean }
-  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[] }
-  | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[] }
+  | { id: string; type: "extrude"; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
+  | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
+  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full"; r2?: number }
+  | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da"; d2?: number; angle?: number; flip?: boolean }
+  | { id: string; type: "rib"; pl: KPlane; chain: Seg[]; normal: boolean; flip: boolean; t: number; side: "mid" | "one" | "rev" }
+  | { id: string; type: "dome"; face: FaceRef; h: number }
+  | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
+  | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
+  | { id: string; type: "import"; data: string }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean } }
-  | { id: string; type: "loft"; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[] }
+  | { id: string; type: "loft"; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean } }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[] }
   | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[] }
-  | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; count: number; angle: number }
+  | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number }
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame };
 
 export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string }
@@ -304,7 +413,14 @@ export interface MeshData {
   faces: FaceInfo[];
   edges: EdgeInfo[];
   bbox: { min: Vec3; max: Vec3 } | null;
+  /** gövde sayısı */
+  bodies?: number;
 }
+
+export type SectionItem =
+  | { k: "line"; s: Vec3; e: Vec3 }
+  | { k: "circle"; c: Vec3; r: number; closed: boolean; s: Vec3; e: Vec3; m: Vec3 }
+  | { k: "poly"; pts: Vec3[] };
 
 export type MeasureItem = { k: "edge"; ref: EdgeRef } | { k: "face"; ref: FaceRef };
 
@@ -316,7 +432,8 @@ export interface MassProps {
 }
 
 export type KernelRequest =
-  | { id: number; type: "build"; features: KFeature[] }
+  | { id: number; type: "build"; features: KFeature[]; fontUrl?: string }
+  | { id: number; type: "section"; frame: Frame }
   | { id: number; type: "export"; format: "step" | "stl" }
   | { id: number; type: "measure"; items: MeasureItem[] }
   | { id: number; type: "props" };
@@ -326,5 +443,6 @@ export type KernelResponse =
   | { type: "fatal"; message: string }
   | { id: number; type: "built"; mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame> }
   | { id: number; type: "measured"; lines: string[] }
+  | { id: number; type: "section"; items: SectionItem[] }
   | { id: number; type: "props"; props: MassProps | null }
   | { id: number; type: "exported"; blob: Blob | null; message?: string };
