@@ -159,7 +159,14 @@ export function entSamples(sk: SketchData, e: SEnt): Vec2[] {
     }
     case "parabola": {
       const out: Vec2[] = [];
-      for (let i = 0; i <= 32; i++) out.push(bez2(P(sk, e.s), P(sk, e.k), P(sk, e.e), i / 32));
+      const A = P(sk, e.s), K = P(sk, e.k), B = P(sk, e.e);
+      const rho = e.rho ?? 0.5;
+      const w = rho / (1 - rho);
+      for (let i = 0; i <= 32; i++) {
+        const t = i / 32, u = 1 - t;
+        const d = u * u + 2 * w * u * t + t * t;
+        out.push([(u * u * A[0] + 2 * w * u * t * K[0] + t * t * B[0]) / d, (u * u * A[1] + 2 * w * u * t * K[1] + t * t * B[1]) / d]);
+      }
       return out;
     }
     default:
@@ -242,6 +249,25 @@ export function measure(sk: SketchData, d: { t: DimType; refs: string[]; sub?: s
       const u = sub(P(sk, l1.p2), P(sk, l1.p1)), v = sub(P(sk, l2.p2), P(sk, l2.p1));
       const th = Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]);
       return (Math.abs(th) * 180) / Math.PI;
+    }
+    case "alen": {
+      const a = ea as any;
+      if (!a || a.t !== "arc") return 0;
+      const c = P(sk, a.c), s0 = P(sk, a.s), e0 = P(sk, a.e);
+      let sw = Math.atan2(e0[1] - c[1], e0[0] - c[0]) - Math.atan2(s0[1] - c[1], s0[0] - c[0]);
+      if (sw <= 0) sw += 2 * Math.PI;
+      return a.r * sw;
+    }
+    case "cl": {
+      const c = ea as any, l = eb as SLine;
+      const p = P(sk, c.c), A = P(sk, l.p1), B = P(sk, l.p2);
+      const u = sub(B, A);
+      const L = Math.hypot(u[0], u[1]) || 1;
+      return Math.abs((u[0] * (p[1] - A[1]) - u[1] * (p[0] - A[0])) / L) - c.r;
+    }
+    case "cc": {
+      const c1 = ea as any, c2 = eb as any;
+      return d2(P(sk, c1.c), P(sk, c2.c)) - c1.r - c2.r;
     }
     case "pldist": {
       let p: Vec2;
@@ -330,6 +356,7 @@ export function applicableRelations(sk: SketchData, sel: string[]): RelOption[] 
     out.push({ t: "equal", label: "Eşit", build: () => curves.slice(1).map((c) => ({ t: "equal" as RelType, refs: [curves[0].id, c.id] })) });
     if (curves.length === 2) {
       out.push({ t: "concentric", label: "Eş merkezli", build: () => [{ t: "concentric", refs: [curves[0].id, curves[1].id] }] });
+      out.push({ t: "concentric", label: "Eş yarıçaplı", build: () => [{ t: "concentric", refs: [curves[0].id, curves[1].id] }, { t: "equal", refs: [curves[0].id, curves[1].id] }] });
       out.push({ t: "tangent", label: "Teğet", build: () => [{ t: "tangent", refs: [curves[0].id, curves[1].id] }] });
     }
   }

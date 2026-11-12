@@ -38,7 +38,7 @@ export interface SEllipse extends EntBase { t: "ellipse"; c: string; a: string; 
 /** Noktalardan geçen spline */
 export interface SSpline extends EntBase { t: "spline"; pts: string[] }
 /** Parabol (ikinci derece Bezier): başlangıç, bitiş, kontrol noktası */
-export interface SParabola extends EntBase { t: "parabola"; s: string; e: string; k: string }
+export interface SParabola extends EntBase { t: "parabola"; s: string; e: string; k: string; /** konik: rho (0,5 = parabol, <0,5 elips, >0,5 hiperbol) */ rho?: number }
 /** Eskiz metni */
 export interface SText extends EntBase { t: "text"; p: string; text: string; size: number; angle: number }
 export type SEnt = SPointEnt | SLine | SCircle | SArc | SEllipse | SSpline | SParabola | SText;
@@ -64,7 +64,10 @@ export type DimType =
   | "dia" // daire/yay çapı
   | "rad" // yay/daire yarıçapı
   | "angle" // iki çizgi arası açı (derece)
-  | "pldist"; // nokta-çizgi (veya paralel çizgiler) mesafesi
+  | "pldist" // nokta-çizgi (veya paralel çizgiler) mesafesi
+  | "alen" // yay uzunluğu
+  | "cl" // daire kenarı – çizgi en yakın mesafesi
+  | "cc"; // iki daire kenarı arası en yakın mesafe
 
 export interface SRel {
   id: string;
@@ -90,7 +93,11 @@ export interface SDim {
   expr?: string;
 }
 
+/** Eskiz resmi: x,y = resim merkezi (eskiz koordinatı), w = genişlik (mm), aspect = yükseklik/genişlik */
+export interface SketchPicture { src: string; aspect: number; x: number; y: number; w: number; rot: number; op: number; flip?: boolean }
+
 export interface SketchData {
+  pic?: SketchPicture;
   pts: Record<string, { x: number; y: number }>;
   ents: SEnt[];
   rels: SRel[];

@@ -163,6 +163,12 @@ function dimPrims(d: SDim, ents: Map<string, SEnt>, _sk: SketchData): Prim[] {
       const sign = d.sgn ?? 1;
       return [{ id, type: "l2l_angle_ll", l1_id: a, l2_id: b, angle: sign * rad }];
     }
+    case "alen":
+      return [{ id, type: "arc_length", a_id: a, dist: d.v }];
+    case "cl":
+      return [{ id, type: "c2ldistance", c_id: a, l_id: b, dist: d.v }];
+    case "cc":
+      return [{ id, type: "c2cdistance", c1_id: a, c2_id: b, dist: d.v }];
     case "pldist": {
       if (eb?.t === "line" && ea?.t === "line") return [{ id, type: "p2l_distance", p_id: (eb as any).p1, l_id: a, distance: d.v }];
       if (isCurve(ea) && eb?.t === "line") return [{ id, type: "p2l_distance", p_id: (ea as any).c, l_id: b, distance: d.v }];

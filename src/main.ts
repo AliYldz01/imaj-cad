@@ -17,6 +17,7 @@ import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
+import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
 import { ICONS } from "./ui/icons";
@@ -351,6 +352,7 @@ function drawSketches() {
       const arr = e.cons ? cons : segs;
       for (let i = 0; i < pts.length - 1; i++) arr.push(...toWorld(fr, pts[i]), ...toWorld(fr, pts[i + 1]));
     }
+    if (sk.pic) sketchGroup.push(pictureMesh(sk.pic, fr, () => viewer.requestRender()) as any);
     const col = treeSel === f.id ? 0x0ca5e9 : 0x1f2a37;
     if (segs.length) sketchGroup.push(viewer.fatLines(segs, col, 1.6));
     if (cons.length) sketchGroup.push(viewer.fatLines(cons, 0x6b7686, 1, true));
@@ -2948,6 +2950,38 @@ function commands(): Cmd[] {
     skTool("offset", "offset", "Ötele"),
     skTool("convert", "convert", "Dönüştür"),
     skTool("isect", "isect", "Kesişim Eğr."),
+    skTool("mline", "mline", "Orta N. Çizgi"),
+    skTool("crect3", "crect3", "3N Merkez Dikd."),
+    skTool("conic", "conic", "Konik"),
+    skTool("eqcurve", "eqcurve", "Denklem Eğrisi"),
+    skTool("split", "split", "Ayır"),
+    skTool("jog", "jog", "Kademe"),
+    skTool("ordinate", "ordinate", "Koord. Ölçü"),
+    {
+      id: "picture",
+      label: "Eskiz Resmi",
+      icon: "picture",
+      run: () => {
+        if (!ed) return toast("Önce bir eskiz açın; resim eskizin düzlemine yerleşir", true);
+        if (ed.data.pic) return ed.setTool("picture"), renderCommands();
+        const inp = h("input") as HTMLInputElement;
+        inp.type = "file";
+        inp.accept = "image/*";
+        inp.onchange = async () => {
+          const file = inp.files?.[0];
+          if (!file) return;
+          try {
+            const { src, aspect } = await loadImageFile(file);
+            ed.setPicture(src, aspect);
+            renderCommands();
+          } catch (e) {
+            toast((e as Error).message, true);
+          }
+        };
+        inp.click();
+      },
+      active: () => ed?.tool === "picture",
+    },
     skTool("mirror", "smirror", "Aynala"),
     skTool("spat", "spat", "Doğrusal Çoğ."),
     skTool("scpat", "scpat", "Dairesel Çoğ."),

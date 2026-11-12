@@ -54,8 +54,17 @@ function collect(sk: SketchData) {
       const pts = (closed ? e.pts.slice(0, -1) : e.pts).map(P);
       for (const bz of splineBeziers(pts, closed)) edges.push({ seg: { t: "c", ...bz }, a: key(bz.a), b: key(bz.b), used: false });
     } else if (e.t === "parabola") {
-      const a = P(e.s), b = P(e.e);
-      edges.push({ seg: { t: "q", a, b, k: P(e.k) }, a: key(a), b: key(b), used: false });
+      const a = P(e.s), b = P(e.e), k = P(e.k);
+      const rho = e.rho ?? 0.5;
+      if (Math.abs(rho - 0.5) < 1e-9) edges.push({ seg: { t: "q", a, b, k }, a: key(a), b: key(b), used: false });
+      else {
+        // konik (rasyonel ikinci derece) → kübik yaklaşım: dörtte bir dairede bilinen 0,5523 katsayısını verir
+        const w = rho / (1 - rho);
+        const kk = (4 * w) / (3 * (1 + w));
+        const c1: Vec2 = [a[0] + kk * (k[0] - a[0]), a[1] + kk * (k[1] - a[1])];
+        const c2: Vec2 = [b[0] + kk * (k[0] - b[0]), b[1] + kk * (k[1] - b[1])];
+        edges.push({ seg: { t: "c", a, b, c1, c2 }, a: key(a), b: key(b), used: false });
+      }
     } else if (e.t === "text") {
       const p = P(e.p);
       if (e.text.trim()) texts.push({ text: e.text, x: p[0], y: p[1], size: e.size, angle: e.angle });
