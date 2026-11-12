@@ -217,3 +217,10 @@ dialog.cut-dialog { max-width: min(980px, 96vw); width: 980px; }
 @media (max-width: 480px) {
   #globals #help-btn { display: none; }
 }
+
+.dir-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 6px 0; }
+.dir-grid .btn { padding: 8px 0; font-weight: 600; }
+.s3-pt { display: grid; grid-template-columns: 44px 1fr 1fr 1fr 32px; gap: 4px; align-items: end; padding: 3px 0; border-bottom: 1px solid #eef1f4; }
+.s3-pt .pm-field { margin: 0; }
+.s3-pt .pm-field label { font-size: 10px; }
+.s3-pt .btn { padding: 6px 4px; }

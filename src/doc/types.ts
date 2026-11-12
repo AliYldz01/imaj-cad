@@ -379,6 +379,18 @@ export interface SketchBendFeature extends FeatBase {
 
 // ---------------- Kaynaklı yapı ----------------
 
+/** 3B eskiz: uzayda noktalar ve aralarındaki çizgiler (iskelet için) */
+export interface Sketch3DFeature extends FeatBase {
+  type: "sketch3d";
+  /** nokta kimlikleri ve koordinatları (paralel diziler; denklemler xyz[i][k] ile bağlanır) */
+  ids: string[];
+  xyz: Vec3[];
+  lines: { id: string; a: string; b: string; cons?: boolean }[];
+  /** köşe büküm yarıçapı (0 = keskin köşe) */
+  r: number;
+  seq: number;
+}
+
 /** Eleman referansı: yapı elemanı özelliği + segment sırası */
 export interface MemberRef { f: string; i: number }
 export type CornerKind = "miter" | "butt1" | "butt2" | "none";
@@ -417,6 +429,7 @@ export interface GussetFeature extends FeatBase {
 }
 
 export type Feature =
+  | Sketch3DFeature
   | MemberFeature
   | TrimFeature
   | EndCapFeature
@@ -510,6 +523,7 @@ export type KFeature =
 
 /** Yapı elemanı segmenti (3B): çizgi veya yay; n = eskiz düzlemi normali */
 export type MemberItem = { k: "l"; a: Vec3; b: Vec3; n: Vec3; key: string } | { k: "a"; a: Vec3; b: Vec3; m: Vec3; n: Vec3; key: string };
+/** Yapı elemanı için segment grubu: teğet zincirler tek gövde olarak süpürülür */
 /** Kesim listesi satırı (gövde başına) */
 export interface CutItem {
   body: number;

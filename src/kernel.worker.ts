@@ -6,7 +6,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
@@ -522,6 +522,8 @@ interface MemberReg {
   arc: boolean;
   len: number;
   m?: Vec3;
+  /** zincir elemanlar: eşleştirme için yol noktaları */
+  path?: Vec3[];
 }
 let memberReg = new Map<string, MemberReg>();
 
@@ -611,7 +613,8 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
     for (const list of joints.values()) {
       if (list.length !== 2) continue;
       const [A, B] = list;
-      const la = lines[A.i]!, lb = lines[B.i]!;
+      const la = lines[A.i], lb = lines[B.i];
+      if (!la || !lb) continue;
       const V = A.end === 0 ? la.a : la.b;
       const da = A.end === 0 ? la.d : vmul(la.d, -1);
       const db = B.end === 0 ? lb.d : vmul(lb.d, -1);
@@ -623,45 +626,130 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
       ext[B.i][B.end] = M;
       treat.push({ V, A, B, da, db });
     }
-  const solids: Shape[] = items.map((it, i) => {
-    const li = lines[i];
-    if (li) {
-      const o = vsub(li.a, vmul(li.d, ext[i][0]));
-      memberReg.set(it.key, { key: it.key, name: f.name, a: li.a, b: li.b, d: li.d, x: li.x, loops: f.loops, R: f.R, arc: false, len: li.L });
-      return profile(f.loops).sketchOnPlane(new Plane(o, li.x, li.d)).extrude(li.L + ext[i][0] + ext[i][1]);
+  // teğet zincirler: iki öğenin teğet buluştuğu uçlar birleştirilir
+  const tanAt = (it: MemberItem, end: 0 | 1): Vec3 => {
+    const P = end === 0 ? it.a : it.b;
+    if (it.k === "l") return vnorm(vsub(end === 0 ? it.b : it.a, P));
+    const c = circle3d(it.a, it.m, it.b)!;
+    let t = vnorm(vcross(c.ax, vsub(P, c.c)));
+    if (vdot(t, vsub(it.m, P)) < 0) t = vmul(t, -1);
+    return t;
+  };
+  const parent = items.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const link: { i: number; end: 0 | 1; j: number; endj: 0 | 1 }[] = [];
+  {
+    const kj = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+    const J = new Map<string, { i: number; end: 0 | 1 }[]>();
+    items.forEach((it, i) => ([it.a, it.b] as Vec3[]).forEach((p, e) => {
+      const k = kj(p);
+      if (!J.has(k)) J.set(k, []);
+      J.get(k)!.push({ i, end: e as 0 | 1 });
+    }));
+    for (const list of J.values()) {
+      if (list.length !== 2) continue;
+      const [A, B] = list;
+      if (items[A.i].k === "l" && items[B.i].k === "l") continue;
+      if (vdot(tanAt(items[A.i], A.end), tanAt(items[B.i], B.end)) > -0.999) continue;
+      parent[find(A.i)] = find(B.i);
+      link.push({ i: A.i, end: A.end, j: B.i, endj: B.end });
     }
-    const ia = it as Extract<MemberItem, { k: "a" }>;
-    const c = circle3d(ia.a, ia.m, ia.b);
-    if (!c) throw new Error("Yay segmenti geçersiz");
-    let t = vnorm(vcross(c.ax, vsub(ia.a, c.c)));
-    if (vdot(t, vsub(ia.m, ia.a)) < 0) t = vmul(t, -1);
-    let x = vmul(ia.n, -1);
-    x = vnorm(vsub(x, vmul(t, vdot(x, t))));
-    const spine = assembleWire([makeThreePointArc(ia.a, ia.m, ia.b)]);
-    const ang = 2 * Math.asin(Math.min(1, vlen(vsub(ia.b, ia.a)) / (2 * c.r)));
-    const big = vdot(vsub(ia.m, vmul(vadd(ia.a, ia.b), 0.5)), vsub(c.c, vmul(vadd(ia.a, ia.b), 0.5))) < 0 ? false : true;
-    const len = c.r * (big ? 2 * Math.PI - ang : ang);
-    memberReg.set(it.key, { key: it.key, name: f.name, a: ia.a, b: ia.b, d: t, x, loops: f.loops, R: f.R, arc: true, len, m: ia.m });
-    return sweepProfile(f.loops, new Plane(ia.a, x, t), spine);
+  }
+  const groups = new Map<number, number[]>();
+  items.forEach((_, i) => {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r)!.push(i);
+  });
+  const chained = new Set<number>();
+  const solids: (Shape | null)[] = items.map(() => null);
+  for (const g of groups.values()) {
+    if (g.length < 2 && items[g[0]].k === "l") continue;
+    g.forEach((i) => chained.add(i));
+    // zinciri uçtan uca sırala
+    const nb = (i: number) => link.filter((l) => l.i === i || l.j === i);
+    let start = g.find((i) => nb(i).length < 2) ?? g[0];
+    const order: { i: number; rev: boolean }[] = [];
+    const used = new Set<number>();
+    let cur = start;
+    // başlangıç yönü: serbest uçtan başla
+    const l0 = nb(start);
+    let rev = l0.length === 1 ? (l0[0].i === start ? l0[0].end === 0 : l0[0].endj === 0) : false;
+    while (cur !== undefined && !used.has(cur)) {
+      used.add(cur);
+      order.push({ i: cur, rev });
+      const outEnd: 0 | 1 = rev ? 0 : 1;
+      const nx = link.find((l) => (l.i === cur && l.end === outEnd && !used.has(l.j)) || (l.j === cur && l.endj === outEnd && !used.has(l.i)));
+      if (!nx) break;
+      const [ni, nend] = nx.i === cur ? [nx.j, nx.endj] : [nx.i, nx.end];
+      cur = ni;
+      rev = nend === 1;
+    }
+    const first = items[order[0].i];
+    const P0 = order[0].rev ? first.b : first.a;
+    const t0 = tanAt(first, order[0].rev ? 1 : 0);
+    let x = vmul(first.n, -1);
+    x = vsub(x, vmul(t0, vdot(x, t0)));
+    if (vlen(x) < 1e-6) x = Math.abs(t0[2]) < 0.9 ? vcross(t0, [0, 0, 1]) : vcross(t0, [1, 0, 0]);
+    x = vnorm(x);
+    const edges = order.map(({ i }) => {
+      const it = items[i];
+      return it.k === "l" ? makeLine(it.a, it.b) : makeThreePointArc(it.a, it.m, it.b);
+    });
+    const spine = assembleWire(edges);
+    let len = 0;
+    const path: Vec3[] = [];
+    for (const { i, rev: rv } of order) {
+      const it = items[i];
+      const [A, B] = rv ? [it.b, it.a] : [it.a, it.b];
+      if (it.k === "l") {
+        len += vlen(vsub(B, A));
+        path.push(A, B);
+      } else {
+        const c = circle3d(it.a, it.m, it.b)!;
+        const ang = 2 * Math.asin(Math.min(1, vlen(vsub(it.b, it.a)) / (2 * c.r)));
+        const big = vdot(vsub(it.m, vmul(vadd(it.a, it.b), 0.5)), vsub(c.c, vmul(vadd(it.a, it.b), 0.5))) >= 0;
+        len += c.r * (big ? 2 * Math.PI - ang : ang);
+        path.push(A, it.m, B);
+      }
+    }
+    const lastIt = items[order[order.length - 1].i];
+    const Pend = order[order.length - 1].rev ? lastIt.a : lastIt.b;
+    const key = items[g[0]].key;
+    memberReg.set(key, { key, name: f.name, a: P0, b: Pend, d: t0, x, loops: f.loops, R: f.R, arc: true, len, m: path[Math.floor(path.length / 2)], path });
+    solids[g[0]] = sweepProfile(f.loops, new Plane(P0, x, t0), spine);
+  }
+  for (const tr of treat)
+    if (chained.has(tr.A.i) || chained.has(tr.B.i)) {
+      ext[tr.A.i][tr.A.end] = 0;
+      ext[tr.B.i][tr.B.end] = 0;
+    }
+  items.forEach((it, i) => {
+    if (chained.has(i)) return;
+    const li = lines[i]!;
+    const o = vsub(li.a, vmul(li.d, ext[i][0]));
+    memberReg.set(it.key, { key: it.key, name: f.name, a: li.a, b: li.b, d: li.d, x: li.x, loops: f.loops, R: f.R, arc: false, len: li.L });
+    solids[i] = profile(f.loops).sketchOnPlane(new Plane(o, li.x, li.d)).extrude(li.L + ext[i][0] + ext[i][1]);
   });
   for (const tr of treat) {
     const { V, A, B, da, db } = tr;
+    if (chained.has(A.i) || chained.has(B.i) || !solids[A.i] || !solids[B.i]) continue;
     if (f.corner === "miter") {
       const nA = vnorm(vsub(da, db));
-      solids[A.i] = solids[A.i].cut(halfSpace(vadd(V, vmul(nA, f.gap / 2)), nA));
-      solids[B.i] = solids[B.i].cut(halfSpace(vsub(V, vmul(nA, f.gap / 2)), vmul(nA, -1)));
+      solids[A.i] = solids[A.i]!.cut(halfSpace(vadd(V, vmul(nA, f.gap / 2)), nA));
+      solids[B.i] = solids[B.i]!.cut(halfSpace(vsub(V, vmul(nA, f.gap / 2)), vmul(nA, -1)));
     } else {
       const [R, T] = f.corner === "butt1" ? [A, B] : [B, A];
       const dR = R === A ? da : db, dT = R === A ? db : da;
       const lt = lines[T.i]!, lr = lines[R.i]!;
       const sT = profileSupport(f.loops, lt.x, lt.d, vmul(dR, -1));
       const sR = profileSupport(f.loops, lr.x, lr.d, dT);
-      solids[R.i] = solids[R.i].cut(halfSpace(vsub(V, vmul(dR, sT)), dR));
+      solids[R.i] = solids[R.i]!.cut(halfSpace(vsub(V, vmul(dR, sT)), dR));
       // düz kesim: kesilen eleman, sürekli elemanın yüzeyinde biter
-      solids[T.i] = keepFar(solids[T.i].cut(halfSpace(vadd(V, vmul(dT, sR + f.gap)), dT)), V, dT);
+      solids[T.i] = keepFar(solids[T.i]!.cut(halfSpace(vadd(V, vmul(dT, sR + f.gap)), dT)), V, dT);
     }
   }
-  for (const s of solids) applyTool(s, false, false);
+  for (const s of solids) if (s) applyTool(s, false, false);
 }
 
 const segDist = (p: Vec3, a: Vec3, b: Vec3) => {
@@ -679,7 +767,7 @@ function memberBodyMap(): Map<string, number> {
     let best = -1, bd = Infinity;
     cs.forEach((c, i) => {
       if (used.has(i)) return;
-      const d = reg.arc ? Math.min(segDist(c, reg.a, reg.m!), segDist(c, reg.m!, reg.b)) : segDist(c, reg.a, reg.b);
+      const d = reg.path ? Math.min(...reg.path.slice(1).map((q, k) => segDist(c, reg.path![k], q))) : reg.arc ? Math.min(segDist(c, reg.a, reg.m!), segDist(c, reg.m!, reg.b)) : segDist(c, reg.a, reg.b);
       if (d < bd) [bd, best] = [d, i];
     });
     const tol = reg.arc ? reg.R * 1.5 + reg.len * 0.2 : reg.R * 1.2 + 1;

@@ -4,7 +4,7 @@ import { AXES, STD_FRAMES, offsetFrame } from "./math";
 import { extractLoops, extractPath, extractChains, pointPos, thinRegion } from "../sketch/profile";
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
 import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } from "../weld/profiles";
-import type { MemberItem } from "./types";
+import type { MemberItem, Sketch3DFeature } from "./types";
 import { toWorld } from "./math";
 
 export function resolveFrame(ref: PlaneRef, feats: Feature[]): Frame | null {
@@ -53,6 +53,8 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
     if (f.off) continue;
     try {
       switch (f.type) {
+        case "sketch3d":
+          break;
         case "sketch":
         case "plane":
           if (!resolveFrame(f.type === "sketch" ? f.plane : f.base, feats)) throw new Error("Düzlem referansı bulunamadı");
@@ -151,16 +153,33 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
           if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
           if (!f.segs.length) throw new Error("İskelet eskizinden en az bir segment seçin");
           const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot);
-          const items: MemberItem[] = f.segs.map((sg, i) => {
+          const items: MemberItem[] = [];
+          // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
+          const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];
+          f.segs.forEach((sg, i) => {
+            const key = `${f.id}:${i}`;
+            const any = feats.find((x) => x.id === sg.sk);
+            if (any && any.type === "sketch3d") {
+              const ln = any.lines.find((l) => l.id === sg.ent);
+              if (!ln) throw new Error(`${any.name}: seçili çizgi silinmiş`);
+              const P = (id: string) => {
+                const k = any.ids.indexOf(id);
+                if (k < 0) throw new Error(`${any.name}: nokta bulunamadı`);
+                return any.xyz[k];
+              };
+              let g = s3.find((x) => x.f === any);
+              if (!g) s3.push((g = { f: any, lines: [] }));
+              g.lines.push({ a: P(ln.a), b: P(ln.b), key });
+              return;
+            }
             const sk = sketchOf(sg.sk);
             if (!sk) throw new Error("İskelet eskizi bulunamadı");
             const fr = resolveFrame(sk.plane, feats);
             if (!fr) throw new Error("Eskiz düzlemi bulunamadı");
             const e = sk.data.ents.find((x) => x.id === sg.ent);
             if (!e) throw new Error(`${sk.name}: seçili segment silinmiş`);
-            const key = `${f.id}:${i}`;
             const W = (p: [number, number]) => toWorld(fr, p);
-            if (e.t === "line") return { k: "l", a: W(pointPos(sk.data, e.p1)), b: W(pointPos(sk.data, e.p2)), n: fr.n, key };
+            if (e.t === "line") return void items.push({ k: "l", a: W(pointPos(sk.data, e.p1)), b: W(pointPos(sk.data, e.p2)), n: fr.n, key });
             if (e.t === "arc") {
               const c = pointPos(sk.data, e.c), a = pointPos(sk.data, e.s), b = pointPos(sk.data, e.e);
               const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]);
@@ -168,10 +187,11 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
               if (a1 <= a0) a1 += 2 * Math.PI;
               const r = Math.hypot(a[0] - c[0], a[1] - c[1]);
               const am = (a0 + a1) / 2;
-              return { k: "a", a: W(a), b: W(b), m: W([c[0] + r * Math.cos(am), c[1] + r * Math.sin(am)]), n: fr.n, key };
+              return void items.push({ k: "a", a: W(a), b: W(b), m: W([c[0] + r * Math.cos(am), c[1] + r * Math.sin(am)]), n: fr.n, key });
             }
             throw new Error("Yapı elemanı yalnızca çizgi ve yay segmentleri boyunca oluşturulabilir");
           });
+          for (const g of s3) items.push(...sketch3dItems(g.lines, g.f.r));
           kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap });
           break;
         }
@@ -274,6 +294,56 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
     }
   }
   return { kfeats, errors };
+}
+
+const v3 = {
+  sub: (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  add: (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+  mul: (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k],
+  dot: (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  len: (a: Vec3) => Math.hypot(a[0], a[1], a[2]),
+};
+const n3 = (a: Vec3): Vec3 => v3.mul(a, 1 / (v3.len(a) || 1));
+/** 3B çizgi için profil yönü: profil yüksekliği mümkünse dünya düşeyine (Y) yakın */
+function sketch3dNormal(d: Vec3): Vec3 {
+  const up: Vec3 = Math.abs(d[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
+  return n3(v3.cross(up, d));
+}
+/** 3B eskiz çizgileri: ikiden fazla çizginin buluşmadığı köşeler r yarıçapıyla yuvarlatılır */
+export function sketch3dItems(lines: { a: Vec3; b: Vec3; key: string }[], r: number): MemberItem[] {
+  const L = lines.map((l) => ({ ...l }));
+  const out: MemberItem[] = [];
+  if (r > 1e-9) {
+    const kk = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+    const joints = new Map<string, { i: number; end: 0 | 1 }[]>();
+    lines.forEach((l, i) => ([l.a, l.b] as Vec3[]).forEach((p, e) => {
+      const k = kk(p);
+      if (!joints.has(k)) joints.set(k, []);
+      joints.get(k)!.push({ i, end: e as 0 | 1 });
+    }));
+    for (const list of joints.values()) {
+      if (list.length !== 2) continue;
+      const [A, B] = list;
+      const V = A.end === 0 ? lines[A.i].a : lines[A.i].b;
+      const ua = n3(v3.sub(A.end === 0 ? lines[A.i].b : lines[A.i].a, V));
+      const ub = n3(v3.sub(B.end === 0 ? lines[B.i].b : lines[B.i].a, V));
+      const cos = Math.max(-1, Math.min(1, v3.dot(ua, ub)));
+      const th = Math.acos(cos);
+      if (th > Math.PI - 1e-4 || th < 1e-4) continue;
+      const T = r / Math.tan(th / 2);
+      const la = v3.len(v3.sub(lines[A.i].b, lines[A.i].a)), lb = v3.len(v3.sub(lines[B.i].b, lines[B.i].a));
+      if (T > la / 2 + 1e-6 || T > lb / 2 + 1e-6) throw new Error("3B eskiz köşe yarıçapı için çizgiler çok kısa");
+      const PA = v3.add(V, v3.mul(ua, T)), PB = v3.add(V, v3.mul(ub, T));
+      const bis = n3(v3.add(ua, ub));
+      const C = v3.add(V, v3.mul(bis, r / Math.sin(th / 2)));
+      const M = v3.sub(C, v3.mul(bis, r));
+      if (A.end === 0) L[A.i].a = PA; else L[A.i].b = PA;
+      if (B.end === 0) L[B.i].a = PB; else L[B.i].b = PB;
+      out.push({ k: "a", a: PA, b: PB, m: M, n: n3(v3.cross(ua, ub)), key: `${lines[A.i].key}~${lines[B.i].key}` });
+    }
+  }
+  return [...L.map((l) => ({ k: "l" as const, a: l.a, b: l.b, n: sketch3dNormal(n3(v3.sub(l.b, l.a))), key: l.key })), ...out];
 }
 
 /** Bir eskizin hangi özellik(ler) tarafından kullanıldığı */
