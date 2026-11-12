@@ -10,8 +10,9 @@ import { pictureMesh } from "./picture";
 import { offsetEnts, mirrorEnts, linearPattern, circularPattern, moveEnts, centroid } from "./ops";
 import {
   P, addArc, addCircle, addLine, addPointEnt, addPt, addRel, applicableRelations, arcAngles, cleanup, deleteIds,
-  entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf, entSamples, ellipseGeo,
+  entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf, entSamples, ellipseGeo, replacePoint,
 } from "./model";
+import { extractLoops, segPoints } from "./profile";
 import {
   add2, ang, arcMid, circle3, circleCircle, crs2, d2, dot2, inArc, len2, lineCircle, lineLine, mul2, nearestOnArc,
   nearestOnSeg, niceStep, norm2, normAng, perp, sub2, TAU,
@@ -23,7 +24,7 @@ export type SkTool =
   | "rect3" | "para" | "circle3" | "schamfer" | "extend" | "convert"
   | "offset" | "mirror" | "spat" | "scpat" | "move"
   | "cslot" | "aslot" | "ellipse" | "pellipse" | "parabola" | "spline" | "text" | "isect" | "picture"
-  | "mline" | "crect3" | "conic" | "eqcurve" | "split" | "jog" | "ordinate";
+  | "mline" | "crect3" | "conic" | "eqcurve" | "split" | "jog" | "ordinate" | "block";
 
 /** Seçim üzerinde çalışan işlem araçları */
 export const OP_TOOLS: SkTool[] = ["offset", "mirror", "spat", "scpat", "move"];
@@ -59,6 +60,7 @@ export const TOOL_NAMES: Record<SkTool, string> = {
   aslot: "Yay Kanal",
   picture: "Eskiz Resmi",
   mline: "Orta Nokta Çizgisi",
+  block: "Blok Ekle",
   crect3: "3N Merkez Dikdörtgen",
   conic: "Konik",
   eqcurve: "Denklem Eğrisi",
@@ -75,6 +77,7 @@ export const TOOL_NAMES: Record<SkTool, string> = {
 
 const HINTS: Partial<Record<SkTool, string>> = {
   mline: "Orta nokta → bir uç. Çizgi orta noktaya göre simetrik oluşur.",
+  block: "Listeden bir blok seçin ve eklenecek yere dokunun. Blok kaydetmek için Seç aracıyla öğeleri seçip 'Blok olarak kaydet'e basın.",
   crect3: "Merkez → bir kenarın ortası (yön) → köşe.",
   conic: "Başlangıç → bitiş → teğetlerin kesişimi (tepe). Biçim rho ile ayarlanır.",
   eqcurve: "y = f(x) veya parametrik x(t), y(t) yazın; eğri spline olarak oluşturulur.",
@@ -172,7 +175,7 @@ export class SketchEditor implements InputHandler {
     cn: 6, ctotal: 360,
     mdx: 20, mdy: 0, mang: 0, mcopy: false, mscale: 1,
     text: "İMAJ", textSize: 10, textAngle: 0,
-    rho: 0.6, ordDir: "h" as "h" | "v", arcLen: false, edgeDim: false,
+    rho: 0.6, ordDir: "h" as "h" | "v", arcLen: false, edgeDim: false, block: "",
     eqMode: "y" as "y" | "t", eqY: "20*sin(x*6)", eqX: "t", eqYt: "t*t/50", eqA: 0, eqB: 60, eqN: 24,
     quickDim: (() => {
       try {
@@ -194,6 +197,7 @@ export class SketchEditor implements InputHandler {
   }
 
   dispose() {
+    document.querySelector(".dim-prompt.quick")?.remove();
     this.clearGroup();
     this.host.viewer.overlay.remove(this.group);
     this.labelBox.remove();
@@ -290,6 +294,7 @@ export class SketchEditor implements InputHandler {
 
   // ---------------- Araçlar ----------------
   setTool(t: SkTool) {
+    document.querySelector(".dim-prompt.quick")?.remove();
     this.finishChain();
     this.tool = t;
     this.st = {};
@@ -729,6 +734,135 @@ export class SketchEditor implements InputHandler {
     }
   }
 
+  /** Açık uçlar (kontrol sonucu): çizimde kırmızı işaretlenir */
+  openEnds: string[] = [];
+
+  /** Eskizi kontrol et ve onar: çakışan noktaları birleştir, sıfır boylu / tekrarlı öğeleri sil, açık uçları göster */
+  repairSketch() {
+    const sk = this.data;
+    const tol = Math.max(1e-6, this.wpp() * 0.5);
+    let merged = 0, zero = 0, dup = 0;
+    const ok = this.op(() => {
+      // yakın noktaları birleştir
+      const ids = Object.keys(sk.pts);
+      for (let i = 0; i < ids.length; i++)
+        for (let j = i + 1; j < ids.length; j++) {
+          const a = sk.pts[ids[i]], b = sk.pts[ids[j]];
+          if (!a || !b) continue;
+          if (Math.hypot(a.x - b.x, a.y - b.y) < tol) {
+            replacePoint(sk, ids[j], ids[i]);
+            delete sk.pts[ids[j]];
+            merged++;
+          }
+        }
+      // orijine çakışanlar
+      for (const id of Object.keys(sk.pts)) {
+        const q = sk.pts[id];
+        if (Math.hypot(q.x, q.y) < tol) {
+          replacePoint(sk, id, ORIGIN);
+          delete sk.pts[id];
+          merged++;
+        }
+      }
+      // sıfır boylu çizgiler
+      const kill: string[] = [];
+      for (const e of sk.ents) if (e.t === "line" && (e.p1 === e.p2 || d2(P(sk, e.p1), P(sk, e.p2)) < tol)) kill.push(e.id);
+      zero = kill.length;
+      // tekrarlı öğeler
+      const seen = new Map<string, string>();
+      for (const e of sk.ents) {
+        if (kill.includes(e.id)) continue;
+        const k = e.t === "line" ? `l:${[e.p1, e.p2].sort().join(",")}` : e.t === "circle" ? `c:${e.c}:${e.r.toFixed(6)}` : e.t === "arc" ? `a:${e.c}:${e.s}:${e.e}` : `${e.id}`;
+        if (seen.has(k)) {
+          kill.push(e.id);
+          dup++;
+        } else seen.set(k, e.id);
+      }
+      if (kill.length) deleteIds(sk, kill);
+      // ilişkiler: kendi kendine çakışık
+      sk.rels = sk.rels.filter((r) => !(r.t === "coincident" && r.refs[0] === r.refs[1]));
+      cleanup(sk);
+    }, "Onarım eskizi çözülemez hale getiriyor");
+    // açık uçlar
+    const cnt = new Map<string, number>();
+    for (const e of sk.ents) {
+      if (e.cons) continue;
+      const ends = e.t === "line" ? [e.p1, e.p2] : e.t === "arc" ? [e.s, e.e] : e.t === "parabola" ? [e.s, e.e] : e.t === "spline" ? [e.pts[0], e.pts[e.pts.length - 1]] : e.t === "ellipse" && e.s && e.e ? [e.s, e.e] : [];
+      if (e.t === "spline" && e.pts[0] === e.pts[e.pts.length - 1]) continue;
+      ends.forEach((p) => cnt.set(p, (cnt.get(p) ?? 0) + 1));
+    }
+    this.openEnds = [...cnt].filter(([, n]) => n === 1).map(([p]) => p);
+    const multi = [...cnt].filter(([, n]) => n > 2).length;
+    const { error } = extractLoops(sk);
+    if (ok) this.host.changed();
+    this.render();
+    const parts = [
+      merged ? `${merged} nokta birleştirildi` : "",
+      zero ? `${zero} sıfır boylu çizgi silindi` : "",
+      dup ? `${dup} tekrarlı öğe silindi` : "",
+      this.openEnds.length ? `${this.openEnds.length} açık uç (kırmızı)` : "",
+      multi ? `${multi} noktada 2'den fazla öğe birleşiyor` : "",
+      error ? `Profil: ${error}` : "",
+    ].filter(Boolean);
+    this.host.toast(parts.length ? parts.join(" · ") : "Eskizde sorun bulunamadı");
+  }
+
+  /** Seçili öğeleri blok olarak kütüphaneye kaydet */
+  saveBlock(name: string) {
+    const sk = this.data;
+    const ents = sk.ents.filter((e) => this.sel.has(e.id));
+    if (!ents.length) return this.host.toast("Önce blok yapılacak öğeleri seçin", true);
+    const pids = new Set(ents.flatMap((e) => entPoints(e)));
+    pids.delete(ORIGIN);
+    const pts: Record<string, { x: number; y: number }> = {};
+    let cx = 0, cy = 0;
+    for (const id of pids) {
+      pts[id] = { ...sk.pts[id] };
+      cx += pts[id].x;
+      cy += pts[id].y;
+    }
+    cx /= pids.size || 1;
+    cy /= pids.size || 1;
+    for (const id of pids) {
+      pts[id].x -= cx;
+      pts[id].y -= cy;
+    }
+    const inSet = (r: string) => pids.has(r) || ents.some((e) => e.id === r);
+    const rels = sk.rels.filter((r) => r.t !== "fix" && r.refs.every(inSet));
+    const dims = sk.dims.filter((d) => d.refs.every(inSet)).map((d) => ({ ...d, lp: [d.lp[0] - cx, d.lp[1] - cy] as Vec2 }));
+    const lib = loadBlocks();
+    lib[name] = { pts, ents: JSON.parse(JSON.stringify(ents)), rels: JSON.parse(JSON.stringify(rels)), dims };
+    saveBlocks(lib);
+    this.host.toast(`"${name}" bloğu kaydedildi`);
+  }
+
+  /** Bloğu verilen noktaya ekle */
+  private insertBlock(name: string, at: Vec2) {
+    const b = loadBlocks()[name];
+    if (!b) return;
+    const sk = this.data;
+    const map = new Map<string, string>();
+    for (const id of Object.keys(b.pts)) {
+      const n = nid(sk, "p");
+      map.set(id, n);
+      sk.pts[n] = { x: b.pts[id].x + at[0], y: b.pts[id].y + at[1] };
+    }
+    const rid = (x: string) => map.get(x) ?? x;
+    for (const e of b.ents) {
+      const n = nid(sk, e.id.replace(/\d+$/, "") || "e");
+      map.set(e.id, n);
+    }
+    for (const e of b.ents) {
+      const c: any = JSON.parse(JSON.stringify(e));
+      c.id = map.get(e.id);
+      for (const k of ["p", "p1", "p2", "c", "s", "e", "a", "k"]) if (typeof c[k] === "string") c[k] = rid(c[k]);
+      if (Array.isArray(c.pts)) c.pts = c.pts.map(rid);
+      sk.ents.push(c);
+    }
+    for (const r of b.rels) sk.rels.push({ ...r, id: nid(sk, "r"), refs: r.refs.map(rid) });
+    for (const d of b.dims) sk.dims.push({ ...d, id: nid(sk, "d"), refs: d.refs.map(rid), lp: [d.lp[0] + at[0], d.lp[1] + at[1]] });
+  }
+
   /** Eskize resim yerleştir (genişlik varsayılan 200 mm, orijin merkezli) */
   setPicture(src: string, aspect: number) {
     this.op(() => (this.data.pic = { src, aspect, x: 0, y: 0, w: 200, rot: 0, op: 0.6 }));
@@ -743,6 +877,14 @@ export class SketchEditor implements InputHandler {
     const st = this.st;
     const sk = this.data;
     switch (this.tool) {
+      case "block": {
+        const name = this.opts.block;
+        if (!name || !loadBlocks()[name]) return this.host.toast("Önce listeden bir blok seçin", true);
+        const at = this.infer(p).p;
+        this.op(() => this.insertBlock(name, at), "Blok eklenemedi");
+        this.host.changed();
+        return this.render();
+      }
       case "mline": {
         if (!st.aPos) {
           st.ainf = this.infer(p);
@@ -2135,6 +2277,53 @@ export class SketchEditor implements InputHandler {
   }
 
   // ---------------- Çizim ----------------
+  /** Kapalı bölgeleri açık renkle gölgelendir (katı oluşturulabilecek profiller) */
+  private shadeRegions() {
+    let loops: any[];
+    try {
+      loops = extractLoops(this.data).loops;
+    } catch {
+      return;
+    }
+    if (!loops.length) return;
+    const ptsOf = (l: any): Vec2[] => {
+      if ("circle" in l) return Array.from({ length: 48 }, (_, i) => [l.circle.c[0] + l.circle.r * Math.cos((i / 48) * TAU), l.circle.c[1] + l.circle.r * Math.sin((i / 48) * TAU)] as Vec2);
+      if ("ellipse" in l) {
+        const { c, rx, ry, rot } = l.ellipse;
+        const cr = Math.cos((rot * Math.PI) / 180), sr = Math.sin((rot * Math.PI) / 180);
+        return Array.from({ length: 48 }, (_, i) => {
+          const a = (i / 48) * TAU, x = rx * Math.cos(a), y = ry * Math.sin(a);
+          return [c[0] + x * cr - y * sr, c[1] + x * sr + y * cr] as Vec2;
+        });
+      }
+      return l.segs.flatMap((sg: any) => segPoints(sg, 12).slice(0, -1));
+    };
+    const inside = (p: Vec2, pl: Vec2[]) => {
+      let c = false;
+      for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
+        const a = pl[i], b = pl[j];
+        if (a[1] > p[1] !== b[1] > p[1] && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) c = !c;
+      }
+      return c;
+    };
+    const polys = loops.map((l) => ({ pts: ptsOf(l), depth: l.depth as number }));
+    const mat = new THREE.MeshBasicMaterial({ color: 0x4dabf7, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
+    for (const outer of polys.filter((q) => q.depth % 2 === 0)) {
+      if (outer.pts.length < 3) continue;
+      const shape = new THREE.Shape(outer.pts.map((q) => new THREE.Vector2(q[0], q[1])));
+      for (const hole of polys.filter((q) => q.depth === outer.depth + 1 && q.pts.length > 2 && inside(q.pts[0], outer.pts)))
+        shape.holes.push(new THREE.Path(hole.pts.map((q) => new THREE.Vector2(q[0], q[1]))));
+      const geo = new THREE.ShapeGeometry(shape);
+      const m = new THREE.Mesh(geo, mat);
+      const f = this.frame;
+      const x = new THREE.Vector3(...f.x), n = new THREE.Vector3(...f.n), y = new THREE.Vector3().crossVectors(n, x);
+      m.matrixAutoUpdate = false;
+      m.matrix.copy(new THREE.Matrix4().makeTranslation(...f.o).multiply(new THREE.Matrix4().makeBasis(x, y, n)));
+      m.renderOrder = -5;
+      this.group.add(m);
+    }
+  }
+
   private clearGroup() {
     for (const c of [...this.group.children]) {
       this.group.remove(c);
@@ -2174,6 +2363,16 @@ export class SketchEditor implements InputHandler {
     const sk = this.data;
     const v = this.host.viewer;
     if (sk.pic) this.group.add(pictureMesh(sk.pic, this.frame, () => this.host.viewer.requestRender()));
+    if (!this.press?.moved) this.shadeRegions();
+    if (this.openEnds.length) {
+      const k = 5 * this.wpp();
+      for (const id of this.openEnds) {
+        if (!sk.pts[id]) continue;
+        const q = P(sk, id);
+        this.addLines([[q[0] - k, q[1] - k], [q[0] + k, q[1] + k]], 0xe03131, 3);
+        this.addLines([[q[0] - k, q[1] + k], [q[0] + k, q[1] - k]], 0xe03131, 3);
+      }
+    }
     // orijin işareti
     const o = 12 * this.wpp();
     this.addLines([[0, 0], [o * 2, 0]], C.origin, 1.5);
@@ -2688,6 +2887,27 @@ export class SketchEditor implements InputHandler {
     const hint = HINTS[this.tool];
     if (hint && (this.tool !== "select" || !this.sel.size)) box.appendChild(h("p", "pm-hint", hint));
 
+    if (this.tool === "block") {
+      const lib = loadBlocks();
+      const names = Object.keys(lib);
+      if (!names.length) box.appendChild(h("p", "pm-hint", "Kütüphanede blok yok."));
+      else {
+        if (!names.includes(this.opts.block)) this.opts.block = names[0];
+        const sel = document.createElement("select");
+        sel.innerHTML = names.map((n) => `<option>${n.replace(/</g, "&lt;")}</option>`).join("");
+        sel.value = this.opts.block;
+        sel.addEventListener("change", () => (this.opts.block = sel.value));
+        box.appendChild(sel);
+        const del = h("button", "btn danger", "Bloğu kütüphaneden sil");
+        del.addEventListener("click", () => {
+          const l = loadBlocks();
+          delete l[this.opts.block];
+          saveBlocks(l);
+          this.renderPanel();
+        });
+        box.appendChild(del);
+      }
+    }
     if (this.tool === "conic") box.appendChild(this.numField("Rho (0,05–0,95)", this.opts.rho, (v) => (this.opts.rho = Math.max(0.05, Math.min(0.95, v)))));
     if (this.tool === "ordinate") {
       const sel = document.createElement("select");
@@ -2862,6 +3082,14 @@ export class SketchEditor implements InputHandler {
         }
         box.appendChild(ul2);
       }
+      if (ids.some((id) => getEnt(sk, id))) {
+        const bb = h("button", "btn", "Blok olarak kaydet");
+        bb.addEventListener("click", () => {
+          const nm = prompt("Blok adı:", "Blok");
+          if (nm) this.saveBlock(nm);
+        });
+        box.appendChild(bb);
+      }
       const row = h("div", "pm-buttons");
       const cons = h("button", "btn", "Yapı geometrisi");
       cons.addEventListener("click", () => this.toggleConstruction());
@@ -3017,4 +3245,19 @@ export class SketchEditor implements InputHandler {
   hasContent() {
     return this.data.ents.length > 0;
   }
+}
+
+// ---------------- Blok kütüphanesi (cihazda) ----------------
+type BlockDef = { pts: Record<string, { x: number; y: number }>; ents: SEnt[]; rels: SketchData["rels"]; dims: SketchData["dims"] };
+export function loadBlocks(): Record<string, BlockDef> {
+  try {
+    return JSON.parse(localStorage.getItem("imajcad.blocks") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+function saveBlocks(b: Record<string, BlockDef>) {
+  try {
+    localStorage.setItem("imajcad.blocks", JSON.stringify(b));
+  } catch {}
 }

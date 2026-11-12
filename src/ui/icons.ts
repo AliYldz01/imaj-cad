@@ -65,6 +65,8 @@ export const ICONS: Record<string, string> = {
   section: s("M4 8l8-4 8 4v8l-8 4-8-4z M2 13h20"),
   material: s("M4 4h16v16H4z M4 9h16 M9 4v16"),
   rename: s("M4 20h4L19 9l-4-4L4 16z M14 6l4 4"),
+  block: s("M4 4h7v7H4z M13 13h7v7h-7z M11 7.5h4.5V13"),
+  repair: s("M14 4a4 4 0 0 0-5 5L3 15l3 3 6-6a4 4 0 0 0 5-5l-2 2-2-1-1-2z"),
   mline: s("M3 19L21 5 M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0"),
   crect3: s("M4 9l9-5 7 11-9 5z M12 12m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0"),
   conic: s("M3 20C6 8 14 5 21 4 M3 20L9 6 21 4"),

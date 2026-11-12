@@ -2957,6 +2957,8 @@ function commands(): Cmd[] {
     skTool("split", "split", "Ayır"),
     skTool("jog", "jog", "Kademe"),
     skTool("ordinate", "ordinate", "Koord. Ölçü"),
+    skTool("block", "block", "Blok Ekle"),
+    { id: "repair", label: "Eskizi Onar", icon: "repair", run: () => (ed ? ed.repairSketch() : toast("Eskiz içinde kullanılır")) },
     {
       id: "picture",
       label: "Eskiz Resmi",
