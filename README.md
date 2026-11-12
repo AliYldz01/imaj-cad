@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.12.1: dikdörtgen merkezine ve model kenarı üzerine yakalama
 - v0.11: şekil sihirbazı, sayıyla çizim, dokunmatik fare, ekstrüzyon önerisi
 
 ## v0.10 — Telefon ve tablet kontrolleri

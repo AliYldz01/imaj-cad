@@ -214,3 +214,4 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | İmleç | Çizim, yakalama, seçilebilir öğe için farklı imleç | ✅ |
 | Model yüzünde eskiz | Yüz kenarlarının köşe/orta/merkezine yakalama (sabit), kenara ölçü ve ilişki | ✅ |
 | Uyandırma | Çizgi ortaları, daire merkezleri, model noktaları → hizalama çizgileri (kare merkezi) | ✅ |
+| Eskiz (v0.12.1) | Dikdörtgen merkezine doğrudan yakalama, model kenarı üzerinde yakalama | ✅ |

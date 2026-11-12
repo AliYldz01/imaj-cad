@@ -153,6 +153,10 @@ interface Inference {
   guides?: Guide[];
   /** model noktasına bağla (sabit) */
   fixAt?: Vec2;
+  /** model kenarı üzerinde (modelLines indeksi) */
+  onModel?: number;
+  /** dikdörtgen merkezi: köşegen uç noktaları */
+  rectC?: [string, string];
   glyph?: string;
   label?: string;
 }
@@ -665,6 +669,9 @@ export class SketchEditor implements InputHandler {
         if (d2(m, p) < tol * 0.8) return { p: m, on: { id: e.id, t: "arc" }, glyph: REL_GLYPH.onCircle, label: "Yay ortası" };
       }
     }
+    // dikdörtgen merkezi
+    for (const r of this.rectCenters())
+      if (!exclude.has(r.a) && d2(r.c, p) < tol * 0.8) return { p: r.c, rectC: [r.a, r.b], glyph: "⊕", label: "Dikdörtgen merkezi" };
     // yakındaki eğriler
     const near: { e: SEnt; t: "line" | "circle" | "arc"; q: Vec2; d: number }[] = [];
     for (const e of sk.ents) {
@@ -766,6 +773,15 @@ export class SketchEditor implements InputHandler {
       }
       return { p: on.q, on: onI, glyph: REL_GLYPH.onLine, label: "Üzerinde" };
     }
+    // 5b) model kenarı üzerinde
+    {
+      let bi = -1, bd = tol * 0.8, bq: Vec2 = p;
+      this.modelLines.forEach((l, i) => {
+        const r = nearestOnSeg(p, l.a, l.b);
+        if (r.d < bd) (bd = r.d), (bi = i), (bq = r.q);
+      });
+      if (bi >= 0) return { p: bq, onModel: bi, glyph: REL_GLYPH.onLine, label: "Model kenarı üzerinde" };
+    }
     // 6) iki hizalama çizgisinin kesişimi
     for (let i = 0; i < close.length; i++)
       for (let j = i + 1; j < close.length; j++) {
@@ -832,6 +848,7 @@ export class SketchEditor implements InputHandler {
           if (d2(m, p) < tol) q = m;
         }
     if (!q) for (const r of this.modelPts) if (d2(r.p, p) < tol) q = r.p;
+    if (!q) for (const r of this.rectCenters()) if (d2(r.c, p) < tol) q = r.c;
     if (!q) {
       const he = this.hitTest(p, this.tolPx * 0.8, { pts: false });
       const e = he && getEnt(sk, he.id);
@@ -877,6 +894,46 @@ export class SketchEditor implements InputHandler {
       this.modelLines.push({ a: toLocal(f, e.s), b: toLocal(f, e.e) });
     }
   }
+  /** kapalı 4 çizgili döngüler (dikdörtgen / paralelkenar): merkez ve köşegen uçları */
+  private rectCenters(): { c: Vec2; a: string; b: string }[] {
+    const sk = this.data;
+    const adj = new Map<string, string[]>();
+    for (const e of sk.ents)
+      if (e.t === "line") {
+        adj.set(e.p1, [...(adj.get(e.p1) ?? []), e.p2]);
+        adj.set(e.p2, [...(adj.get(e.p2) ?? []), e.p1]);
+      }
+    const out: { c: Vec2; a: string; b: string }[] = [];
+    const seen = new Set<string>();
+    for (const [a, na] of adj)
+      for (const b of na)
+        for (const c of adj.get(b) ?? []) {
+          if (c === a) continue;
+          for (const d of adj.get(c) ?? []) {
+            if (d === b || d === a || !(adj.get(d) ?? []).includes(a)) continue;
+            const key = [a, b, c, d].sort().join();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const A = P(sk, a), C = P(sk, c), B = P(sk, b), D = P(sk, d);
+            const m1 = mul2(add2(A, C), 0.5), m2 = mul2(add2(B, D), 0.5);
+            if (d2(m1, m2) < 1e-6) out.push({ c: m1, a, b: c });
+          }
+        }
+    return out;
+  }
+  /** model kenarı için sabit yapı çizgisi (op içinde çağrılır) */
+  private ensureModelLine(ml: { a: Vec2; b: Vec2 }): string {
+    const sk = this.data;
+    const pt = (q: Vec2) => {
+      for (const id of [ORIGIN, ...Object.keys(sk.pts)]) if (d2(P(sk, id), q) < 1e-6) return id;
+      const id = addPt(sk, q);
+      addRel(sk, "fix", [id], { fx: q[0], fy: q[1] });
+      return id;
+    };
+    const a = pt(ml.a), b = pt(ml.b);
+    const ex = sk.ents.find((e) => e.t === "line" && ((e.p1 === a && e.p2 === b) || (e.p1 === b && e.p2 === a)));
+    return ex ? ex.id : addLine(sk, a, b, true).id;
+  }
   /** model kenarını sabitlenmiş yapı çizgisine dönüştür (ölçü/ilişki referansı) */
   private modelLineAt(p: Vec2): string | null {
     const tol = this.tolPx * this.wpp();
@@ -908,6 +965,13 @@ export class SketchEditor implements InputHandler {
       return fid;
     }
     const id = addPt(this.data, inf.p);
+    if (inf.onModel !== undefined && this.modelLines[inf.onModel]) addRel(this.data, "onLine", [id, this.ensureModelLine(this.modelLines[inf.onModel])]);
+    if (inf.rectC) {
+      const [a, b] = inf.rectC;
+      let dg = this.data.ents.find((e) => e.t === "line" && ((e.p1 === a && e.p2 === b) || (e.p1 === b && e.p2 === a)));
+      if (!dg) dg = addLine(this.data, a, b, true);
+      addRel(this.data, "midpoint", [id, dg.id]);
+    }
     if (inf.on) addRel(this.data, inf.on.t === "line" ? "onLine" : "onCircle", [id, inf.on.id]);
     if (inf.on2) addRel(this.data, inf.on2.t === "line" ? "onLine" : "onCircle", [id, inf.on2.id]);
     if (inf.mid) addRel(this.data, "midpoint", [id, inf.mid]);
@@ -1832,13 +1896,11 @@ export class SketchEditor implements InputHandler {
       case "point": {
         const inf = this.infer(p);
         this.op(() => {
-          const id = addPt(sk, inf.p);
-          if (inf.ptId) addRel(sk, "coincident", [id, inf.ptId]);
-          else {
-            if (inf.on) addRel(sk, inf.on.t === "line" ? "onLine" : "onCircle", [id, inf.on.id]);
-            if (inf.on2) addRel(sk, inf.on2.t === "line" ? "onLine" : "onCircle", [id, inf.on2.id]);
-            if (inf.mid) addRel(sk, "midpoint", [id, inf.mid]);
-          }
+          let id: string;
+          if (inf.ptId) {
+            id = addPt(sk, inf.p);
+            addRel(sk, "coincident", [id, inf.ptId]);
+          } else id = this.makePoint(inf);
           addPointEnt(sk, id);
         });
         return;
