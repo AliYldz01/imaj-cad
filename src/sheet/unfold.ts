@@ -247,7 +247,41 @@ export function unfold(body: Shape, t: number, k: number): UnfoldOut {
     }
     void i;
     const off = vmul(m.t1f, (amax / 2) * m.rhoN);
-    const A3 = vadd(vadd(m.p1f, vmul(m.af, zmin)), off), B3 = vadd(vadd(m.p1f, vmul(m.af, zmax)), off);
+    let A3 = vadd(vadd(m.p1f, vmul(m.af, zmin)), off), B3 = vadd(vadd(m.p1f, vmul(m.af, zmax)), off);
+    // büküm çizgisi kendi büküm bölgesinin açınımdaki sınırında bitmeli (bitişik bükümlerin gönyeli köşesinde
+    // bölge sınırı köşegendir; eksen boyunca en uç nokta ile sınırlamak çizgiyi komşu bükümün alanına taşırır)
+    {
+      const a2 = to2(A3), b2 = to2(B3);
+      const dx = b2[0] - a2[0], dy = b2[1] - a2[1];
+      const hits: number[] = [];
+      for (const [j, mj] of maps) {
+        if (mj !== m) continue;
+        for (const e of faceEdges[j]) {
+          const n = String(e.geomType) === "LINE" ? 1 : 24;
+          let prev: Vec2 | null = null;
+          for (let q = 0; q <= n; q++) {
+            const cur = to2(mapP(m, tup(e.pointAt(q / n))));
+            if (prev) {
+              const ex = cur[0] - prev[0], ey = cur[1] - prev[1];
+              const den = dx * ey - dy * ex;
+              if (Math.abs(den) > 1e-12) {
+                const t = ((prev[0] - a2[0]) * ey - (prev[1] - a2[1]) * ex) / den;
+                const u = ((prev[0] - a2[0]) * dy - (prev[1] - a2[1]) * dx) / den;
+                if (u >= -1e-6 && u <= 1 + 1e-6 && t > -0.1 && t < 1.1) hits.push(t);
+              }
+            }
+            prev = cur;
+          }
+        }
+      }
+      if (hits.length >= 2) {
+        const t0 = Math.max(0, Math.min(...hits)), t1 = Math.min(1, Math.max(...hits));
+        if (t1 - t0 > 1e-6) {
+          const D = vsub(B3, A3);
+          [A3, B3] = [vadd(A3, vmul(D, t0)), vadd(A3, vmul(D, t1))];
+        }
+      }
+    }
     bends.push({ a: to2(A3), b: to2(B3), a3: A3, b3: B3, up: m.inner, angle: (amax * 180) / Math.PI, r: m.rin });
   }
 
@@ -325,6 +359,38 @@ export function unfold(body: Shape, t: number, k: number): UnfoldOut {
     l.depth = polys.filter((pl, j) => j !== i && inside(probe, pl)).length;
     area += (l.depth % 2 === 0 ? 1 : -1) * Math.abs(area2(polys[i]));
   });
+  // büküm çizgilerini açınımın malzeme alanına kırp: bitişik bükümler köşede gönyeyle buluşunca
+  // çizgi komşu büküm bölgesine / köşe boşluğuna taşmasın (SolidWorks gibi büküm bölgesinde biter)
+  const material = (q: Vec2) => polys.filter((pl) => inside(q, pl)).length % 2 === 1;
+  for (const bd of bends) {
+    const A = bd.a, B = bd.b;
+    const dx = B[0] - A[0], dy = B[1] - A[1];
+    const ts = [0, 1];
+    for (const pl of polys)
+      for (let i = 0; i < pl.length; i++) {
+        const P = pl[i], Q = pl[(i + 1) % pl.length];
+        const ex = Q[0] - P[0], ey = Q[1] - P[1];
+        const den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-12) continue;
+        const t = ((P[0] - A[0]) * ey - (P[1] - A[1]) * ex) / den;
+        const u = ((P[0] - A[0]) * dy - (P[1] - A[1]) * dx) / den;
+        if (t > 0 && t < 1 && u >= -1e-9 && u <= 1 + 1e-9) ts.push(t);
+      }
+    ts.sort((x, y) => x - y);
+    let t0 = -1, t1 = -1;
+    for (let i = 0; i + 1 < ts.length; i++) {
+      if (ts[i + 1] - ts[i] < 1e-9) continue;
+      const tm = (ts[i] + ts[i + 1]) / 2;
+      if (material([A[0] + dx * tm, A[1] + dy * tm])) {
+        if (t0 < 0) t0 = ts[i];
+        t1 = ts[i + 1];
+      }
+    }
+    if (t0 < 0 || (t0 <= 1e-9 && t1 >= 1 - 1e-9)) continue;
+    const at2 = (t: number): Vec2 => [A[0] + dx * t, A[1] + dy * t];
+    const at3 = (t: number): Vec3 => vadd(bd.a3, vmul(vsub(bd.b3, bd.a3), t));
+    [bd.a, bd.b, bd.a3, bd.b3] = [at2(t0), at2(t1), at3(t0), at3(t1)];
+  }
 
   // doğrulama: hacim ≈ alan × kalınlık
   const vol = measureShapeVolumeProperties(body).volume;

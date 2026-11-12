@@ -379,3 +379,9 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Çift noktalı / çakışık ilişkili köşeyi birleştirip radyüsleme | ✅ |
 | Çizgi–yay ve yay–yay köşesine radyüs | ✅ |
 | Yapı çizgileri köşe sayımına katılmaz | ✅ |
+
+## v0.28
+
+| Özellik | Durum |
+|---|---|
+| Açınımda bitişik büküm çizgilerinin büküm bölgesine kırpılması | ✅ |
