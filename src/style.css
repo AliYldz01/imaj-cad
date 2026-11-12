@@ -414,3 +414,23 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
   #statusbar button.on { background: #fff3bf; }
   #sb-units { padding: 0 6px; border-left: 1px solid #c9d1dc; border-right: 1px solid #c9d1dc; }
 }
+
+/* 3B eskiz bağlam çubuğu (ilişki / ayna / ölçü) */
+.s3-relbar { position: fixed; z-index: 60; width: 286px; max-width: calc(100vw - 8px); background: #fff; border: 1px solid #c9d1dc; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 0 0 6px; font-size: 13px; color: var(--ink); }
+.s3-rb-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 10px; border-bottom: 1px solid #e3e8ee; color: var(--muted); font-size: 12px; }
+.s3-rb-x { border: 0; background: transparent; width: 26px; height: 26px; border-radius: 5px; cursor: pointer; font-size: 14px; color: #556; }
+.s3-rb-x:hover { background: #eef1f5; }
+.s3-rb-sec { padding: 5px 8px 0; }
+.s3-rb-t { font-size: 11px; font-weight: 600; color: var(--primary); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
+.s3-rb-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.s3-rb { border: 1px solid #c9d1dc; background: #f7f9fb; border-radius: 6px; padding: 5px 9px; min-height: 30px; font-size: 13px; cursor: pointer; white-space: nowrap; color: inherit; }
+.s3-rb:hover { background: #e3ecf8; border-color: #9fbbe0; }
+.s3-rb.del { color: var(--danger); border-color: #f1c4c4; }
+@media (pointer: coarse) { .s3-rb { min-height: 38px; padding: 7px 11px; } }
+
+.seg.seg-wrap, .seg-wrap .seg { flex-wrap: wrap; }
+.seg.seg-wrap button, .seg-wrap .seg button { flex: 1 0 30%; min-height: 34px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.pm-relrow { display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 1px 0; font-size: 13px; }
+.pm-relrow > span { flex: 1 1 auto; }
+.pm-relrow .pm-field { flex: 1 1 auto; margin: 2px 0; }
+.btn.rel-x { min-height: 28px; width: 32px; padding: 0; flex: 0 0 32px; }

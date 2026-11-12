@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.30.2: 3B eskiz ilişki çubuğu düzeltildi (başlıklı, gruplu, okunur düğmeler; imlecin üstünde açılır, ikinci seçimi örtmez); panelde Araç seçici ve ilişki listesi düzenlendi
 - v0.30.1: Sağ tık > Dik (Normal To): düzleme / düz yüze (grafik alanda veya ağaçta) karşıdan bakar, ikinci basışta arka taraftan; sağ tık imleç altındaki öğeyi seçer
 - v0.30: Bilgisayarda SolidWorks düzeni: menü çubuğu (Dosya/Düzen/Görünüm/Ekle/Araçlar/Yardım), komut arama, altta sekmeli büyük komut şeridi, görünüm araç çubuğu (bölgeye yakınlaştır, önceki görünüm, kesit, yön), özellik yöneticisi açıkken grafik alanda açılır ağaç, durum çubuğu; tam ekran Esc kilidi 🔒; özelleştirilebilir klavye kısayolları ve 4/8 yönlü fare hareketleri (yazdırılabilir liste), G büyüteç, F5/F9/F11
 - v0.29: Bitişik kenar flanşlarında otomatik dikdörtgen köşe boşaltması (malzeme içte/dışta/büküm dışı): açınımda bükümler köşede birbirine geçmiyor

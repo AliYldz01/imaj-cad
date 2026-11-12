@@ -1987,7 +1987,12 @@ function renderFeaturePM(kind: string) {
       // SolidWorks 3B eskiz araçları
       const gt = group(
         "Araç",
-        segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "arc", t: "Yay" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }, { v: "trim", t: "Kırp" }, { v: "extend", t: "Uzat" }], s3tool.mode, (v) => s3tool.setMode(v as any)),
+        (() => {
+          const sg = segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "arc", t: "Yay" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }, { v: "trim", t: "Kırp" }, { v: "extend", t: "Uzat" }], s3tool.mode, (v) => s3tool.setMode(v as any));
+          sg.classList.add("seg-wrap");
+          sg.querySelector(".seg")?.classList.add("seg-wrap");
+          return sg;
+        })(),
         h("p", "pm-hint", "Seç ile köşe noktası seçince Eskiz radyüsü; nokta/çizgi/yay seçince Ayna (XY/YZ/ZX; bir nokta da seçiliyse düzlem ondan geçer)."),
       );
       // tanım durumu
@@ -2013,22 +2018,22 @@ function renderFeaturePM(kind: string) {
         const nm = (id: string) => (f3.ids.includes(id) ? "N" + (f3.ids.indexOf(id) + 1) : f3.lines.some((l) => l.id === id) ? "Ç" + (f3.lines.findIndex((l) => l.id === id) + 1) : "Y" + ((f3.arcs3 ?? []).findIndex((a) => a.id === id) + 1));
         f3.lines.forEach((l) => {
           if (!l.ax) return;
-          const row = h("div", "pm-row");
-          row.append(h("span", "", `${(REL3_NAMES as any)["along" + l.ax.toUpperCase()]} · ${nm(l.id)}`), button("✕", () => (delete (l as any).ax, s3tool.resolve(), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"));
+          const row = h("div", "pm-relrow");
+          row.append(h("span", "", `${(REL3_NAMES as any)["along" + l.ax.toUpperCase()]} · ${nm(l.id)}`), button("✕", () => (delete (l as any).ax, s3tool.resolve(), renderFeaturePM(kind), drawSketches(), upd()), "btn danger rel-x"));
           rl.appendChild(row);
         });
         (f3.cons3 ?? []).forEach((c, j) => {
-          const row = h("div", "pm-row");
-          row.append(h("span", "", `${REL3_NAMES[c.t]} · ${c.e.map(nm).join(", ")}`), button("✕", () => (f3.cons3!.splice(j, 1), s3tool.resolve(), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"));
+          const row = h("div", "pm-relrow");
+          row.append(h("span", "", `${REL3_NAMES[c.t]} · ${c.e.map(nm).join(", ")}`), button("✕", () => (f3.cons3!.splice(j, 1), s3tool.resolve(), renderFeaturePM(kind), drawSketches(), upd()), "btn danger rel-x"));
           rl.appendChild(row);
         });
         if (rl.childElementCount) body.appendChild(group("İlişkiler", rl));
         const dl = h("div", "pm-feats");
         (f3.dims3 ?? []).forEach((m, j) => {
-          const row = h("div", "pm-row");
+          const row = h("div", "pm-relrow");
           row.append(
             numField(`${m.t === "len" ? "Boy" : m.t === "dist" ? "Mesafe" : m.t === "rad" ? "Yarıçap" : "Açı"} ${m.e.map(nm).join("–")}`, m.v, (v) => s3tool.editDim(m.id, undefined, v), { unit: m.t === "ang" ? "°" : "mm", key: `${f3.id}.dims3[${j}].v` }),
-            button("✕", () => (f3.dims3!.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"),
+            button("✕", () => (f3.dims3!.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger rel-x"),
           );
           dl.appendChild(row);
         });

@@ -587,30 +587,53 @@ export class Sketch3DTool {
   showRelBar(x: number, y: number) {
     document.querySelector(".s3-relbar")?.remove();
     if (!this.sel.length) return;
-    const NAMES: Record<string, string> = { x: "X boyunca", y: "Y boyunca", z: "Z boyunca", parXY: "∥XY", parYZ: "∥YZ", parZX: "∥ZX", cons: "Yapı", par: "Paralel", perp: "Dik", equal: "Eşit", collin: "Doğrusal", fix: "Sabitle", coinc: "Çakışık", mid: "Orta nokta", on: "Üzerinde", tan: "Teğet", fillet: "Radyüs", mirXY: "Ayna XY", mirYZ: "Ayna YZ", mirZX: "Ayna ZX" };
+    const NAMES: Record<string, string> = { x: "X boyunca", y: "Y boyunca", z: "Z boyunca", parXY: "XY'ye paralel", parYZ: "YZ'ye paralel", parZX: "ZX'e paralel", cons: "Yapı geometrisi", par: "Paralel", perp: "Dik", equal: "Eşit", collin: "Doğrusal", fix: "Sabitle", coinc: "Çakışık", mid: "Orta nokta", on: "Üzerinde", tan: "Teğet", fillet: "Radyüs", mirXY: "Ayna XY", mirYZ: "Ayna YZ", mirZX: "Ayna ZX" };
     const bar = document.createElement("div");
-    bar.className = "minibar sw-popup s3-relbar";
-    bar.style.cssText = `position:fixed;z-index:60;left:${Math.max(4, Math.min(innerWidth - 330, x + 14))}px;top:${Math.max(4, y - 58)}px;display:flex;flex-wrap:wrap;gap:4px;max-width:320px`;
-    const add = (t: string, fn: () => void) => {
+    bar.className = "sw-popup s3-relbar";
+    bar.style.left = Math.max(4, Math.min(innerWidth - 300, x + 18)) + "px";
+    bar.style.top = "-9999px";
+    const head = document.createElement("div");
+    head.className = "s3-rb-head";
+    head.innerHTML = `<span>${this.sel.length} öğe seçili</span>`;
+    const x0 = document.createElement("button");
+    x0.className = "s3-rb-x";
+    x0.textContent = "✕";
+    x0.title = "Kapat";
+    x0.addEventListener("click", () => bar.remove());
+    head.appendChild(x0);
+    bar.appendChild(head);
+    const section = (title: string) => {
+      const g = document.createElement("div");
+      g.className = "s3-rb-sec";
+      g.innerHTML = `<div class="s3-rb-t">${title}</div>`;
+      const row = document.createElement("div");
+      row.className = "s3-rb-row";
+      g.appendChild(row);
+      return { g, row };
+    };
+    const add = (row: HTMLElement, t: string, fn: () => void, cls = "") => {
       const b = document.createElement("button");
-      b.className = "sw-sb";
+      b.className = "s3-rb" + (cls ? " " + cls : "");
       b.textContent = t;
-      b.style.minHeight = "34px";
       b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       b.addEventListener("click", () => (bar.remove(), fn()));
-      bar.appendChild(b);
+      row.appendChild(b);
     };
-    for (const o of this.relOptions()) add(NAMES[o] ?? o, () => this.addRel(o));
+    const rel = section("İlişki ekle"), mir = section("Aynala"), dim = section("Ölçü / düzenle");
+    for (const o of this.relOptions()) add(o.startsWith("mir") ? mir.row : rel.row, NAMES[o] ?? o, () => this.addRel(o));
     // seçimden ölçü (SolidWorks: seçili iki öğe → Akıllı Ölçü)
     const S = this.sel;
-    if (S.length === 1 && S[0].k === "l") add("Boy ölçüsü", () => this.addDim("len", [S[0].id], { clientX: x, clientY: y }));
-    if (S.length === 1 && S[0].k === "a") add("Yarıçap ölçüsü", () => this.addDim("rad", [S[0].id], { clientX: x, clientY: y }));
-    if (S.length === 2 && S.every((q) => q.k === "p")) add("Mesafe ölçüsü", () => this.addDim("dist", [S[0].id, S[1].id], { clientX: x, clientY: y }));
-    if (S.length === 2 && S.every((q) => q.k === "l")) add("Açı ölçüsü", () => this.addDim("ang", [S[0].id, S[1].id], { clientX: x, clientY: y }));
-    add("Sil", () => this.deleteSel());
-    add("✕", () => {});
+    if (S.length === 1 && S[0].k === "l") add(dim.row, "Boy ölçüsü", () => this.addDim("len", [S[0].id], { clientX: x, clientY: y }));
+    if (S.length === 1 && S[0].k === "a") add(dim.row, "Yarıçap ölçüsü", () => this.addDim("rad", [S[0].id], { clientX: x, clientY: y }));
+    if (S.length === 2 && S.every((q) => q.k === "p")) add(dim.row, "Mesafe ölçüsü", () => this.addDim("dist", [S[0].id, S[1].id], { clientX: x, clientY: y }));
+    if (S.length === 2 && S.every((q) => q.k === "l")) add(dim.row, "Açı ölçüsü", () => this.addDim("ang", [S[0].id, S[1].id], { clientX: x, clientY: y }));
+    add(dim.row, "Sil", () => this.deleteSel(), "del");
+    for (const sct of [rel, mir, dim]) if (sct.row.childElementCount) bar.appendChild(sct.g);
     bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
     document.body.appendChild(bar);
+    // imlecin üstüne (seçilecek diğer öğeleri örtmesin); sığmazsa altına
+    const hb = bar.offsetHeight;
+    bar.style.top = (y - hb - 18 >= 4 ? y - hb - 18 : Math.min(innerHeight - hb - 4, y + 22)) + "px";
   }
   /** seçime uygun ilişkiler (SolidWorks "İlişki Ekle") */
   relOptions(): string[] {

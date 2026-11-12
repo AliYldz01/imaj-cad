@@ -415,3 +415,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Sağ tık > Dik: grafik alanda düzlem / düz yüz, ağaçta düzlem; eskiz ve özellik panelinde imleç altındaki yüz | ✅ |
 | İkinci Dik basışında ters taraftan bakma (SolidWorks gibi) | ✅ |
 | Sağ tık imleç altındaki düzlemi / yüzü seçer | ✅ |
+
+## v0.30.2
+| Özellik | Durum |
+|---|---|
+| 3B eskiz ilişki çubuğu: başlık + İlişki ekle / Aynala / Ölçü bölümleri, metinler üst üste binmez | ✅ |
+| Çubuk imlecin üstünde açılır (Ctrl ile ikinci öğe seçimini örtmez) | ✅ |
+| 3B eskiz panelinde Araç seçici satırlara sarar, ilişki/ölçü listesinde küçük ✕ | ✅ |
