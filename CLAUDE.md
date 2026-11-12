@@ -29,7 +29,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 3. Teknoloji ve mimari
 
-- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v35`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.28**).
+- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v36`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.29**).
 - **Geometri çekirdeği:** OpenCascade WASM — `replicad` (MIT) + `replicad-opencascadejs` (LGPL), **Web Worker**'da (`src/kernel.worker.ts`). Ham OCC `getOC()` ile.
 - **Eskiz çözücü:** PlaneGCS (`@salusoft89/planegcs`, LGPL) ana iş parçacığında (`src/sketch/solver.ts`).
 - **Görüntü:** three.js ortografik kamera, özel `NavControls` (`src/nav.ts`), kalın çizgiler LineSegments2.
@@ -86,6 +86,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - **v0.19.1:** profili konumlandır penceresi duyarlı (`.pierce-dialog`, SVG viewBox 1000, %100 genişlik), büyük dokunma alanı (görünmez r=62), çakışan noktalar elenir, geçerli delme noktası turuncu.
 - **v0.20 akıllı profil birleşimleri** (yalnız `ori: 2` elemanlar): worker `orientChains` (bağlı segmentleri uç uca aynı yöne çevirir → L/U kanatları köşede ters dönmez), `memberCore` artık gövdeleri döndürür, `memberTool` → `resolveJoints` (T birleşimi: serbest uç başka elemanın iç kısmına değerse o elemanın yüzünde kırpılır; gruplar arası köşe ve 3+ elemanlı köşe: aynı doğrultudaki çift > grup içi köşe çifti > en düşey eleman sürekli sayılır, gerekirse uzatılır, diğerleri `profileSupport` ile yüzünde kırpılır), sonra `applyTool`.
 - **v0.21:** 3B eskiz 2B gibi: `Sketch3DTool.mode` (line/rect/point/select/dim), `sel`, `addRel`, `relOptions`, `addDim`/`editDim`, `deleteSel`, ekran etiketleri `renderLabels` (`.s3-labels`, `.s3-dim` tıkla-düzenle, `.s3-rel`), `solver3d.ts`; PM: Araç seçici, tanım durumu, İlişki Ekle düğmeleri, İlişkiler/Ölçüler listeleri. Worker: `autoRotate` (köşeye gelen tekil elemanı `profileBias` ile 90° adımlarla döndürür; grup `auto` = rot/mirror/alignTo yoksa), X kesişim (`resolveJoints` sonu: sürekli elemanın dış kontur prizmasıyla kesilir, `xSplits` → kesim listesinde `key/2`).
+- **v0.29:** `edgeFlange` dışbükey köşede gönyeye ek olarak dikdörtgen köşe boşaltması (köşe noktası `V + shift·(g.s+h.s)`, kenar `r+t+gap`, yükseklik −t…r); `unfold` sıfır alanlı döngüleri atlar. `sb1` kendini kesme sayısını da yazar (0 beklenir).
 - **v0.28:** `unfold.ts` büküm çizgisi, büküm yüzlerinin açınımdaki sınırıyla kesişimine kırpılır (bitişik bükümlerde gönye köşegeninde biter), ayrıca malzeme alanına kırpma.
 - **v0.27:** 2B eskiz radyüsü: `cornerCluster` (aynı yerdeki ≤1e-4 noktalar + çakışık ilişkileri) → `mergeCorner`; `filletAt` genel: çizgi/yay ofsetlerinin kesişiminden merkez, eğri üzerinde teğet noktaları (çizgi–çizgi, çizgi–yay, yay–yay), yapı geometrisi sayılmaz; pah da kümeyi birleştirir.
 - **v0.26:** 3B otomatik ilişkiler: `commit` model/orijin yakalamasında `fix`, hizalama kılavuzuyla konan noktada `eqX/eqY/eqZ` (solver3d yeni ilişki: iki noktanın aynı koordinatı; Cand `alQ/alK`), dikdörtgen orijinden başlarsa ilk köşe `fix` (`rectFix`).

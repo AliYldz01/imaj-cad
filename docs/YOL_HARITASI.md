@@ -385,3 +385,11 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Özellik | Durum |
 |---|---|
 | Açınımda bitişik büküm çizgilerinin büküm bölgesine kırpılması | ✅ |
+
+## v0.29
+
+| Özellik | Durum |
+|---|---|
+| Bitişik flanşlarda dikdörtgen köşe boşaltması (tüm flanş konumları) | ✅ |
+| Açınımda sıfır alanlı küçük döngülerin atlanması | ✅ |
+| Köşe boşaltma türü seçimi (dairesel / yırtma) | ⬜ |

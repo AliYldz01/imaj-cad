@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.29: Bitişik kenar flanşlarında otomatik dikdörtgen köşe boşaltması (malzeme içte/dışta/büküm dışı): açınımda bükümler köşede birbirine geçmiyor
 - v0.28: Sac açınımında bitişik bükümlerin büküm çizgileri artık kendi büküm bölgesinde (köşedeki gönye sınırında) bitiyor; komşu bükümün alanına taşmıyor
 - v0.27: Eskiz radyüsü düzeltmesi: kırpmadan kalan aynı yerdeki ayrı noktalar ve çakışık ilişkili köşeler birleştirilir; çizgi–yay ve yay–yay köşelerine de radyüs verilir; yapı çizgileri köşe sayısına katılmaz; açıklayıcı uyarılar
 - v0.26: 3B eskizde 2B gibi otomatik ilişkiler: orijine/model köşesine yakalanan nokta sabitlenir, kapanan çizgi dahil eksen ilişkileri, mavi hizalamayla konan noktaya nokta hizalama ilişkisi (≡X/≡Y/≡Z) → orijinden çizilen kare 2 ölçüyle tam tanımlı

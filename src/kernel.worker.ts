@@ -2358,6 +2358,11 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
           if (vdot(dh, g.s) > -1e-6) continue; // içbükey köşe
           const nm = vnorm(vsub(g.s, h.s));
           flange = flange.cut(boxIn(vadd(V, vmul(nm, f.gap / 2)), nm, u, vcross(nm, u), -big, 0, -big, big, -big, big));
+          // köşe boşaltması (SolidWorks dikdörtgen köşe boşaltması): iki büküm bölgesinin köşede üst üste
+          // geldiği kareyi kaldır; böylece açınımda bükümler birbirine geçmez (malzeme içte/dışta/büküm dışı hepsinde)
+          const Q = vadd(V, vmul(vadd(g.s, h.s), shift));
+          const w = r + t + f.gap;
+          flange = flange.cut(boxIn(Q, g.s, h.s, u, -0.01, w, -0.01, w, -t - 0.01, r + 0.001));
         }
     });
     const cuts: Shape[] = [];

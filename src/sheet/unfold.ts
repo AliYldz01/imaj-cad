@@ -339,8 +339,11 @@ export function unfold(body: Shape, t: number, k: number): UnfoldOut {
       return p.t === "l" ? { t: "l", a, b } : { t: "a", a, b, m: (p as any).m };
     });
     const clean = segs.filter((s) => Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) > 1e-7);
+    // köşe boşaltmasından kalan sıfır alanlı küçük döngüleri atla
+    const poly = chain.flatMap(segPts);
+    if (clean.length < 2 || Math.abs(poly.reduce((s, p, i) => { const q = poly[(i + 1) % poly.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0)) < 1e-6) continue;
     loops.push({ segs: clean, depth: 0 });
-    polys.push(chain.flatMap(segPts));
+    polys.push(poly);
   }
   if (!loops.length) throw new Error("Açınım boş");
   // iç içe derinlik ve alan
