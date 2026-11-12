@@ -2938,11 +2938,27 @@ function openPierceDialog(d: any, g: any) {
   const X = (p: Vec2) => pad + (p[0] - x0) * sc + (W - 2 * pad - (x1 - x0) * sc) / 2;
   const Y = (p: Vec2) => W - pad - (p[1] - y0) * sc - (W - 2 * pad - (y1 - y0) * sc) / 2;
   const pts: Vec2[] = [];
-  const add = (p: Vec2) => {
-    if (!pts.some((q) => Math.hypot(X(q) - X(p), Y(q) - Y(p)) < 85)) pts.push([Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]);
+  const kind: number[] = []; // 0 dış, 1 iç, 2 diğer
+  const add = (p: Vec2, k = 2, minPx = 40) => {
+    if (!pts.some((q) => Math.hypot(X(q) - X(p), Y(q) - Y(p)) < minPx)) (pts.push([Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]), kind.push(k));
   };
-  for (const fy of [0.5, 1, 0]) for (const fx of [0.5, 0, 1]) add([x0 + (x1 - x0) * fx, y0 + (y1 - y0) * fy]);
+  // SolidWorks: dış sınırın 9 noktası (merkez + 4 köşe + 4 kenar ortası)
+  for (const fy of [0.5, 1, 0]) for (const fx of [0.5, 0, 1]) add([x0 + (x1 - x0) * fx, y0 + (y1 - y0) * fy], 0, 4);
+  // iç sınır(lar)ın 8 noktası (kutu/boru profil: toplam 17)
   for (const l of loops) {
+    if (l.depth % 2 !== 1) continue;
+    if ("circle" in l) {
+      const { c, r } = l.circle;
+      for (let k = 0; k < 8; k++) add([c[0] + r * Math.cos((k * Math.PI) / 4), c[1] + r * Math.sin((k * Math.PI) / 4)], 1, 4);
+      continue;
+    }
+    const q = sampleLoop(l);
+    const qx = q.map((p) => p[0]), qy = q.map((p) => p[1]);
+    const [a0, a1, b0, b1] = [Math.min(...qx), Math.max(...qx), Math.min(...qy), Math.max(...qy)];
+    for (const fy of [0.5, 1, 0]) for (const fx of [0.5, 0, 1]) if (fx !== 0.5 || fy !== 0.5) add([a0 + (a1 - a0) * fx, b0 + (b1 - b0) * fy], 1, 4);
+  }
+  // diğer köşeler / daire noktaları (L, U, I gibi içi dolu / açık profiller için)
+  if (!loops.some((l) => l.depth % 2 === 1)) for (const l of loops) {
     if ("circle" in l) {
       const { c, r } = l.circle;
       [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].forEach(([dx, dy]) => add([c[0] + dx, c[1] + dy]));
@@ -2954,10 +2970,15 @@ function openPierceDialog(d: any, g: any) {
   const cur: Vec2 | null = ar ? [ar[0] + (g.poff?.[0] ?? 0), ar[1] + (g.poff?.[1] ?? 0)] : null;
   let svg = `<svg viewBox="0 0 ${W} ${W}" style="width:100%;height:auto;max-height:62vh;display:block;margin:0 auto;background:#f6f8fa;border-radius:8px;touch-action:manipulation">`;
   for (const l of loops) svg += `<polygon points="${sampleLoop(l).map((p) => X(p) + "," + Y(p)).join(" ")}" fill="${l.depth % 2 ? "#f6f8fa" : "#c5d3e3"}" stroke="#1f2a37" stroke-width="5"/>`;
+  // yakın noktalar varsa (ince cidar) nokta ve dokunma alanı küçülür
+  const near = pts.map((p, i) => Math.min(999, ...pts.filter((_, j) => j !== i).map((q) => Math.hypot(X(q) - X(p), Y(q) - Y(p)))));
+  const TIP = ["Dış", "İç", "Köşe"];
   pts.forEach((p, k) => {
     const on = cur && Math.hypot(cur[0] - p[0], cur[1] - p[1]) < 0.05;
+    const hr = Math.max(14, Math.min(62, near[k] / 2));
+    const vr = Math.max(9, Math.min(on ? 34 : 26, near[k] / 2 - 3));
     // görünür nokta + parmak için büyük görünmez dokunma alanı
-    svg += `<g class="pp" data-k="${k}" style="cursor:pointer"><circle cx="${X(p)}" cy="${Y(p)}" r="62" fill="transparent" stroke="none"/><circle cx="${X(p)}" cy="${Y(p)}" r="${on ? 34 : 26}" fill="${on ? "#f76707" : "#1c7ed6"}" stroke="#fff" stroke-width="6"/></g>`;
+    svg += `<g class="pp" data-k="${k}" style="cursor:pointer"><title>${TIP[kind[k]]}</title><circle cx="${X(p)}" cy="${Y(p)}" r="${hr}" fill="transparent" stroke="none"/><circle cx="${X(p)}" cy="${Y(p)}" r="${vr}" fill="${on ? "#f76707" : kind[k] === 1 ? "#2f9e44" : "#1c7ed6"}" stroke="#fff" stroke-width="${vr > 15 ? 6 : 3}"/></g>`;
   });
   svg += "</svg>";
   const dlg = h("dialog", "input-dialog pierce-dialog") as HTMLDialogElement;
@@ -2965,7 +2986,7 @@ function openPierceDialog(d: any, g: any) {
   const wrap = h("div", "");
   wrap.innerHTML = svg;
   dlg.appendChild(wrap);
-  dlg.appendChild(h("p", "pm-hint", "Delme noktası olacak köşeye / noktaya dokunun. Profil, iskelet çizgisi bu noktadan geçecek şekilde kayar."));
+  dlg.appendChild(h("p", "pm-hint", "Delme noktası olacak noktaya dokunun: mavi = dış sınır (merkez, köşeler, kenar ortaları), yeşil = iç sınır (köşeler, kenar ortaları). Profil, iskelet çizgisi bu noktadan geçecek şekilde kayar."));
   dlg.appendChild(button("Kapat", () => dlg.close(), "btn"));
   wrap.querySelectorAll<SVGGElement>("g.pp").forEach((c) =>
     c.addEventListener("click", () => {

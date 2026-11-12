@@ -422,3 +422,9 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | 3B eskiz ilişki çubuğu: başlık + İlişki ekle / Aynala / Ölçü bölümleri, metinler üst üste binmez | ✅ |
 | Çubuk imlecin üstünde açılır (Ctrl ile ikinci öğe seçimini örtmez) | ✅ |
 | 3B eskiz panelinde Araç seçici satırlara sarar, ilişki/ölçü listesinde küçük ✕ | ✅ |
+
+## v0.30.3
+| Özellik | Durum |
+|---|---|
+| Profili konumlandır: kutu/boru profilde 17 nokta (merkez, dış 8, iç 8) | ✅ |
+| İnce cidarda nokta ve dokunma alanı otomatik küçülür, ipucu (Dış/İç) | ✅ |
