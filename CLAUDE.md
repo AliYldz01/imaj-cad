@@ -29,7 +29,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 3. Teknoloji ve mimari
 
-- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v14`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.12.1**).
+- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v15`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.12.2**).
 - **Geometri çekirdeği:** OpenCascade WASM — `replicad` (MIT) + `replicad-opencascadejs` (LGPL), **Web Worker**'da (`src/kernel.worker.ts`). Ham OCC `getOC()` ile.
 - **Eskiz çözücü:** PlaneGCS (`@salusoft89/planegcs`, LGPL) ana iş parçacığında (`src/sketch/solver.ts`).
 - **Görüntü:** three.js ortografik kamera, özel `NavControls` (`src/nav.ts`), kalın çizgiler LineSegments2.
@@ -71,6 +71,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 - **v0.12 arayüz ve eskiz:** komut çubuğu **gruplara** ayrıldı (ilk grup hep görünür + grup düğmeleri; telefonda ayrı satır), **tam ekran** düğmesi (⛶) + manifest `fullscreen`, **imleç geri bildirimi** (çizim kalemi, yakalamada sarı nokta, seçilebilir öğede el), eskiz açılan **model yüzünün kenarlarına yakalama** (köşe / kenar ortası / merkez → sabit nokta), Akıllı Ölçü ve Seç ile **model kenarına tıklama** (sabit yapı çizgisine dönüşür), **uyandırma** artık çizgi orta noktaları, daire merkezleri (çevresine gelince) ve model noktalarını da kapsar (iki kenar ortasından hizalama ile kare merkezi bulunur).
 - **v0.12.1:** **dikdörtgen/paralelkenar merkezine doğrudan yakalama** (yapı köşegeni + orta nokta ilişkisi otomatik), **model kenarı üzerinde yakalama** (sabit yapı çizgisi + üzerinde ilişkisi).
+- **v0.12.2:** **Akıllı Ölçü'de tüm noktalar seçilebilir**: çizgi ortası, daire/yay çeyrekleri, yay ortası, kesişim, dikdörtgen merkezi, model köşe/kenar ortası/merkez/kenar üzeri (`virtualPt` → seçilince gerçek nokta + ilişki oluşur); Seç aracında Ctrl+tık ile de aynı noktalar seçilip ilişki verilebilir.
 
 ## 5. Sıradaki işler (öncelik sırasıyla)
 
@@ -82,7 +83,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 ## 6. Test altyapısı
 
 - Testler: `tests/e2e/*.py` (Playwright, Python, Chrome `/usr/bin/google-chrome`, swiftshader). Önce yapı: `npx vite build`, sonra `sh tests/e2e/srv.sh` (4173'te `vite preview` başlatır; sunucu turlar arasında ölür, her seferinde çalıştır). Testleri `tests/e2e` içinden çalıştır (`from h import ...`).
-- Testler `import cmdpatch` ile başlar (komut grubu düğmesini otomatik açar; uygulamada `__app.showCmd(başlık)`). `ui1` (gruplar, model kenarı yakalama, imleç), `rc1` (dikdörtgen merkezi, model kenarı üzerinde).
+- Testler `import cmdpatch` ile başlar (komut grubu düğmesini otomatik açar; uygulamada `__app.showCmd(başlık)`). `ui1` (gruplar, model kenarı yakalama, imleç), `rc1` (dikdörtgen merkezi, model kenarı üzerinde), `dm1` (Akıllı Ölçü sanal noktalar).
 - Önemli testler: `sw1` (SW fare/klavye), `sw3` (çıkarım), `sw4` (yay geçişi, seçim), `mob1` (telefon: CDP ile gerçek parmak/kalem olayları), `tp1` (dokunmatik fare), `wz1` (sihirbaz, sayıyla çizim, öneri), `cube1` (görünüm küpü), `v2`, `t3`–`t10`, `sk1`–`sk5`, `k1`–`k6`, `s1`–`s2`, `w1`–`w8`, `m2`.
 - Kalıplar: kenar tıklama `viewer.toScreen(mesh.edges[i].m)`; eskiz koordinatı → ekran: `sc(x,y)` yardımcıları testlerde var; `window.__app` (mode, viewer, kernel, setDoc…).
 - Mouse ile seçimde artık **tık seçimi değiştirir**, çoklu seçim için Ctrl basılı tutulmalı (testlerde `keyboard.down("Control")`).

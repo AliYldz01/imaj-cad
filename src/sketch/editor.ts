@@ -1080,9 +1080,14 @@ export class SketchEditor implements InputHandler {
       return;
     }
     if (t === "dim") {
-      const h = this.hitTest(p);
-      this.hov = h;
+      const h = this.hitTest(p, this.tolPx, { ents: false });
+      const v = h ? null : this.virtualPt(p);
+      this.hov = h ?? (v ? null : this.hitTest(p));
+      this.st.vpt = v;
       this.render();
+      if (v) this.showBadge(e.clientX, e.clientY, `${v.glyph ?? "•"}  ${v.label}`, v.label);
+      else this.hideBadge();
+      this.setCursor(h || v ? "snap" : this.hov ? "pointer" : "default");
       return;
     }
     const from = this.st.lastPos ?? this.st.aPos ?? null;
@@ -2156,7 +2161,12 @@ export class SketchEditor implements InputHandler {
   }
 
   private selectClick(p: Vec2) {
-    let h = this.hitTest(p);
+    let h = this.hitTest(p, this.tolPx, { ents: false }) ?? (this.tool === "select" && this.mods.add ? (() => {
+      // Ctrl ile: orta nokta / çeyrek / merkez gibi noktalar da seçilebilir (ilişki vermek için)
+      const v = this.virtualPt(p);
+      const id = v && this.realizeVirtual(v);
+      return id ? ({ kind: "pt", id, q: P(this.data, id) } as Hit) : null;
+    })() : null) ?? this.hitTest(p);
     if (!h && this.tool === "select") {
       const ml = this.modelLineAt(p);
       if (ml) h = { kind: "ent", id: ml, q: p };
@@ -2774,10 +2784,33 @@ export class SketchEditor implements InputHandler {
   }
 
   // ---------------- Akıllı ölçü ----------------
+  /** ölçü/seçim için sanal nokta: çizgi ortası, çeyrek, yay ortası, kesişim, dikdörtgen merkezi, model köşe/orta/merkez/kenar */
+  private virtualPt(p: Vec2): Inference | null {
+    const inf = this.infer(p);
+    if (inf.ptId || !inf.label) return null;
+    if (inf.mid || inf.fixAt || inf.rectC || inf.on2 || inf.onModel === undefined && inf.on && (inf.label === "Çeyrek" || inf.label === "Yay ortası")) return inf;
+    return null;
+  }
+  /** sanal noktayı gerçek eskiz noktasına dönüştür (ilişkileriyle) */
+  private realizeVirtual(v: Inference): string | null {
+    let id: string | null = null;
+    this.op(() => {
+      id = this.makePoint(v);
+      if (!getEnt(this.data, id!) && !this.data.ents.some((e) => e.t === "point" && (e as any).p === id) && !this.data.ents.some((e) => entPoints(e).includes(id!))) addPointEnt(this.data, id!);
+    });
+    return id;
+  }
+
   private dimClick(p: Vec2, e: { clientX: number; clientY: number }) {
     const st = this.st;
     st.refs = st.refs ?? [];
-    let h = this.hitTest(p);
+    let h = this.hitTest(p, this.tolPx, { ents: false });
+    if (!h) {
+      const v = this.virtualPt(p);
+      const id = v && this.realizeVirtual(v);
+      if (id) h = { kind: "pt", id, q: P(this.data, id) };
+    }
+    if (!h) h = this.hitTest(p);
     if (!h) {
       const ml = this.modelLineAt(p);
       if (ml) h = { kind: "ent", id: ml, q: p };
