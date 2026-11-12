@@ -21,6 +21,7 @@ import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
+import { type Act, type Dir, DIRS8, comboOf, keyMap, keyOf, dirOf, gestCfg, openCustomize, printList } from "./ui/keys";
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
@@ -888,11 +889,13 @@ function showPM(title: string, ok: () => void, cancel: () => void) {
   document.body.classList.add("sheet");
   pmOk = ok;
   pmCancel = cancel;
+  syncMgr();
 }
 function hidePM() {
   $("#pm").hidden = true;
   $("#pm-body").innerHTML = "";
   $("#side").classList.remove("pm-open");
+  syncMgr();
   document.body.classList.toggle("sheet", $("#side").classList.contains("open"));
   hint("");
 }
@@ -4251,7 +4254,10 @@ function renderCommands() {
   if (gi >= groups.length) gi = groups.length > 1 ? 1 : 0;
   const list: Cmd[] = [...groups[0]];
   let chips: HTMLElement | null = null;
-  if (groups.length > 1) {
+  if (groups.length > 1 && innerWidth > 820) {
+    // masaüstü: SolidWorks CommandManager gibi tüm gruplar yan yana
+    for (const g of groups.slice(1)) list.push("sep", ...g);
+  } else if (groups.length > 1) {
     list.push("sep");
     chips = h("div", "cmd-groups");
     groups.slice(1).forEach((g, k) => {
@@ -4398,9 +4404,25 @@ function renderViewbar() {
   btn("right", "Sağdan", () => viewer.viewStd("right"));
   btn("iso", "İzometrik", () => viewer.viewStd("iso"));
   btn("fit", "Ekrana sığdır", () => fitAll());
+  // masaüstü (SolidWorks Heads-up görünüm çubuğu)
+  const desk = (icon: string, title: string, fn: (b: HTMLElement) => void, active = false) => {
+    const b = h("button", "desk" + (active ? " active" : ""));
+    b.innerHTML = ICONS[icon] ?? "";
+    b.title = title;
+    b.addEventListener("click", () => fn(b));
+    bar.appendChild(b);
+  };
+  desk("zarea", "Bölgeye yakınlaştır", () => startZoomArea(), zoomAreaOn);
+  desk("prevview", "Önceki görünüm (Ctrl+Shift+Z)", () => viewer.previousView());
+  desk("section", "Kesit görünümü", () => openSection(), !!section);
+  desk("cube", "Görünüm yönü (Boşluk)", (b) => {
+    const r = b.getBoundingClientRect();
+    mouseXY = [r.left + 90, r.bottom + 70];
+    openOrientation();
+  });
   btn("iso", "Görüntü stili (kenarlı gölgeli, gölgeli, gizli çizgi, tel kafes, saydam)", () => {
     const r = bar.getBoundingClientRect();
-    const box = popupAt(r.left - 200, r.top + 40, "sw-ctx");
+    const box = popupAt(isDesk() ? r.left + r.width / 2 : r.left - 200, r.top + (isDesk() ? r.height + 4 : 40), "sw-ctx");
     const st: [string, typeof viewer.displayStyle][] = [
       ["Kenarlı gölgeli", "shadedEdges"],
       ["Gölgeli", "shaded"],
@@ -4532,69 +4554,15 @@ window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
   if (document.querySelector("dialog[open]")) return;
-  const k = e.key.toLowerCase();
-  const ctrl = e.ctrlKey || e.metaKey;
-  const done = () => e.preventDefault();
-  // görünüm yönleri: Ctrl+1..8
-  if (ctrl && !e.shiftKey && /^[1-8]$/.test(e.key)) {
-    done();
-    const v = ["front", "back", "left", "right", "top", "bottom", "iso"] as const;
-    if (e.key === "8") normalTo();
-    else viewer.viewStd(v[+e.key - 1]);
-    return;
-  }
-  if (ctrl && e.shiftKey && k === "z") return done(), viewer.previousView();
-  if (ctrl && k === "z") return done(), undo();
-  if (ctrl && k === "y") return done(), redo();
-  if (ctrl && k === "s") return done(), fileAct("save");
-  if (ctrl && k === "o") return done(), fileAct("open");
-  if (ctrl && k === "n") return done(), fileAct("new");
-  if (ctrl && (k === "b" || k === "q")) return done(), rebuild();
-  if (ctrl && k === "r") return done(), viewer.requestRender();
-  if (ctrl && k === "a" && mode.k === "sketch") return done(), mode.editor.selectAll();
-  if (ctrl && k === "c" && mode.k === "sketch") return done(), mode.editor.copySel();
-  if (ctrl && k === "v" && mode.k === "sketch") return done(), mode.editor.paste();
-  if (ctrl && k.startsWith("arrow")) {
-    done();
-    const st = 60;
-    const d = { arrowleft: [-st, 0], arrowright: [st, 0], arrowup: [0, -st], arrowdown: [0, st] }[k as "arrowleft"]!;
-    viewer.pushView();
-    return viewer.controls.pan(d[0], d[1]);
-  }
-  if (e.altKey && (k === "arrowleft" || k === "arrowright")) return done(), viewer.pushView(), viewer.controls.roll(k === "arrowleft" ? 15 : -15);
-  if (k.startsWith("arrow")) {
-    done();
-    const a = e.shiftKey ? 90 : 15;
-    const d = { arrowleft: [-a, 0], arrowright: [a, 0], arrowup: [0, -a], arrowdown: [0, a] }[k as "arrowleft"]!;
-    viewer.pushView();
-    return viewer.controls.rotateDeg(d[0], d[1]);
-  }
-  if (ctrl || e.altKey) return;
-  if (e.key === " ") return done(), openOrientation();
-  if (e.key === "F2" && mode.k === "part" && treeSel && getFeat(treeSel)) {
-    done();
-    const f = getFeat(treeSel)!;
-    const n = prompt("Yeni ad", f.name)?.trim();
-    if (n) commitDoc(() => (f.name = n));
-    return;
-  }
-  if (k === "f") return done(), fitAll();
-  if (k === "z") return done(), viewer.zoomStep(e.shiftKey ? 1.25 : 0.8);
-  if (k === "s" && !e.shiftKey) return done(), openShortcutBar();
-  if (k === "a" && mode.k === "sketch") return done(), mode.editor.toggleLineArc();
-  if (/^[0-9.,-]$/.test(e.key) && mode.k === "sketch" && ["line", "centerline", "rect", "crect", "circle"].includes(mode.editor.tool)) return done(), mode.editor.numericEntry(e.key);
-  if (e.key === "Escape") escAction();
-  else if (e.key === "Delete") {
-    if (mode.k === "sketch") mode.editor.deleteSelection();
-    else if (mode.k === "part") deleteSelectedPart();
-  } else if (e.key === "Enter") {
-    if (mode.k === "pm") return pmOk();
-    if (lastCmd) {
-      done();
-      lastCmd();
-      renderCommands();
-    }
-  }
+  const plain = !(e.ctrlKey || e.metaKey || e.altKey);
+  // eskizde sayıyla giriş (rakama bas)
+  if (plain && /^[0-9.,-]$/.test(e.key) && mode.k === "sketch" && ["line", "centerline", "rect", "crect", "circle"].includes(mode.editor.tool)) return e.preventDefault(), mode.editor.numericEntry(e.key);
+  if (e.key === "Escape") return escAction();
+  const c = comboOf(e);
+  const a = c ? keyMap(allActs()).get(c) : undefined;
+  if (!a) return;
+  e.preventDefault();
+  a.run();
 });
 function escAction() {
   {
@@ -4618,20 +4586,17 @@ function escAction() {
 
 // ---------- Fare hareketleri (sağ sürükle) ve bağlam menüsü (sağ tık) ----------
 type GItem = { label: string; icon: string; run: () => void };
-function gestureItems(): Partial<Record<"up" | "down" | "left" | "right", GItem>> {
-  if (mode.k === "sketch")
-    return {
-      up: { label: "Akıllı Ölçü", icon: "dim", run: () => beginSketchCommand("dim") },
-      right: { label: "Daire", icon: "circle", run: () => beginSketchCommand("circle") },
-      down: { label: "Dikdörtgen", icon: "rect", run: () => beginSketchCommand("rect") },
-      left: { label: "Çizgi", icon: "line", run: () => beginSketchCommand("line") },
-    };
-  return {
-    up: { label: "Üstten", icon: "top", run: () => viewer.viewStd("top") },
-    right: { label: "Sağdan", icon: "right", run: () => viewer.viewStd("right") },
-    down: { label: "Alttan", icon: "top", run: () => viewer.viewStd("bottom") },
-    left: { label: "Soldan", icon: "right", run: () => viewer.viewStd("left") },
-  };
+function gestureItems(): Partial<Record<Dir, GItem>> {
+  const cfg = gestCfg();
+  const m = (mode.k === "sketch" ? cfg.sketch : cfg.part) as Partial<Record<Dir, string>>;
+  const by = new Map(allActs().map((a) => [a.id, a]));
+  const out: Partial<Record<Dir, GItem>> = {};
+  const dirs: readonly Dir[] = cfg.n === 4 ? ["up", "right", "down", "left"] : DIRS8;
+  for (const d of dirs) {
+    const a = m[d] ? by.get(m[d]!) : undefined;
+    if (a) out[d] = { label: a.label, icon: a.icon ?? "", run: a.run };
+  }
+  return out;
 }
 function closePopups() {
   document.querySelectorAll(".sw-popup").forEach((x) => x.remove());
@@ -4782,7 +4747,7 @@ function openOrientation() {
 {
   const el = viewer.renderer.domElement;
   let g: { x: number; y: number; guide: HTMLElement | null; dir: string | null; id: number } | null = null;
-  const dirOf = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
+  const gdir = (dx: number, dy: number) => dirOf(dx, dy, gestCfg().n);
   el.addEventListener("pointerdown", (e) => {
     const penBtn = e.pointerType === "pen" && prefs.penButton && (e.button === 2 || (e.buttons & 2) !== 0);
     if (!(e.pointerType === "mouse" && e.button === 2) && !penBtn) return;
@@ -4797,9 +4762,11 @@ function openOrientation() {
     if (!g.guide && Math.hypot(dx, dy) > 12) {
       const items = gestureItems();
       const box = h("div", "sw-popup sw-gesture");
-      box.style.left = g.x - 110 + "px";
-      box.style.top = g.y - 110 + "px";
-      for (const d of ["up", "right", "down", "left"] as const) {
+      const half = gestCfg().n === 8 ? 170 : 110;
+      box.style.left = g.x - half + "px";
+      box.style.top = g.y - half + "px";
+      if (half === 170) box.classList.add("g8");
+      for (const d of DIRS8) {
         const it = items[d];
         if (!it) continue;
         const b = h("div", "sw-g sw-g-" + d);
@@ -4812,7 +4779,7 @@ function openOrientation() {
       g.guide = box;
     }
     if (g.guide) {
-      g.dir = Math.hypot(dx, dy) > 30 ? dirOf(dx, dy) : null;
+      g.dir = Math.hypot(dx, dy) > 30 ? gdir(dx, dy) : null;
       g.guide.querySelectorAll(".sw-g").forEach((x) => x.classList.toggle("on", (x as HTMLElement).dataset.dir === g!.dir));
     }
   });
@@ -4822,7 +4789,7 @@ function openOrientation() {
     g = null;
     st.guide?.remove();
     if (st.guide) {
-      const it = st.dir ? gestureItems()[st.dir as "up"] : null;
+      const it = st.dir ? gestureItems()[st.dir as Dir] : null;
       if (it) {
         lastCmd = it.run;
         it.run();
@@ -4980,27 +4947,66 @@ setInterval(() => {
   }
 }, 250);
 
-// ---------- tam ekran (telefonda tarayıcı çubuğunu gizler) ----------
-{
-  const fsBtn = h("button", "cmd fs-btn", "⛶");
-  fsBtn.title = "Tam ekran";
-  const fsOk = !!document.documentElement.requestFullscreen;
-  const upd = () => (fsBtn.textContent = document.fullscreenElement ? "🗗" : "⛶");
-  fsBtn.addEventListener("click", async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else {
-        await document.documentElement.requestFullscreen({ navigationUI: "hide" } as any);
-        try {
-          await (screen.orientation as any)?.lock?.("any");
-        } catch {}
-      }
-    } catch {
-      toast("Tarayıcı tam ekranı desteklemiyor. Menüden 'Ana ekrana ekle' ile kurarsanız tam ekran açılır.");
+// ---------- tam ekran (telefonda tarayıcı çubuğunu gizler) + Esc kilidi ----------
+let fsLock = (() => {
+  try {
+    return localStorage.getItem("imajcad.fslock") === "1";
+  } catch {
+    return false;
+  }
+})();
+const kbLockOk = () => !!(navigator as any).keyboard?.lock;
+async function applyFsLock() {
+  const kb = (navigator as any).keyboard;
+  try {
+    if (kb?.lock && document.fullscreenElement && fsLock) await kb.lock(["Escape"]);
+    else kb?.unlock?.();
+  } catch {}
+  updFsButtons();
+}
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else {
+      await document.documentElement.requestFullscreen({ navigationUI: "hide" } as any);
+      try {
+        await (screen.orientation as any)?.lock?.("any");
+      } catch {}
     }
-  });
-  document.addEventListener("fullscreenchange", upd);
+  } catch {
+    toast("Tarayıcı tam ekranı desteklemiyor. Menüden 'Ana ekrana ekle' ile kurarsanız tam ekran açılır.");
+  }
+}
+async function toggleFsLock() {
+  if (!kbLockOk()) return toast("Bu tarayıcı Esc kilidini desteklemiyor (Chrome / Edge gerekir)", true);
+  fsLock = !fsLock;
+  try {
+    localStorage.setItem("imajcad.fslock", fsLock ? "1" : "0");
+  } catch {}
+  if (fsLock && !document.fullscreenElement) await toggleFullscreen();
+  await applyFsLock();
+  toast(fsLock ? "Tam ekran kilitli: Esc çıkmaz. Çıkmak için 🔒 düğmesi ya da Esc'yi basılı tutun." : "Kilit açık: Esc tam ekrandan çıkar");
+}
+const fsBtn = h("button", "cmd fs-btn", "⛶");
+const lockBtn = h("button", "cmd lock-btn");
+function updFsButtons() {
+  fsBtn.textContent = document.fullscreenElement ? "🗗" : "⛶";
+  fsBtn.title = document.fullscreenElement ? "Tam ekrandan çık (F11)" : "Tam ekran (F11)";
+  const t = fsLock ? "🔒" : "🔓";
+  lockBtn.textContent = t;
+  lockBtn.classList.toggle("on", fsLock);
+  lockBtn.title = fsLock ? "Tam ekran kilitli: Esc çıkmaz (tıkla: kilidi aç)" : "Tam ekranı kilitle (Esc çıkmasın)";
+  const sb = document.getElementById("sb-lock");
+  if (sb) ((sb.textContent = t), (sb.title = lockBtn.title), sb.classList.toggle("on", fsLock));
+}
+{
+  const fsOk = !!document.documentElement.requestFullscreen;
+  fsBtn.addEventListener("click", () => toggleFullscreen());
+  lockBtn.addEventListener("click", () => toggleFsLock());
+  document.addEventListener("fullscreenchange", () => applyFsLock());
   if (fsOk || isTouchDevice()) $("#globals").prepend(fsBtn);
+  if (fsOk) fsBtn.after(lockBtn);
+  updFsButtons();
 }
 addEventListener("resize", () => renderCommands());
 
@@ -5401,6 +5407,422 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 // Test ve hata ayıklama için
 /** başlığı verilen komutun grubunu aç (testler ve kısayollar için) */
+// =====================================================================
+// Masaüstü arayüzü (SolidWorks gibi): menü çubuğu, komut arama, kısayol kataloğu,
+// durum çubuğu, yönetici sekmeleri / açılır ağaç, bölgeye yakınlaştırma
+// =====================================================================
+const isDesk = () => innerWidth > 820;
+const TAB_NAMES: Record<string, string> = { features: "Özellikler", sketch: "Eskiz", sheet: "Sac Metal", weld: "Kaynaklı", evaluate: "Değerlendir", asm: "Montaj" };
+const TAB_PFX: Record<string, string> = { features: "ft", sketch: "sk", sheet: "sh", weld: "wd", evaluate: "ev", asm: "as" };
+/** şerit komutlarının tümü (sekme sekme) */
+function catalog(): Act[] {
+  const out: Act[] = [];
+  const seen = new Set<string>();
+  const cur = tab;
+  try {
+    for (const t of Object.keys(TAB_NAMES) as (typeof tab)[]) {
+      tab = t;
+      let list: Cmd[] = [];
+      try {
+        list = commands();
+      } catch {}
+      for (const c of list) {
+        if (c === "sep" || seen.has(c.id + "|" + c.label)) continue;
+        seen.add(c.id + "|" + c.label);
+        out.push({
+          id: TAB_PFX[t] + "." + c.id,
+          label: c.label,
+          cat: TAB_NAMES[t],
+          icon: c.icon,
+          run: () => {
+            if (t === "asm" && tab !== "asm") setTab("asm");
+            lastCmd = c.run;
+            c.run();
+            renderCommands();
+          },
+        });
+      }
+    }
+  } finally {
+    tab = cur;
+  }
+  return out;
+}
+function cycleSelFilter() {
+  selFilter = selFilter === "all" ? "face" : selFilter === "face" ? "edge" : "all";
+  toast("Seçim filtresi: " + (selFilter === "all" ? "tümü" : selFilter === "face" ? "yalnız yüz" : "yalnız kenar"));
+}
+function toggleTree() {
+  if (!isDesk()) return $("#tree-btn").click();
+  $("#side").hidden = !$("#side").hidden;
+  viewer.resize();
+}
+let zoomAreaOn = false;
+function startZoomArea() {
+  zoomAreaOn = !zoomAreaOn;
+  hint(zoomAreaOn ? "Bölgeye yakınlaştır: yakınlaştırılacak alanı sürükleyerek çizin (Esc iptal)" : "");
+  renderViewbar();
+}
+function fixedActs(): Act[] {
+  const A = (cat: string) => (id: string, label: string, def: string, run: () => void, icon?: string): Act => ({ id, label, cat, def, run, icon });
+  const F = A("Dosya"), E = A("Düzen"), V = A("Görünüm"), S = A("Eskiz"), T = A("Araçlar");
+  const rot = (dx: number, dy: number) => () => (viewer.pushView(), viewer.controls.rotateDeg(dx, dy));
+  const pan = (dx: number, dy: number) => () => (viewer.pushView(), viewer.controls.pan(dx, dy));
+  const sk = () => (mode.k === "sketch" ? mode.editor : null);
+  const style = (v: typeof viewer.displayStyle) => () => (viewer.setStyle(v), renderViewbar());
+  return [
+    F("f.new", "Yeni parça", "Ctrl+N", () => fileAct("new"), "file"),
+    F("f.open", "Aç…", "Ctrl+O", () => fileAct("open")),
+    F("f.save", "Kaydet", "Ctrl+S", () => fileAct("save")),
+    F("f.wizard", "Şekil sihirbazı…", "", () => fileAct("wizard")),
+    F("f.import", "STEP içe aktar…", "", () => fileAct("import"), "importf"),
+    F("f.step", "STEP dışa aktar", "", () => fileAct("step")),
+    F("f.stl", "STL dışa aktar", "", () => fileAct("stl")),
+    F("f.dxf", "Sac açınımı (DXF)", "", () => fileAct("dxf"), "dxf"),
+    F("f.cutlist", "Kesim listesi…", "", () => fileAct("cutlist"), "cutlist"),
+    E("e.undo", "Geri al", "Ctrl+Z", () => undo(), "undo"),
+    E("e.redo", "Yinele", "Ctrl+Y", () => redo(), "redo"),
+    E("e.rebuild", "Yeniden oluştur", "Ctrl+B", () => rebuild()),
+    E("e.rebuild2", "Zorla yeniden oluştur", "Ctrl+Q", () => rebuild()),
+    E("e.redraw", "Ekranı yenile", "Ctrl+R", () => viewer.requestRender()),
+    E("e.copy", "Kopyala", "Ctrl+C", () => sk()?.copySel()),
+    E("e.paste", "Yapıştır", "Ctrl+V", () => sk()?.paste()),
+    E("e.selall", "Tümünü seç", "Ctrl+A", () => sk()?.selectAll()),
+    E("e.delete", "Sil", "Delete", () => (mode.k === "sketch" ? mode.editor.deleteSelection() : mode.k === "part" ? deleteSelectedPart() : undefined), "del"),
+    E("e.rename", "Yeniden adlandır", "F2", () => {
+      if (mode.k !== "part" || !treeSel || !getFeat(treeSel)) return;
+      const f = getFeat(treeSel)!;
+      const n = prompt("Yeni ad", f.name)?.trim();
+      if (n) commitDoc(() => (f.name = n));
+    }, "rename"),
+    E("e.repeat", "Son komutu tekrarla", "Enter", () => {
+      if (mode.k === "pm") return pmOk();
+      if (lastCmd) lastCmd(), renderCommands();
+    }),
+    S("sk.exit", "Eskizden çık", "", () => (mode.k === "sketch" ? exitSketch(true) : undefined), "exitSketch"),
+    S("sk.toggle", "Çizgi ↔ teğet yay", "A", () => sk()?.toggleLineArc(), "tarc"),
+    S("sk.snaps", "Hızlı yakalama…", "", () => mode.k === "sketch" && openSnapMenu(mouseXY[0], mouseXY[1])),
+    V("v.front", "Önden", "Ctrl+1", () => viewer.viewStd("front"), "front"),
+    V("v.back", "Arkadan", "Ctrl+2", () => viewer.viewStd("back"), "front"),
+    V("v.left", "Soldan", "Ctrl+3", () => viewer.viewStd("left"), "right"),
+    V("v.right", "Sağdan", "Ctrl+4", () => viewer.viewStd("right"), "right"),
+    V("v.top", "Üstten", "Ctrl+5", () => viewer.viewStd("top"), "top"),
+    V("v.bottom", "Alttan", "Ctrl+6", () => viewer.viewStd("bottom"), "top"),
+    V("v.iso", "İzometrik", "Ctrl+7", () => viewer.viewStd("iso"), "iso"),
+    V("v.normal", "Normal (dik bak)", "Ctrl+8", () => normalTo(), "normal"),
+    V("v.orient", "Görünüm yönü menüsü", "Space", () => openOrientation()),
+    V("v.selector", "Görünüm seçici", "Ctrl+Space", () => openOrientation()),
+    V("v.fit", "Ekrana sığdır", "F", () => fitAll(), "fit"),
+    V("v.zin", "Yakınlaştır", "Shift+Z", () => viewer.zoomStep(1.25)),
+    V("v.zout", "Uzaklaştır", "Z", () => viewer.zoomStep(0.8)),
+    V("v.zarea", "Bölgeye yakınlaştır", "", () => startZoomArea(), "zarea"),
+    V("v.prev", "Önceki görünüm", "Ctrl+Shift+Z", () => viewer.previousView(), "prevview"),
+    V("v.mag", "Büyüteç", "G", () => (viewer.setMag(!viewer.mag), toast(viewer.mag ? "Büyüteç açık (G ile kapat)" : "Büyüteç kapalı"))),
+    V("v.rotL", "Sola döndür 15°", "Left", rot(-15, 0)),
+    V("v.rotR", "Sağa döndür 15°", "Right", rot(15, 0)),
+    V("v.rotU", "Yukarı döndür 15°", "Up", rot(0, -15)),
+    V("v.rotD", "Aşağı döndür 15°", "Down", rot(0, 15)),
+    V("v.rot90L", "Sola döndür 90°", "Shift+Left", rot(-90, 0)),
+    V("v.rot90R", "Sağa döndür 90°", "Shift+Right", rot(90, 0)),
+    V("v.rot90U", "Yukarı döndür 90°", "Shift+Up", rot(0, -90)),
+    V("v.rot90D", "Aşağı döndür 90°", "Shift+Down", rot(0, 90)),
+    V("v.rollL", "Saat yönü tersine yuvarla", "Alt+Left", () => (viewer.pushView(), viewer.controls.roll(15))),
+    V("v.rollR", "Saat yönünde yuvarla", "Alt+Right", () => (viewer.pushView(), viewer.controls.roll(-15))),
+    V("v.panL", "Sola kaydır", "Ctrl+Left", pan(-60, 0)),
+    V("v.panR", "Sağa kaydır", "Ctrl+Right", pan(60, 0)),
+    V("v.panU", "Yukarı kaydır", "Ctrl+Up", pan(0, -60)),
+    V("v.panD", "Aşağı kaydır", "Ctrl+Down", pan(0, 60)),
+    V("v.stEdges", "Kenarlı gölgeli", "", style("shadedEdges")),
+    V("v.stShaded", "Gölgeli", "", style("shaded")),
+    V("v.stHlr", "Gizli çizgileri kaldır", "", style("hlr")),
+    V("v.stHlv", "Gizli çizgiler görünür", "", style("hlv")),
+    V("v.stWire", "Tel kafes", "", style("wire")),
+    V("v.planes", "Düzlemleri göster / gizle", "", () => ((planesOn = !planesOn), updatePlanes(), renderViewbar()), "planes"),
+    V("v.tree", "Özellik ağacını göster / gizle", "F9", () => toggleTree(), "tree"),
+    V("v.full", "Tam ekran", "F11", () => toggleFullscreen()),
+    V("v.lock", "Tam ekran Esc kilidi", "", () => toggleFsLock()),
+    T("t.sbar", "Kısayol çubuğu", "S", () => openShortcutBar()),
+    T("t.filter", "Seçim filtresi (tümü / yüz / kenar)", "F5", () => cycleSelFilter(), "select"),
+    T("t.custom", "Özelleştir (kısayollar, fare hareketleri)…", "", () => openCust()),
+    T("t.print", "Kısayol listesini yazdır", "", () => printList(allActs()) || toast("Açılır pencere engellendi")),
+    T("t.input", "Kalem ve dokunmatik ayarları…", "", () => openInputSettings()),
+    T("t.wheel", "Tekerlek yönünü ters çevir", "", () => fileAct("wheel")),
+    T("t.help", "Yardım", "F1", () => ($("#help") as HTMLDialogElement).showModal(), "help"),
+    T("t.welcome", "Başlangıç rehberi…", "", () => fileAct("welcome")),
+  ];
+}
+function allActs(): Act[] {
+  return [...fixedActs(), ...catalog()];
+}
+function openCust() {
+  openCustomize(allActs(), () => buildMenus(), toast);
+}
+
+// ---------- menü çubuğu ----------
+type MI = string | "-" | { sub: string; items: () => Act[] };
+const MENUS: [string, MI[]][] = [
+  ["Dosya", ["f.new", "f.open", "f.save", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist"]],
+  ["Düzen", ["e.undo", "e.redo", "-", "e.rebuild", "e.redraw", "-", "e.copy", "e.paste", "e.delete", "e.selall", "e.rename", "-", "e.repeat"]],
+  ["Görünüm", ["v.front", "v.back", "v.left", "v.right", "v.top", "v.bottom", "v.iso", "v.normal", "-", "v.fit", "v.zin", "v.zout", "v.zarea", "v.prev", "v.mag", "-", { sub: "Görüntü stili", items: () => allActs().filter((a) => a.id.startsWith("v.st")) }, "v.planes", "v.tree", "-", "v.full", "v.lock"]],
+  [
+    "Ekle",
+    [
+      { sub: "Özellikler", items: () => catalog().filter((a) => a.cat === "Özellikler") },
+      { sub: "Eskiz", items: () => catalog().filter((a) => a.cat === "Eskiz") },
+      { sub: "Sac Metal", items: () => catalog().filter((a) => a.cat === "Sac Metal") },
+      { sub: "Kaynaklı", items: () => catalog().filter((a) => a.cat === "Kaynaklı") },
+      { sub: "Montaj", items: () => catalog().filter((a) => a.cat === "Montaj") },
+    ],
+  ],
+  ["Araçlar", [{ sub: "Değerlendir", items: () => catalog().filter((a) => a.cat === "Değerlendir") }, "sk.exit", "sk.snaps", "-", "t.sbar", "t.filter", "-", "t.custom", "t.print", "t.input", "t.wheel"]],
+  ["Yardım", ["t.help", "t.welcome", "t.print"]],
+];
+function closeMenus() {
+  document.querySelectorAll(".menu-drop").forEach((x) => x.remove());
+  document.querySelectorAll("#menus button.open").forEach((x) => x.classList.remove("open"));
+}
+function menuRow(a: Act, box: HTMLElement) {
+  const b = h("button", "mrow");
+  b.innerHTML = a.icon && ICONS[a.icon] ? ICONS[a.icon] : "<i class='mi-ic'></i>";
+  b.appendChild(h("span", "ml", a.label));
+  b.appendChild(h("span", "mk", keyOf(a)));
+  b.addEventListener("click", () => {
+    closeMenus();
+    a.run();
+  });
+  box.appendChild(b);
+  return b;
+}
+function dropAt(x: number, y: number, items: MI[], by: Map<string, Act>) {
+  const box = h("div", "menu-drop");
+  box.style.left = x + "px";
+  box.style.top = y + "px";
+  for (const it of items) {
+    if (it === "-") box.appendChild(h("div", "msep"));
+    else if (typeof it === "string") {
+      const a = by.get(it);
+      if (a) menuRow(a, box).addEventListener("mouseenter", () => ((box as any)._sub?.remove(), ((box as any)._sub = null)));
+    } else {
+      const b = h("button", "mrow msub");
+      b.dataset.sub = "1";
+      b.innerHTML = "<i class='mi-ic'></i>";
+      b.appendChild(h("span", "ml", it.sub));
+      b.appendChild(h("span", "mk", "▸"));
+      const open = () => {
+        (box as any)._sub?.remove();
+        const r = b.getBoundingClientRect();
+        const sub = dropAt(r.right - 2, r.top, [], by);
+        it.items().forEach((a) => menuRow(a, sub));
+        document.body.appendChild(sub);
+        (box as any)._sub = sub;
+        requestAnimationFrame(() => {
+          const s = sub.getBoundingClientRect();
+          if (s.bottom > innerHeight - 4) sub.style.top = Math.max(4, innerHeight - 4 - s.height) + "px";
+          if (s.right > innerWidth) sub.style.left = r.left - s.width + 2 + "px";
+        });
+      };
+      b.addEventListener("mouseenter", open);
+      b.addEventListener("click", (e) => (e.stopPropagation(), open()));
+      box.appendChild(b);
+    }
+  }
+  return box;
+}
+function buildMenus() {
+  const nav = $("#menus");
+  nav.innerHTML = "";
+  for (const [name, items] of MENUS) {
+    const b = h("button", "", name);
+    const open = () => {
+      closeMenus();
+      b.classList.add("open");
+      const r = b.getBoundingClientRect();
+      const by = new Map(allActs().map((a) => [a.id, a]));
+      document.body.appendChild(dropAt(r.left, r.bottom, items, by));
+    };
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (b.classList.contains("open")) closeMenus();
+      else open();
+    });
+    b.addEventListener("mouseenter", () => {
+      if (document.querySelector("#menus button.open") && !b.classList.contains("open")) open();
+    });
+    nav.appendChild(b);
+  }
+}
+buildMenus();
+addEventListener("pointerdown", (e) => {
+  const t = e.target as HTMLElement;
+  if (!t.closest?.(".menu-drop") && !t.closest?.("#menus")) closeMenus();
+  if (!t.closest?.("#cmd-search-box")) document.querySelector(".search-drop")?.remove();
+});
+addEventListener("keydown", (e: KeyboardEvent) => {
+  if (e.key === "Escape") {
+    closeMenus();
+    if (zoomAreaOn) startZoomArea();
+  }
+});
+
+// ---------- komut arama (SOLIDWORKS Search Commands) ----------
+{
+  const inp = $("#cmd-search") as HTMLInputElement;
+  let hits: Act[] = [];
+  let sel = 0;
+  const show = () => {
+    document.querySelector(".search-drop")?.remove();
+    const q = inp.value.trim().toLocaleLowerCase("tr");
+    if (!q) return;
+    hits = allActs()
+      .filter((a) => a.label.toLocaleLowerCase("tr").includes(q) || a.cat.toLocaleLowerCase("tr").includes(q))
+      .sort((a, b) => +!a.label.toLocaleLowerCase("tr").startsWith(q) - +!b.label.toLocaleLowerCase("tr").startsWith(q))
+      .slice(0, 14);
+    sel = Math.min(sel, Math.max(0, hits.length - 1));
+    const r = inp.getBoundingClientRect();
+    const box = h("div", "menu-drop search-drop");
+    box.style.left = Math.min(r.left, innerWidth - 330) + "px";
+    box.style.top = r.bottom + 2 + "px";
+    if (!hits.length) box.appendChild(h("div", "mempty", "Sonuç yok"));
+    hits.forEach((a, i) => {
+      const b = h("button", "mrow" + (i === sel ? " on" : ""));
+      b.innerHTML = a.icon && ICONS[a.icon] ? ICONS[a.icon] : "<i class='mi-ic'></i>";
+      b.appendChild(h("span", "ml", a.label));
+      b.appendChild(h("span", "mk", (keyOf(a) ? keyOf(a) + " · " : "") + a.cat));
+      b.addEventListener("click", () => run(a));
+      box.appendChild(b);
+    });
+    document.body.appendChild(box);
+  };
+  const run = (a: Act) => {
+    document.querySelector(".search-drop")?.remove();
+    inp.value = "";
+    inp.blur();
+    a.run();
+  };
+  inp.addEventListener("input", () => ((sel = 0), show()));
+  inp.addEventListener("focus", show);
+  inp.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "ArrowDown") (sel = Math.min(hits.length - 1, sel + 1)), show(), e.preventDefault();
+    else if (e.key === "ArrowUp") (sel = Math.max(0, sel - 1)), show(), e.preventDefault();
+    else if (e.key === "Enter" && hits[sel]) run(hits[sel]);
+    else if (e.key === "Escape") (inp.value = ""), show(), inp.blur();
+  });
+}
+
+// ---------- yönetici sekmeleri ve açılır özellik ağacı ----------
+$('#mgr-tabs [data-m="tree"]').innerHTML = ICONS.tree;
+$('#mgr-tabs [data-m="pm"]').innerHTML = ICONS.pmgr;
+// şeritte tekerlek = yatay kaydırma
+$("#cmds").addEventListener("wheel", (e) => {
+  const c = e.currentTarget as HTMLElement;
+  if (c.scrollWidth > c.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) (c.scrollLeft += e.deltaY), e.preventDefault();
+}, { passive: false });
+$('#mgr-tabs [data-m="tree"]').addEventListener("click", () => {
+  const tp = $("#tree-panel");
+  if (tp.classList.contains("flyout")) tp.classList.toggle("collapsed");
+});
+function syncMgr() {
+  const side = $("#side"), tp = $("#tree-panel");
+  const pmOpen = side.classList.contains("pm-open");
+  if (isDesk() && pmOpen) {
+    if (tp.parentElement !== $("#view")) $("#view").appendChild(tp);
+    tp.classList.add("flyout");
+  } else {
+    if (tp.parentElement !== side) $("#pm").before(tp);
+    tp.classList.remove("flyout", "collapsed");
+  }
+  $('#mgr-tabs [data-m="tree"]').classList.toggle("on", !pmOpen);
+  $('#mgr-tabs [data-m="pm"]').classList.toggle("on", pmOpen);
+}
+$("#part-name").addEventListener("click", () => {
+  const tp = $("#tree-panel");
+  if (tp.classList.contains("flyout")) tp.classList.toggle("collapsed");
+});
+addEventListener("resize", () => syncMgr());
+
+// ---------- durum çubuğu ----------
+{
+  const st = $("#status");
+  const place = () => {
+    const sb = $("#statusbar");
+    if (isDesk()) {
+      if (st.parentElement !== sb) sb.prepend(st);
+    } else if (st.parentElement !== $("#view")) $("#viewbar").before(st);
+  };
+  place();
+  addEventListener("resize", place);
+  $("#sb-lock").addEventListener("click", () => toggleFsLock());
+  $("#sb-keys").addEventListener("click", () => openCust());
+  updFsButtons();
+  let last = "";
+  setInterval(() => {
+    if (!isDesk()) return;
+    let m = "";
+    if (asmUI?.on) m = "Montaj düzenleniyor";
+    else if (mode.k === "sketch") m = "Eskiz düzenleniyor · " + (TOOL_NAMES[mode.editor.tool] ?? mode.editor.tool);
+    else if (mode.k === "pm") m = "Özellik: " + ($("#pm-title").textContent || "");
+    else if (mode.k === "pickSketchPlane") m = "Eskiz düzlemi seçin";
+    else if (mode.k === "measure") m = "Ölçüm";
+    else if (mode.k === "section") m = "Kesit görünümü";
+    else if (mode.k === "flat") m = "Açınım görünümü";
+    else m = "Düzenleniyor: " + doc.name;
+    let sel = "";
+    if (mode.k === "sketch") sel = mode.editor.sel.size ? mode.editor.sel.size + " öğe seçili" : "";
+    else {
+      const n = psel.faces.size + psel.edges.size;
+      sel = n ? `${psel.faces.size} yüz, ${psel.edges.size} kenar seçili` : treeSel && getFeat(treeSel) ? getFeat(treeSel)!.name + " seçili" : "";
+    }
+    if (selFilter !== "all") sel += (sel ? " · " : "") + "Filtre: " + (selFilter === "face" ? "yüz" : "kenar");
+    const k = m + "|" + sel;
+    if (k === last) return;
+    last = k;
+    $("#sb-mode").textContent = m;
+    $("#sb-sel").textContent = sel;
+  }, 300);
+}
+
+// ---------- bölgeye yakınlaştır: sol tuşla dikdörtgen ----------
+{
+  let st: { x: number; y: number; el: HTMLElement } | null = null;
+  const v = $("#view");
+  v.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!zoomAreaOn || e.button !== 0 || (e.target as HTMLElement) !== viewer.renderer.domElement) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const el = h("div", "zoom-rect");
+      document.body.appendChild(el);
+      st = { x: e.clientX, y: e.clientY, el };
+      v.setPointerCapture?.(e.pointerId);
+    },
+    true,
+  );
+  v.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!st) return;
+      e.stopPropagation();
+      const x0 = Math.min(st.x, e.clientX), y0 = Math.min(st.y, e.clientY);
+      Object.assign(st.el.style, { left: x0 + "px", top: y0 + "px", width: Math.abs(e.clientX - st.x) + "px", height: Math.abs(e.clientY - st.y) + "px" });
+    },
+    true,
+  );
+  v.addEventListener(
+    "pointerup",
+    (e) => {
+      if (!st) return;
+      e.stopPropagation();
+      st.el.remove();
+      viewer.zoomRect(st.x, st.y, e.clientX, e.clientY);
+      st = null;
+      startZoomArea();
+    },
+    true,
+  );
+}
+
 function showCmd(title: string) {
   const all = commands();
   let g = 0;

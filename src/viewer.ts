@@ -415,7 +415,7 @@ export class Viewer {
       tc.style.left = d.x + "px";
       tc.style.top = d.y + "px";
     }
-    if (!prefs.loupe || d.type === "tp" || (this.loupeOk && !this.loupeOk())) return void (lc.style.display = "none");
+    if (!this.mag && (!prefs.loupe || d.type === "tp" || (this.loupeOk && !this.loupeOk()))) return void (lc.style.display = "none");
     const src = this.renderer.domElement;
     const r = src.getBoundingClientRect();
     const sx = src.width / r.width;
@@ -515,8 +515,40 @@ export class Viewer {
     this.camera.updateMatrixWorld();
     this.requestRender();
   }
+  /** Ekran dikdörtgenine yakınlaştır (Bölgeye Yakınlaştır) */
+  zoomRect(x0: number, y0: number, x1: number, y1: number) {
+    const r = this.container.getBoundingClientRect();
+    const w = Math.abs(x1 - x0), hh = Math.abs(y1 - y0);
+    if (w < 4 || hh < 4) return;
+    this.pushView();
+    const tgt = this.controls.target;
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(dir, tgt);
+    const p = new THREE.Vector3();
+    if (!this.ray((x0 + x1) / 2, (y0 + y1) / 2).ray.intersectPlane(pl, p)) return;
+    const d = p.sub(tgt);
+    tgt.add(d);
+    this.camera.position.add(d);
+    this.camera.zoom *= Math.min(r.width / w, r.height / hh);
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+    this.requestRender();
+  }
+  /** fare büyüteci (G) */
+  mag = false;
+  setMag(on: boolean) {
+    this.mag = on;
+    if (!on) return this.setDrawPt(null);
+    const mv = (e: PointerEvent) => {
+      if (!this.mag) return removeEventListener("pointermove", mv);
+      if (e.pointerType === "mouse") this.setDrawPt(e);
+    };
+    addEventListener("pointermove", mv);
+  }
   /** Ekran merkezine göre yakınlaştır / uzaklaştır */
   zoomStep(f: number) {
+    this.pushView();
     const r = this.container.getBoundingClientRect();
     this.controls.zoomAt(f, r.left + r.width / 2, r.top + r.height / 2);
   }

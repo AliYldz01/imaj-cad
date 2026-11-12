@@ -8,7 +8,10 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: logs.append(str(e)))
     pg.goto('http://localhost:4173/'); wait_ready(pg); time.sleep(0.4)
     print("chips:", pg.locator("#cmds .cmd-chip").all_inner_texts(), "items:", pg.locator("#cmds .cmd").count())
-    pg.click("#cmds .cmd-chip:has-text('Detay')"); print("after Detay:", pg.locator("#cmds .cmd .lbl").all_inner_texts()[:8])
+    print("desktop all groups:", pg.locator("#cmds button[title='Radyüs']").count() == 1 and pg.locator("#cmds .cmd-chip").count() == 0)
+    pg.set_viewport_size({"width":800,"height":900}); time.sleep(0.3)  # tablet/telefon: grup düğmeleri
+    pg.click(".cmd-chip:has-text('Detay')"); print("after Detay:", pg.locator("#cmds .cmd .lbl").all_inner_texts()[:8])
+    pg.set_viewport_size({"width":1400,"height":900}); time.sleep(0.3)
     run(pg, "box", [sketch("s1","S",TOP,lambda pt,line,rect,c,t: rect(-50,-30,50,30)), ext("e1","s1",20)])
     # üst yüzde eskiz
     pg.evaluate("window.__app.viewer.viewStd('top')"); time.sleep(0.2)

@@ -393,3 +393,18 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Bitişik flanşlarda dikdörtgen köşe boşaltması (tüm flanş konumları) | ✅ |
 | Açınımda sıfır alanlı küçük döngülerin atlanması | ✅ |
 | Köşe boşaltma türü seçimi (dairesel / yırtma) | ⬜ |
+
+## v0.30 — Bilgisayar arayüzü (SolidWorks gibi)
+| Özellik | Durum |
+|---|---|
+| Menü çubuğu (Dosya, Düzen, Görünüm, Ekle, Araçlar, Yardım; alt menüler, kısayol gösterimi) | ✅ |
+| Komut arama kutusu (tüm komutlar, ok tuşları + Enter) | ✅ |
+| CommandManager: büyük simgeli şerit, tüm gruplar yan yana, sekmeler şeridin altında, tekerlekle yatay kaydırma | ✅ |
+| Heads-up görünüm çubuğu (sığdır, bölgeye yakınlaştır, önceki görünüm, kesit, görünüm yönü, stil, düzlemler) | ✅ |
+| Yönetici sekmeleri (Ağaç / Özellik) + özellik açıkken grafik alanda açılır ağaç | ✅ |
+| Durum çubuğu (mod, seçim, filtre, birim, kilit, özelleştir) | ✅ |
+| Tam ekran Esc kilidi (Keyboard Lock API; Chrome/Edge) | ✅ |
+| Özelleştir: klavye kısayolları (tüm komutlar, çakışma uyarısı, varsayılana dön), fare hareketleri 4/8 yön, yazdırılabilir liste | ✅ |
+| Yeni kısayollar: G büyüteç, F5 seçim filtresi, F9 ağaç, F11 tam ekran, Ctrl+Boşluk, F1 yardım | ✅ |
+| Telefon/tablet düzeni değişmedi (≤820 px) | ✅ |
+| Seçim kırıntıları (breadcrumbs), görev bölmesi (sağ panel) | ⬜ |
