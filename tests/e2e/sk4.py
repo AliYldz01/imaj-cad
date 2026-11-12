@@ -1,3 +1,4 @@
+import cmdpatch
 import sys, time, json
 from playwright.sync_api import sync_playwright
 URL=sys.argv[1]; out="/home/claude/tests/t8_"

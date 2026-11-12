@@ -1,3 +1,4 @@
+import cmdpatch
 from h import *
 def mem(id, segs, std="kutu", size="40x40x3", corner="miter", **kw):
     f={"id":id,"type":"member","name":id,"segs":[{"sk":s,"ent":e} for s,e in segs],"std":std,"size":size,"align":"c","mirror":False,"rot":0,"corner":corner,"gap":0}; f.update(kw); return f

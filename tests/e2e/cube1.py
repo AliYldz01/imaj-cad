@@ -1,3 +1,4 @@
+import cmdpatch
 import time
 from playwright.sync_api import sync_playwright
 from h import wait_ready

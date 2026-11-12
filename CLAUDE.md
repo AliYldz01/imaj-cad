@@ -29,7 +29,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 3. Teknoloji ve mimari
 
-- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v12`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.11**).
+- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v13`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.12**).
 - **Geometri çekirdeği:** OpenCascade WASM — `replicad` (MIT) + `replicad-opencascadejs` (LGPL), **Web Worker**'da (`src/kernel.worker.ts`). Ham OCC `getOC()` ile.
 - **Eskiz çözücü:** PlaneGCS (`@salusoft89/planegcs`, LGPL) ana iş parçacığında (`src/sketch/solver.ts`).
 - **Görüntü:** three.js ortografik kamera, özel `NavControls` (`src/nav.ts`), kalın çizgiler LineSegments2.
@@ -69,6 +69,8 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - **v0.10.1:** **Görünüm küpü tüm cihazlarda** (yüz = dik, kenar = 45°, köşe = izometrik, sürükle = döndür); eski Önden/Üstten/Sağdan/İzometrik düğmeleri gizlendi.
 - **v0.11 kalemsiz kullanım:** şekil sihirbazı (plaka, flanş, burç, kademeli mil, L braket, kutu profil, blok), sayıyla çizim (rakama bas / 123), dokunmatik fare modu, eskizden çıkınca Ekstrüzyon/Kesme/Döndürme önerisi, seçim filtresi (Tümü/Yüz/Kenar), kaba çizimi düzelt, ilk açılış rehberi.
 
+- **v0.12 arayüz ve eskiz:** komut çubuğu **gruplara** ayrıldı (ilk grup hep görünür + grup düğmeleri; telefonda ayrı satır), **tam ekran** düğmesi (⛶) + manifest `fullscreen`, **imleç geri bildirimi** (çizim kalemi, yakalamada sarı nokta, seçilebilir öğede el), eskiz açılan **model yüzünün kenarlarına yakalama** (köşe / kenar ortası / merkez → sabit nokta), Akıllı Ölçü ve Seç ile **model kenarına tıklama** (sabit yapı çizgisine dönüşür), **uyandırma** artık çizgi orta noktaları, daire merkezleri (çevresine gelince) ve model noktalarını da kapsar (iki kenar ortasından hizalama ile kare merkezi bulunur).
+
 ## 5. Sıradaki işler (öncelik sırasıyla)
 
 1. **MONTAJ MODÜLÜ** (sıradaki büyük iş): bileşen ekleme (parça dosyaları / mevcut parça), sabitleme, eşleşmeler (çakışık, paralel, dik, eş merkezli, mesafe, açı, teğet), serbestlik göstergesi, bileşeni sürükleyerek taşıma/döndürme, girişim kontrolü, patlatılmış görünüm, montaj ağacı, BOM (malzeme listesi), STEP montaj dışa aktarma. SolidWorks davranışına uygun olmalı; telefon kontrolleriyle de çalışmalı.
@@ -79,6 +81,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 ## 6. Test altyapısı
 
 - Testler: `tests/e2e/*.py` (Playwright, Python, Chrome `/usr/bin/google-chrome`, swiftshader). Önce yapı: `npx vite build`, sonra `sh tests/e2e/srv.sh` (4173'te `vite preview` başlatır; sunucu turlar arasında ölür, her seferinde çalıştır). Testleri `tests/e2e` içinden çalıştır (`from h import ...`).
+- Testler `import cmdpatch` ile başlar (komut grubu düğmesini otomatik açar; uygulamada `__app.showCmd(başlık)`). `ui1` (gruplar, model kenarı yakalama, imleç).
 - Önemli testler: `sw1` (SW fare/klavye), `sw3` (çıkarım), `sw4` (yay geçişi, seçim), `mob1` (telefon: CDP ile gerçek parmak/kalem olayları), `tp1` (dokunmatik fare), `wz1` (sihirbaz, sayıyla çizim, öneri), `cube1` (görünüm küpü), `v2`, `t3`–`t10`, `sk1`–`sk5`, `k1`–`k6`, `s1`–`s2`, `w1`–`w8`, `m2`.
 - Kalıplar: kenar tıklama `viewer.toScreen(mesh.edges[i].m)`; eskiz koordinatı → ekran: `sc(x,y)` yardımcıları testlerde var; `window.__app` (mode, viewer, kernel, setDoc…).
 - Mouse ile seçimde artık **tık seçimi değiştirir**, çoklu seçim için Ctrl basılı tutulmalı (testlerde `keyboard.down("Control")`).
@@ -105,4 +108,4 @@ Her yayında `public/sw.js` önbellek adını ve `index.html` yardım başlığ�
 
 - **Gerçek kalemle saha testi** (kullanıcının kalemi gelince): kontrol listesi `docs/YOL_HARITASI.md` → "Bekleyen: gerçek kalemle saha testi". Sonuca göre `src/input/prefs.ts` `DEFAULTS` güncellenecek.
 - Tarayıcı sekmesinde Ctrl+1…8 / Ctrl+N tarayıcıya ayrılmış; PWA olarak kurulunca çalışır (kullanıcıya söylendi).
-- Bilinen eksikler: eskizde model köşe noktalarına doğrudan yakalama yok (Varlıkları Dönüştür ile yapılıyor); ölçü Değiştir kutusunda anlık yeniden oluştur yok; sihirbaz eskizlerinde yalnız çap ölçüleri var.
+- Bilinen eksikler: model kenarı **üzerinde** (köşe/orta dışı) yakalama yok; dikdörtgenin merkezi doğrudan değil, iki kenar ortası uyandırılıp hizalama ile bulunuyor; ölçü Değiştir kutusunda anlık yeniden oluştur yok; sihirbaz eskizlerinde yalnız çap ölçüleri var.

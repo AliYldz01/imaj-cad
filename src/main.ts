@@ -509,6 +509,7 @@ const partInput: InputHandler = {
   hover(e) {
     const want = pickWant();
     const hit = viewer.pick(e.clientX, e.clientY, want);
+    viewer.renderer.domElement.style.cursor = hit ? "pointer" : "";
     const same = JSON.stringify(hit && { k: hit.kind, i: (hit as any).index ?? (hit as any).id }) === JSON.stringify(hoverHit && { k: hoverHit.kind, i: (hoverHit as any).index ?? (hoverHit as any).id });
     if (!same) {
       hoverHit = hit;
@@ -3397,6 +3398,7 @@ function commands(): Cmd[] {
     skTool("offset", "offset", "Ötele"),
     skTool("convert", "convert", "Dönüştür"),
     skTool("isect", "isect", "Kesişim Eğr."),
+    "sep",
     skTool("mline", "mline", "Orta N. Çizgi"),
     skTool("crect3", "crect3", "3N Merkez Dikd."),
     skTool("conic", "conic", "Konik"),
@@ -3405,6 +3407,7 @@ function commands(): Cmd[] {
     skTool("jog", "jog", "Kademe"),
     skTool("ordinate", "ordinate", "Koord. Ölçü"),
     skTool("block", "block", "Blok Ekle"),
+    "sep",
     { id: "repair", label: "Eskizi Onar", icon: "repair", run: () => (ed ? ed.repairSketch() : toast("Eskiz içinde kullanılır")) },
     {
       id: "picture",
@@ -3456,10 +3459,49 @@ function commands(): Cmd[] {
 /** Enter ile tekrarlanacak son komut (SolidWorks: Enter = son komutu tekrarla) */
 let lastCmd: (() => void) | null = null;
 
+/** komut grupları: ilk grup hep görünür, diğerleri sekme düğmeleriyle açılır */
+const GROUP_NAMES: Record<string, string[]> = {
+  features: ["", "Detay", "Gelişmiş", "Gövde", "Çoğalt", "Referans"],
+  sketch: ["", "Çiz", "Düzenle", "Özel çizim", "Araçlar", "Desen", "İlişki"],
+  weld: ["", "Eskiz / Kesme", "Liste"],
+  sheet: ["", "Kesme", "Açınım"],
+  evaluate: ["", "Eskiz", "Diğer"],
+};
+const groupSel: Record<string, number> = {};
+let lastGroupTool = "";
 function renderCommands() {
   const box = $("#cmds");
   box.innerHTML = "";
+  const groups: Cmd[][] = [[]];
   for (const c of commands()) {
+    if (c === "sep") {
+      if (groups[groups.length - 1].length) groups.push([]);
+    } else groups[groups.length - 1].push(c);
+  }
+  if (!groups[groups.length - 1].length) groups.pop();
+  const names = GROUP_NAMES[tab] ?? [];
+  // etkin araç hangi gruptaysa onu seç
+  const act = groups.findIndex((g, i) => i > 0 && g.some((c) => c !== "sep" && c.active?.()));
+  const curTool = mode.k === "sketch" ? mode.editor.tool : "";
+  if (act > 0 && curTool !== "select" && curTool !== lastGroupTool) groupSel[tab] = act;
+  lastGroupTool = curTool;
+  let gi = groupSel[tab] ?? 1;
+  if (gi >= groups.length) gi = groups.length > 1 ? 1 : 0;
+  const list: Cmd[] = [...groups[0]];
+  let chips: HTMLElement | null = null;
+  if (groups.length > 1) {
+    list.push("sep");
+    chips = h("div", "cmd-groups");
+    groups.slice(1).forEach((g, k) => {
+      const i = k + 1;
+      const first = g[0] !== "sep" ? g[0].label : "";
+      const c = h("button", "cmd-chip" + (i === gi ? " on" : ""), names[i] || first);
+      c.addEventListener("click", () => ((groupSel[tab] = i), renderCommands()));
+      chips!.appendChild(c);
+    });
+    list.push(...groups[gi]);
+  }
+  for (const c of list) {
     if (c === "sep") {
       box.appendChild(h("div", "cmd-sep"));
       continue;
@@ -3474,6 +3516,21 @@ function renderCommands() {
       renderCommands();
     });
     box.appendChild(b);
+  }
+  let gbar = document.getElementById("cmdgroups");
+  if (!gbar) {
+    gbar = h("div", "");
+    gbar.id = "cmdgroups";
+    box.before(gbar);
+  }
+  gbar.innerHTML = "";
+  if (chips) {
+    if (innerWidth <= 820) gbar.appendChild(chips);
+    else {
+      const sep = box.querySelector(".cmd-sep");
+      if (sep) sep.after(chips);
+      else box.prepend(chips);
+    }
   }
   updateUndo();
 }
@@ -4116,6 +4173,30 @@ setInterval(() => {
   }
 }, 250);
 
+// ---------- tam ekran (telefonda tarayıcı çubuğunu gizler) ----------
+{
+  const fsBtn = h("button", "cmd fs-btn", "⛶");
+  fsBtn.title = "Tam ekran";
+  const fsOk = !!document.documentElement.requestFullscreen;
+  const upd = () => (fsBtn.textContent = document.fullscreenElement ? "🗗" : "⛶");
+  fsBtn.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else {
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" } as any);
+        try {
+          await (screen.orientation as any)?.lock?.("any");
+        } catch {}
+      }
+    } catch {
+      toast("Tarayıcı tam ekranı desteklemiyor. Menüden 'Ana ekrana ekle' ile kurarsanız tam ekran açılır.");
+    }
+  });
+  document.addEventListener("fullscreenchange", upd);
+  if (fsOk || isTouchDevice()) $("#globals").prepend(fsBtn);
+}
+addEventListener("resize", () => renderCommands());
+
 // ---------- görünüm küpü ----------
 const cubeBox = h("div", "vcube");
 const cube = h("div", "cube");
@@ -4424,7 +4505,22 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 }
 
 // Test ve hata ayıklama için
+/** başlığı verilen komutun grubunu aç (testler ve kısayollar için) */
+function showCmd(title: string) {
+  const all = commands();
+  let g = 0;
+  for (const c of all) {
+    if (c === "sep") g++;
+    else if (c.label === title) {
+      if (g > 0) groupSel[tab] = g;
+      renderCommands();
+      return true;
+    }
+  }
+  return false;
+}
 (window as any).__app = {
+  showCmd,
   get doc() { return doc; },
   get mode() { return mode; },
   viewer,

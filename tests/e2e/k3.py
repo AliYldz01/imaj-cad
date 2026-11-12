@@ -1,3 +1,4 @@
+import cmdpatch
 from h import *
 def scr(pg, p):
     return pg.evaluate("""(p)=>{const v=window.__app.viewer; const s=v.toScreen(p); const r=v.renderer.domElement.getBoundingClientRect(); return [r.left+s[0], r.top+s[1]]}""", p)

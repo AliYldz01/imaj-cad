@@ -151,6 +151,8 @@ interface Inference {
   /** zincirdeki önceki eğriye göre ilişki (yeni çizgiye) */
   lineRel?: { t: "perpendicular" | "collinear" | "tangent"; ref: string };
   guides?: Guide[];
+  /** model noktasına bağla (sabit) */
+  fixAt?: Vec2;
   glyph?: string;
   label?: string;
 }
@@ -212,6 +214,9 @@ export class SketchEditor implements InputHandler {
 
   constructor(private host: EditorHost, public frame: Frame, public data: SketchData) {
     host.viewer.overlay.add(this.group);
+    try {
+      this.loadModelRefs();
+    } catch {}
     this.labelBox = document.createElement("div");
     host.viewer.labels.appendChild(this.labelBox);
     this.offRender = host.viewer.onRender(() => this.placeLabels());
@@ -228,6 +233,7 @@ export class SketchEditor implements InputHandler {
     this.offRender();
     this.hideBadge();
     this.boxSel?.el.remove();
+    this.host.viewer.renderer.domElement.style.cursor = "";
   }
 
   // ---------------- Koordinatlar ----------------
@@ -328,6 +334,17 @@ export class SketchEditor implements InputHandler {
     this.hideBadge();
     this.render();
     this.renderPanel();
+  }
+
+  /** imleç: her durumda tepki (çizim / yakalama / seçilebilir öğe) */
+  private curKind = "";
+  setCursor(k: "default" | "pointer" | "draw" | "snap") {
+    if (k === this.curKind) return;
+    this.curKind = k;
+    const cv = this.host.viewer.renderer.domElement;
+    const svg = (dot: boolean) =>
+      `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M16 2v11M16 19v11M2 16h11M19 16h11' stroke='#111' stroke-width='1.5'/>${dot ? "<circle cx='16' cy='16' r='5' fill='#ffd43b' stroke='#e8590c' stroke-width='2'/>" : "<path d='M22 4l6 6-9 9-7 1 1-7z' fill='#fff' stroke='#1c4fd8' stroke-width='1.3'/>"}</svg>`)}") 16 16, crosshair`;
+    cv.style.cursor = k === "pointer" ? "pointer" : k === "draw" ? svg(false) : k === "snap" ? svg(true) : "default";
   }
 
   /** Sayıyla çizim: çizgi (X,Y / uzunluk, açı), dikdörtgen (G, Y), daire (Ø) */
@@ -590,7 +607,7 @@ export class SketchEditor implements InputHandler {
   /** Ctrl basılıyken çıkarım kapalı (SolidWorks) */
   private noInfer = false;
   /** "Uyandırılmış" noktalar: imleç üzerinde bekletilen noktalardan hizalama çizgileri */
-  private wake: string[] = [];
+  private wake: Vec2[] = [];
   private wakeHover: { id: string; t: number } | null = null;
 
   private curveKind(e: SEnt | undefined): "line" | "circle" | "arc" | null {
@@ -633,6 +650,9 @@ export class SketchEditor implements InputHandler {
     // 1) nokta
     const h = this.hitTest(p, this.tolPx, { ents: false, exclude });
     if (h) return { p: h.q, ptId: h.id, glyph: REL_GLYPH.coincident, label: h.id === ORIGIN ? "Orijin" : "Çakışık" };
+    // model kenarlarının köşe / orta / merkez noktaları (sabit noktaya bağlanır)
+    for (const r of this.modelPts)
+      if (d2(r.p, p) < tol) return { p: r.p, fixAt: r.p, glyph: r.k === "m" ? REL_GLYPH.midpoint : REL_GLYPH.coincident, label: r.k === "v" ? "Model köşesi" : r.k === "m" ? "Model kenar ortası" : "Model merkezi" };
     // 2) orta noktalar (çizgi: ilişki eklenir, yay: yalnız konum)
     for (const e of sk.ents) {
       if (exclude.has(e.id)) continue;
@@ -693,9 +713,7 @@ export class SketchEditor implements InputHandler {
         } else G.push({ o: from, d: t, rel: true, ray: true, lineRel: { t: "tangent", ref: prev.id }, label: "Teğet", glyph: REL_GLYPH.tangent });
       }
     }
-    for (const id of this.wake) {
-      if (exclude.has(id) || (id !== ORIGIN && !sk.pts[id])) continue;
-      const o = P(sk, id);
+    for (const o of this.wake) {
       if (from && d2(o, from) < 1e-9) continue;
       G.push({ o, d: [1, 0], rel: false, ray: false, label: "", glyph: "" });
       G.push({ o, d: [0, 1], rel: false, ray: false, label: "", glyph: "" });
@@ -801,19 +819,94 @@ export class SketchEditor implements InputHandler {
 
   /** İmleç bir noktanın üzerinde ~0.3 s bekleyince o nokta "uyanır" */
   private trackWake(p: Vec2) {
+    // uyandırılabilir: noktalar, çizgi orta noktaları, model köşe/orta/merkezleri, üzerinde durulan dairenin merkezi
+    const tol = this.tolPx * this.wpp();
+    const sk = this.data;
+    let q: Vec2 | null = null;
     const h = this.hitTest(p, this.tolPx, { ents: false });
-    if (!h) return void (this.wakeHover = null);
-    const now = performance.now();
-    if (!this.wakeHover || this.wakeHover.id !== h.id) this.wakeHover = { id: h.id, t: now };
-    else if (now - this.wakeHover.t > 250 && !this.wake.includes(h.id)) {
-      this.wake.unshift(h.id);
-      this.wake.length = Math.min(this.wake.length, 4);
+    if (h) q = h.q;
+    if (!q)
+      for (const e of sk.ents)
+        if (e.t === "line") {
+          const m = mul2(add2(P(sk, e.p1), P(sk, e.p2)), 0.5);
+          if (d2(m, p) < tol) q = m;
+        }
+    if (!q) for (const r of this.modelPts) if (d2(r.p, p) < tol) q = r.p;
+    if (!q) {
+      const he = this.hitTest(p, this.tolPx * 0.8, { pts: false });
+      const e = he && getEnt(sk, he.id);
+      if (e && (e.t === "circle" || e.t === "arc")) q = P(sk, e.c);
     }
+    if (!q) return void (this.wakeHover = null);
+    const id = q[0].toFixed(4) + "," + q[1].toFixed(4);
+    const now = performance.now();
+    if (!this.wakeHover || this.wakeHover.id !== id) this.wakeHover = { id, t: now };
+    else if (now - this.wakeHover.t > 250 && !this.wake.some((w) => d2(w, q!) < 1e-6)) {
+      this.wake.unshift(q);
+      this.wake.length = Math.min(this.wake.length, 4);
+      this.render();
+    }
+  }
+
+  // ---------- eskiz düzlemindeki model kenarları (SolidWorks: yüzün konturlarına yakalama) ----------
+  /** model köşe / orta / merkez noktaları (yerel) */
+  private modelPts: { p: Vec2; k: "v" | "m" | "c" }[] = [];
+  /** model doğru kenarları (yerel) */
+  private modelLines: { a: Vec2; b: Vec2 }[] = [];
+  private loadModelRefs() {
+    this.modelPts = [];
+    this.modelLines = [];
+    const mesh = this.host.viewer.mesh;
+    if (!mesh) return;
+    const f = this.frame;
+    const onPl = (w: Vec3) => Math.abs(dot(sub(w, f.o), f.n)) < 1e-3;
+    const add = (w: Vec3, k: "v" | "m" | "c") => {
+      const q = toLocal(f, w);
+      if (!this.modelPts.some((x) => d2(x.p, q) < 1e-6)) this.modelPts.push({ p: q, k });
+    };
+    for (const e of mesh.edges as any[]) {
+      if (!e.s || !e.e || !onPl(e.s) || !onPl(e.e) || !onPl(e.m)) continue;
+      if (e.c && e.r) {
+        if (onPl(e.c)) add(e.c, "c");
+        if (d2(toLocal(f, e.s), toLocal(f, e.e)) > 1e-6) add(e.s, "v"), add(e.e, "v");
+        continue;
+      }
+      add(e.s, "v");
+      add(e.e, "v");
+      add(e.m, "m");
+      this.modelLines.push({ a: toLocal(f, e.s), b: toLocal(f, e.e) });
+    }
+  }
+  /** model kenarını sabitlenmiş yapı çizgisine dönüştür (ölçü/ilişki referansı) */
+  private modelLineAt(p: Vec2): string | null {
+    const tol = this.tolPx * this.wpp();
+    const ml = this.modelLines.find((l) => nearestOnSeg(p, l.a, l.b).d < tol);
+    if (!ml) return null;
+    const sk = this.data;
+    const pt = (q: Vec2) => {
+      for (const id of [ORIGIN, ...Object.keys(sk.pts)]) if (d2(P(sk, id), q) < 1e-6) return id;
+      const id = addPt(sk, q);
+      addRel(sk, "fix", [id], { fx: q[0], fy: q[1] });
+      return id;
+    };
+    let lid = "";
+    this.op(() => {
+      const a = pt(ml.a), b = pt(ml.b);
+      const ex = sk.ents.find((e) => e.t === "line" && ((e.p1 === a && e.p2 === b) || (e.p1 === b && e.p2 === a)));
+      lid = ex ? ex.id : addLine(sk, a, b, true).id;
+    });
+    return lid || null;
   }
 
   /** Çıkarımdan nokta oluştur (veya var olanı kullan) */
   private makePoint(inf: Inference): string {
     if (inf.ptId) return inf.ptId;
+    if (inf.fixAt) {
+      for (const pid of Object.keys(this.data.pts)) if (d2(P(this.data, pid), inf.fixAt) < 1e-6) return pid;
+      const fid = addPt(this.data, inf.fixAt);
+      addRel(this.data, "fix", [fid], { fx: inf.fixAt[0], fy: inf.fixAt[1] });
+      return fid;
+    }
     const id = addPt(this.data, inf.p);
     if (inf.on) addRel(this.data, inf.on.t === "line" ? "onLine" : "onCircle", [id, inf.on.id]);
     if (inf.on2) addRel(this.data, inf.on2.t === "line" ? "onLine" : "onCircle", [id, inf.on2.id]);
@@ -914,6 +1007,7 @@ export class SketchEditor implements InputHandler {
         this.hov = h;
         this.render();
       }
+      this.setCursor(h ? (h.kind === "pt" ? "snap" : "pointer") : "default");
       return;
     }
     if (t === "convert") {
@@ -933,6 +1027,7 @@ export class SketchEditor implements InputHandler {
     if (!this.noInfer) this.trackWake(p);
     const lineLike = t === "line" || t === "centerline" || ((t === "slot" || t === "cslot" || t === "rect3" || t === "para") && !this.st.bPos);
     const inf = this.infer(p, lineLike ? from : null);
+    this.setCursor(inf.label ? "snap" : "draw");
     const prevLabel = (this.st.inf as Inference | undefined)?.label;
     this.st.inf = inf;
     if (inf.label && inf.label !== prevLabel && (e as any).pointerType && (e as any).pointerType !== "mouse" && prefs.haptic) navigator.vibrate?.(6);
@@ -1999,7 +2094,11 @@ export class SketchEditor implements InputHandler {
   }
 
   private selectClick(p: Vec2) {
-    const h = this.hitTest(p);
+    let h = this.hitTest(p);
+    if (!h && this.tool === "select") {
+      const ml = this.modelLineAt(p);
+      if (ml) h = { kind: "ent", id: ml, q: p };
+    }
     // fare: SolidWorks gibi tek tık seçimi değiştirir, Ctrl/Shift ekler/çıkarır. Kalem/parmak: dokunuş ekler/çıkarır.
     if (h && this.mods.mouse && !this.mods.add && this.tool === "select") {
       this.sel.clear();
@@ -2616,7 +2715,11 @@ export class SketchEditor implements InputHandler {
   private dimClick(p: Vec2, e: { clientX: number; clientY: number }) {
     const st = this.st;
     st.refs = st.refs ?? [];
-    const h = this.hitTest(p);
+    let h = this.hitTest(p);
+    if (!h) {
+      const ml = this.modelLineAt(p);
+      if (ml) h = { kind: "ent", id: ml, q: p };
+    }
     if (h) {
       if (st.refs.length >= 2 || st.refs.includes(h.id)) st.refs = [];
       st.refs.push(h.id);

@@ -1,3 +1,4 @@
+import cmdpatch
 from h import *
 def base(id="b1", sk="s1", t=2, r=2, k=0.5, **kw):
     f={"id":id,"type":"sheetbase","name":"Taban-Flanş1","sketch":sk,"t":t,"r":r,"k":k,"rev":False,"d":40,"mid":False,"relief":0.5}; f.update(kw); return f

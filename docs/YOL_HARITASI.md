@@ -204,3 +204,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Kaba çiz, düzelt | Neredeyse yatay/dikey çizgilere tek dokunuşla ilişki | ✅ |
 | Başlangıç rehberi | İlk açılışta kullanım şekli seçimi ve 5 adımlık ilk parça | ✅ |
 | Sonra | Model üzerinde sürüklenen derinlik oku, üst üste adaylar arasında dokunarak geçiş, fotoğraftan kenar izleme, sesle ölçü | ⬜ |
+
+## v0.12 — Arayüz düzeni ve eskiz referansları
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Komut çubuğu | Gruplar (Katı/Detay/Gelişmiş/Gövde/Çoğalt/Referans; eskizde Çiz/Düzenle/Özel çizim/Araçlar), telefonda grup satırı | ✅ |
+| Tam ekran | ⛶ düğmesi, kurulu PWA tam ekran açılır | ✅ |
+| İmleç | Çizim, yakalama, seçilebilir öğe için farklı imleç | ✅ |
+| Model yüzünde eskiz | Yüz kenarlarının köşe/orta/merkezine yakalama (sabit), kenara ölçü ve ilişki | ✅ |
+| Uyandırma | Çizgi ortaları, daire merkezleri, model noktaları → hizalama çizgileri (kare merkezi) | ✅ |

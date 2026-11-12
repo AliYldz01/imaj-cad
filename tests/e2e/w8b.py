@@ -1,3 +1,4 @@
+import cmdpatch
 from h import *
 import re
 def mem(id, segs, std="dkutu", size="60x40x3", corner="miter", **kw):

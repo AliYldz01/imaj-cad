@@ -1,3 +1,4 @@
+import cmdpatch
 from h import *
 def near_face(pg, c):
     return pg.evaluate("""(c)=>{const m=window.__app.viewer.mesh; let b=-1,bd=1e9; m.faces.forEach((f,i)=>{const d=Math.hypot(f.c[0]-c[0],f.c[1]-c[1],f.c[2]-c[2]); if(d<bd){bd=d;b=i}}); return b}""", c)
