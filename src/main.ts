@@ -10,7 +10,7 @@ import { STD_FRAMES, STD_NAMES, dist3, fmtNum, frameFromNormal, toWorld, toLocal
 import { solve as solveSketch } from "./sketch/solver";
 import type {
   EdgeRef, Feature, FaceRef, PartDoc, PlaneRef, SketchFeature, StdPlane, Vec3, ExtrudeFeature, RevolveFeature, HoleFeature, MeasureItem, Vec2,
-  FlatResult, Sketch3DFeature,
+  FlatResult, Sketch3DFeature, Frame,
 } from "./doc/types";
 import { lastSheetBase, sheetParamsBefore, bendAllowance, effK, GAUGE_TABLE } from "./sheet/sheet";
 import { loftFlatPattern, outlineDxf } from "./sheet/loftflat";
@@ -3846,6 +3846,18 @@ function renderTree() {
     li.addEventListener("dblclick", () => {
       if (mode.k === "part" && getFeat(id)) editFeature(id);
     });
+    li.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      if (mode.k !== "part") return;
+      treeSel = id;
+      clearPartSel();
+      renderTree();
+      drawSketches();
+      refreshHighlight();
+      treeCtx = true;
+      openContextMenu(ev.clientX, ev.clientY);
+      treeCtx = false;
+    });
     if (getFeat(id)) {
       // SolidWorks: ağaçta sürükleyerek sırayı değiştir
       li.draggable = true;
@@ -4544,11 +4556,30 @@ let mouseXY: [number, number] = [innerWidth / 2, innerHeight / 2];
 window.addEventListener("pointermove", (e) => (mouseXY = [e.clientX, e.clientY]), { passive: true });
 const fileAct = (act: string) => ($(`#file-menu button[data-act='${act}']`) as HTMLButtonElement | null)?.click();
 function normalTo() {
-  if (mode.k === "sketch") return viewer.viewNormal(mode.editor.frame);
+  if (mode.k === "sketch") return lookNormal(mode.editor.frame);
   const r = planeRefFromSelection();
   const fr = r && resolveFrame(r, doc.features);
-  if (fr) viewer.viewNormal(fr);
-  else toast("Normal görünüm için bir düzlem veya düz yüz seçin");
+  if (fr) lookNormal(fr);
+  else toast("Dik bakmak için bir düzlem veya düz yüz seçin");
+}
+/** SolidWorks "Dik" (Normal To): yüze karşıdan bak; zaten dik bakılıyorsa ikinci basışta arka taraftan */
+function lookNormal(f: Frame) {
+  const d = viewer.camera.position.clone().sub(viewer.controls.target).normalize();
+  const n = new THREE.Vector3(...f.n);
+  if (d.dot(n) > 0.999) f = { ...f, n: [-f.n[0], -f.n[1], -f.n[2]], x: [-f.x[0], -f.x[1], -f.x[2]] };
+  viewer.viewNormal(f);
+}
+/** imleç altındaki düzlem / düz yüzün çerçevesi */
+function frameAt(x: number, y: number): { frame: Frame; ref: PlaneRef } | null {
+  const hit = viewer.pick(x, y, { face: true, plane: true });
+  let ref: PlaneRef | null = null;
+  if (hit?.kind === "plane") ref = ["front", "top", "right"].includes(hit.id) ? { k: "std", n: hit.id as StdPlane } : { k: "ref", id: hit.id };
+  else if (hit?.kind === "face") {
+    const f = viewer.mesh?.faces[hit.index];
+    if (f?.n) ref = { k: "face", frame: frameFromNormal(f.c, f.n), label: "Yüz", face: { c: f.c, n: f.n } };
+  }
+  const frame = ref && resolveFrame(ref, doc.features);
+  return frame && ref ? { frame, ref } : null;
 }
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement).tagName;
@@ -4628,6 +4659,7 @@ function menuItem(box: HTMLElement, label: string, run: () => void, icon?: strin
   });
   box.appendChild(b);
 }
+var treeCtx = false;
 function openContextMenu(x: number, y: number) {
   const box = popupAt(x, y, "sw-ctx");
   if (mode.k === "sketch") {
@@ -4640,16 +4672,35 @@ function openContextMenu(x: number, y: number) {
     }
     menuItem(box, "Akıllı Ölçü", () => ed.setTool("dim"), "dim");
     menuItem(box, "Hızlı yakalama…", () => setTimeout(() => openSnapMenu(x, y)));
-    menuItem(box, "Normal görünüm (Ctrl+8)", () => viewer.viewNormal(ed.frame), "normal");
+    menuItem(box, "Dik (eskiz düzlemi, Ctrl+8)", () => lookNormal(ed.frame), "normal");
+    const fa = frameAt(x, y);
+    if (fa && fa.ref.k === "face") menuItem(box, "Dik (bu yüz)", () => lookNormal(fa.frame), "normal");
     menuItem(box, "Ekrana sığdır (F)", () => fitAll(), "fit");
     menuItem(box, "Eskizden çık", () => exitSketch(true), "exitSketch");
   } else if (mode.k === "pm") {
+    const fa = frameAt(x, y);
+    if (fa) menuItem(box, "Dik (Ctrl+8)", () => lookNormal(fa.frame), "normal");
     menuItem(box, "Tamam (✓)", () => pmOk());
     menuItem(box, "İptal (✕)", () => pmCancel());
   } else {
+    // SolidWorks: sağ tık imleç altındaki düzlemi / yüzü seçer
+    const fa = treeCtx ? null : frameAt(x, y);
+    if (fa && mode.k === "part") {
+      const hit = viewer.pick(x, y, { face: true, plane: true })!;
+      const already = hit.kind === "plane" ? psel.planes.has(hit.id) : hit.kind === "face" && psel.faces.has(hit.index);
+      if (!already) {
+        clearPartSel();
+        treeSel = null;
+        if (hit.kind === "plane") psel.planes.add(hit.id);
+        else if (hit.kind === "face") psel.faces.add(hit.index);
+        renderTree();
+        refreshHighlight();
+      }
+    }
+    if (fa && mode.k !== "part") menuItem(box, "Dik (Ctrl+8)", () => lookNormal(fa.frame), "normal");
     if (planeRefFromSelection()) {
+      menuItem(box, "Dik (Ctrl+8)", () => normalTo(), "normal");
       menuItem(box, "Eskiz", () => beginSketchCommand(), "sketch");
-      menuItem(box, "Normal görünüm (Ctrl+8)", () => normalTo(), "normal");
     }
     if (treeSel && getFeat(treeSel)) {
       menuItem(box, "Özelliği düzenle", () => editFeature(treeSel!));

@@ -408,3 +408,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Yeni kısayollar: G büyüteç, F5 seçim filtresi, F9 ağaç, F11 tam ekran, Ctrl+Boşluk, F1 yardım | ✅ |
 | Telefon/tablet düzeni değişmedi (≤820 px) | ✅ |
 | Seçim kırıntıları (breadcrumbs), görev bölmesi (sağ panel) | ⬜ |
+
+## v0.30.1
+| Özellik | Durum |
+|---|---|
+| Sağ tık > Dik: grafik alanda düzlem / düz yüz, ağaçta düzlem; eskiz ve özellik panelinde imleç altındaki yüz | ✅ |
+| İkinci Dik basışında ters taraftan bakma (SolidWorks gibi) | ✅ |
+| Sağ tık imleç altındaki düzlemi / yüzü seçer | ✅ |
