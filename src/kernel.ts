@@ -1,7 +1,7 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { KFeature, KernelRequest, KernelResponse, MeshData } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData } from "./doc/types";
 
-export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[] };
+export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame> };
 
 export class Kernel {
   private worker: Worker;
@@ -41,11 +41,23 @@ export class Kernel {
   async build(features: KFeature[]): Promise<BuildResult> {
     await this.ready;
     const r = await this.request<BuildResult>({ type: "build", features } as any);
-    return { mesh: r.mesh, errors: r.errors };
+    return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {} };
   }
 
   async export(format: "step" | "stl"): Promise<{ blob: Blob | null; message?: string }> {
     await this.ready;
     return this.request({ type: "export", format } as any);
+  }
+
+  async measure(items: MeasureItem[]): Promise<string[]> {
+    await this.ready;
+    const r = await this.request<{ lines: string[] }>({ type: "measure", items } as any);
+    return r.lines;
+  }
+
+  async props(): Promise<MassProps | null> {
+    await this.ready;
+    const r = await this.request<{ props: MassProps | null }>({ type: "props" } as any);
+    return r.props;
   }
 }

@@ -19,10 +19,12 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Özellik özellik paneli + ✓ / ✕ onay köşesi | PropertyManager, Confirmation Corner | ✅ |
 | Komut sekmeleri (Özellikler / Eskiz) | CommandManager | ✅ |
 | Görünüşler: Ön, Üst, Sağ, İzometrik, Normal, Sığdır | View Orientation | ✅ |
-| Kesit görünüşü | Section View | ⬜ |
+| Kesit görünüşü | Section View | ✅ |
 | Global değişkenler ve denklemler | Equations | ⬜ |
-| Malzeme, kütle özellikleri | Material, Mass Properties | ⬜ |
-| Ölçüm aracı | Measure | ⬜ |
+| Malzeme, kütle özellikleri | Material, Mass Properties | ✅ |
+| Ölçüm aracı | Measure | ✅ |
+| Özellik yeniden adlandırma | Rename | ✅ |
+| Yüze çizilen eskiz, model değişince yüzü takip eder | Sketch on face | ✅ |
 | Çoklu gövde | Multibody | ⬜ |
 | Dosya kaydet / aç (.icad) | Save / Open | ✅ |
 | STEP / STL dışa aktarma | Export | ✅ |
@@ -37,10 +39,10 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Merkez çizgisi (yapı geometrisi) | ✅ |
 | Köşe dikdörtgen | ✅ |
 | Merkez dikdörtgen | ✅ |
-| 3 noktalı köşe / merkez dikdörtgen (açılı) | ⬜ |
-| Paralelkenar | ⬜ |
+| 3 noktalı köşe dikdörtgen (açılı) | ✅ |
+| Paralelkenar | ✅ |
 | Daire (merkez) | ✅ |
-| Çevre dairesi (3 nokta) | ⬜ |
+| Çevre dairesi (3 nokta) | ✅ |
 | Merkez noktalı yay | ✅ |
 | Teğet yay | ✅ |
 | 3 noktalı yay | ✅ |
@@ -56,15 +58,16 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Araç | Durum |
 |---|---|
 | Eskiz radyüsü (köşe yuvarlatma) | ✅ |
-| Eskiz pahı | ⬜ |
+| Eskiz pahı | ✅ |
 | Kırp (parçaya dokunarak) | ✅ |
-| Uzat | ⬜ |
-| Varlıkları ötele (offset) | ⬜ |
-| Varlıkları dönüştür (kenarı eskize al) | ⬜ |
+| Uzat | ✅ |
+| Varlıkları ötele (offset) | ✅ |
+| Varlıkları dönüştür (kenarı eskize al: çizgi, daire, yay) | ✅ |
 | Kesişim eğrisi | ⬜ |
-| Varlıkları aynala | ⬜ |
-| Doğrusal / dairesel eskiz çoğaltma | ⬜ |
-| Taşı / kopyala / döndür / ölçekle | ⬜ |
+| Varlıkları aynala | ✅ |
+| Doğrusal / dairesel eskiz çoğaltma | ✅ |
+| Taşı / kopyala / döndür | ✅ |
+| Ölçekle | ⬜ |
 | Yapı geometrisine çevir | ✅ |
 | Sürükleyerek düzenleme (çözücü ile) | ✅ |
 
@@ -103,13 +106,17 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 |---|---|---|
 | Ekstrüzyon (Boss/Base) | Kör, Orta düzlem, Tümünden geçen, Yön 2, Ters çevir | ✅ |
 | Ekstrüzyon kesme | Kör, Tümünden geçen, Orta düzlem, Yön 2 | ✅ |
-| Ekstrüzyon: Sonrakine kadar, Yüzeye kadar, Ötele | | ⬜ |
-| Ekstrüzyon: Koniklik (draft), İnce özellik | | ⬜ |
+| Ekstrüzyon: Yüzeye kadar, Yüzeyden ötele (paralel düz yüz) | | ✅ |
+| Ekstrüzyon: Sonrakine kadar, eğri yüzeye kadar | | ⬜ |
+| Ekstrüzyon: Koniklik (tek konturlu profil) | | ✅ |
+| Ekstrüzyon: İnce özellik | | ⬜ |
 | Döndürme (Revolve) / Döndürerek kesme | Açı, Orta düzlem, Ters | ✅ |
-| Süpürme (Sweep) / Süpürerek kesme | | ⬜ |
-| Loft / Loft kesme | | ⬜ |
+| Süpürme (Sweep) / Süpürerek kesme | Profil + yol eskizi | ✅ |
+| Loft / Loft kesme | Tek konturlu profiller, düz yüzeyli seçenek | ✅ |
+| Loft: kılavuz eğriler | | ⬜ |
 | Radyüs (Fillet) | Sabit yarıçap, kenar seçimi | ✅ |
-| Radyüs: değişken, yüz, tam yuvarlak | | ⬜ |
+| Radyüs / Pah: yüz seçimi (yüzün tüm kenarları) | | ✅ |
+| Radyüs: değişken, tam yuvarlak | | ⬜ |
 | Pah (Chamfer) | Mesafe | ✅ |
 | Pah: mesafe–açı, mesafe–mesafe | | ⬜ |
 | Kabuk (Shell) | Kalınlık, kaldırılacak yüzler | ✅ |
@@ -117,8 +124,9 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Dairesel çoğaltma | Eksen (X/Y/Z), adet, açı | ✅ |
 | Ayna | Ön / Üst / Sağ düzlem | ✅ |
 | Ayna: yüze veya referans düzleme göre | | ✅ |
-| Delik sihirbazı (havşa, cıvata, kılavuz) | | ⬜ |
-| Koniklik (Draft) | | ⬜ |
+| Delik sihirbazı | Düz, havşalı, konik havşalı, kılavuz; M3–M24 ISO tabloları | ✅ |
+| Delik: kozmetik diş, boru dişi, inç ölçüler | | ⬜ |
+| Koniklik (Draft) | Nötr düzlem, yüz seçimi | ✅ |
 | Kaburga (Rib) | | ⬜ |
 | Kubbe, Sarma, Eğme | | ⬜ |
 | Referans düzlem (ötelenmiş) | | ✅ |

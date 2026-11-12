@@ -111,3 +111,40 @@ function circleFrom3(a: Vec2, b: Vec2, c: Vec2) {
   const uy = (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by)) / D;
   return { c: [a[0] + ux, a[1] + uy] as Vec2, r: Math.hypot(ux, uy) };
 }
+
+/** Süpürme yolu: tek bir açık veya kapalı zincir (yapı geometrisi hariç) */
+export function extractPath(sk: SketchData): { segs: Seg[]; closed: boolean; error?: string } {
+  const key = (p: Vec2) => `${Math.round(p[0] * 1e4)}:${Math.round(p[1] * 1e4)}`;
+  const edges: Edge[] = [];
+  for (const e of sk.ents) {
+    if (e.cons) continue;
+    if (e.t === "line") {
+      const a = pointPos(sk, e.p1), b = pointPos(sk, e.p2);
+      edges.push({ seg: { t: "l", a, b }, a: key(a), b: key(b), used: false });
+    } else if (e.t === "arc") {
+      const c = pointPos(sk, e.c), s = pointPos(sk, e.s), en = pointPos(sk, e.e);
+      const r = Math.hypot(s[0] - c[0], s[1] - c[1]);
+      edges.push({ seg: { t: "a", a: s, b: en, m: arcMid(c, r, ang(c, s), ang(c, en)) }, a: key(s), b: key(en), used: false });
+    } else if (e.t === "circle") return { segs: [], closed: false, error: "Yol eskizinde tam daire kullanılamaz; yay kullanın" };
+  }
+  if (!edges.length) return { segs: [], closed: false, error: "Yol eskizi boş" };
+  const adj = new Map<string, Edge[]>();
+  for (const ed of edges) for (const k of [ed.a, ed.b]) (adj.get(k) ?? adj.set(k, []).get(k)!).push(ed);
+  const ends = [...adj].filter(([, l]) => l.length === 1).map(([k]) => k);
+  if ([...adj.values()].some((l) => l.length > 2) || (ends.length !== 0 && ends.length !== 2))
+    return { segs: [], closed: false, error: "Yol tek bir kesintisiz zincir olmalı" };
+  const closed = ends.length === 0;
+  let at = closed ? edges[0].a : ends[0];
+  const segs: Seg[] = [];
+  for (;;) {
+    const cur = adj.get(at)!.find((x) => !x.used);
+    if (!cur) break;
+    cur.used = true;
+    const fwd = cur.a === at;
+    const s = cur.seg;
+    segs.push(fwd ? s : s.t === "l" ? { t: "l", a: s.b, b: s.a } : { t: "a", a: s.b, b: s.a, m: s.m });
+    at = fwd ? cur.b : cur.a;
+  }
+  if (segs.length !== edges.length) return { segs: [], closed: false, error: "Yol tek bir kesintisiz zincir olmalı" };
+  return { segs, closed };
+}

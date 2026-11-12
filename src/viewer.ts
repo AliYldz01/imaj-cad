@@ -97,6 +97,17 @@ export class Viewer {
   requestRender() {
     this.needsRender = true;
   }
+
+  /** Kesit görünüşü: düzlemin normal tarafı görünür kalır */
+  setClip(frame: Frame | null, flip = false) {
+    if (!frame) this.renderer.clippingPlanes = [];
+    else {
+      const n = new THREE.Vector3(...frame.n).multiplyScalar(flip ? 1 : -1);
+      const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(n, new THREE.Vector3(...frame.o));
+      this.renderer.clippingPlanes = [pl];
+    }
+    this.requestRender();
+  }
   onRender(fn: () => void) {
     this.renderHooks.add(fn);
     return () => this.renderHooks.delete(fn);

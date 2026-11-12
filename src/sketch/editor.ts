@@ -3,9 +3,10 @@
 import * as THREE from "three";
 import type { Frame, RelType, SArc, SCircle, SDim, SEnt, SLine, SketchData, Vec2, Vec3 } from "../doc/types";
 import { ORIGIN } from "../doc/types";
-import { evalNum, fmtNum, toLocal, toWorld } from "../doc/math";
+import { evalNum, fmtNum, toLocal, toWorld, dot, sub } from "../doc/math";
 import type { InputHandler, Viewer } from "../viewer";
 import { solve, analyze, type SolveResult } from "./solver";
+import { offsetEnts, mirrorEnts, linearPattern, circularPattern, moveEnts, centroid } from "./ops";
 import {
   P, addArc, addCircle, addLine, addPointEnt, addPt, addRel, applicableRelations, arcAngles, cleanup, deleteIds,
   entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf,
@@ -17,7 +18,12 @@ import {
 
 export type SkTool =
   | "select" | "line" | "centerline" | "rect" | "crect" | "circle" | "carc" | "tarc" | "arc3"
-  | "slot" | "polygon" | "point" | "fillet" | "trim" | "dim";
+  | "slot" | "polygon" | "point" | "fillet" | "trim" | "dim"
+  | "rect3" | "para" | "circle3" | "schamfer" | "extend" | "convert"
+  | "offset" | "mirror" | "spat" | "scpat" | "move";
+
+/** Seçim üzerinde çalışan işlem araçları */
+export const OP_TOOLS: SkTool[] = ["offset", "mirror", "spat", "scpat", "move"];
 
 export const TOOL_NAMES: Record<SkTool, string> = {
   select: "Seç",
@@ -35,6 +41,17 @@ export const TOOL_NAMES: Record<SkTool, string> = {
   fillet: "Eskiz Radyüsü",
   trim: "Kırp",
   dim: "Akıllı Ölçü",
+  rect3: "3 Noktalı Dikdörtgen",
+  para: "Paralelkenar",
+  circle3: "Çevre Dairesi",
+  schamfer: "Eskiz Pahı",
+  extend: "Uzat",
+  convert: "Varlıkları Dönüştür",
+  offset: "Varlıkları Ötele",
+  mirror: "Varlıkları Aynala",
+  spat: "Doğrusal Eskiz Çoğaltma",
+  scpat: "Dairesel Eskiz Çoğaltma",
+  move: "Taşı / Kopyala / Döndür",
 };
 
 const HINTS: Partial<Record<SkTool, string>> = {
@@ -53,6 +70,17 @@ const HINTS: Partial<Record<SkTool, string>> = {
   fillet: "Yuvarlatılacak köşeye (iki çizginin birleştiği noktaya) dokunun.",
   trim: "Silinecek parçaya dokunun. Kesişimler arasındaki kısım silinir.",
   dim: "Bir veya iki öğe seçin, sonra ölçünün yerine dokunun ve değeri girin.",
+  rect3: "İlk köşe → ikinci köşe (kenar yönü) → genişlik.",
+  para: "Üç köşeye sırayla dokunun; dördüncü köşe otomatik bulunur.",
+  circle3: "Çemberin geçeceği üç noktaya dokunun.",
+  schamfer: "Pah kırılacak köşeye dokunun.",
+  extend: "Uzatılacak çizginin ucuna yakın dokunun; en yakın öğeye kadar uzar.",
+  convert: "Modelin bir kenarına dokunun; eskiz düzlemine izdüşürülüp eskize eklenir.",
+  offset: "Ötelenecek çizgi/yay/daireleri seçin (dokunarak), mesafeyi girip Uygula'ya basın.",
+  mirror: "Aynalanacak öğeleri ve ayna ekseni olacak merkez çizgisini seçin, sonra Uygula.",
+  spat: "Çoğaltılacak öğeleri seçin, yön ve aralığı girip Uygula'ya basın.",
+  scpat: "Çoğaltılacak öğeleri seçin. Merkez: seçili nokta veya orijin.",
+  move: "Taşınacak öğeleri seçin, ötelemeyi / açıyı girip Uygula'ya basın.",
 };
 
 const C = {
@@ -100,7 +128,13 @@ export class SketchEditor implements InputHandler {
   private press: { x: number; y: number; local: Vec2; hit: Hit | null; moved: boolean } | null = null;
   private lastClick = { t: 0, p: [0, 0] as Vec2 };
   private offRender: () => void;
-  opts = { sides: 6, filletR: 5, showRels: true };
+  opts = {
+    sides: 6, filletR: 5, chamferD: 3, showRels: true,
+    offD: 5, offRev: false,
+    n1: 3, s1: 20, a1: 0, n2: 1, s2: 20, a2: 90,
+    cn: 6, ctotal: 360,
+    mdx: 20, mdy: 0, mang: 0, mcopy: false,
+  };
 
   constructor(private host: EditorHost, public frame: Frame, public data: SketchData) {
     host.viewer.overlay.add(this.group);
@@ -212,7 +246,7 @@ export class SketchEditor implements InputHandler {
     this.finishChain();
     this.tool = t;
     this.st = {};
-    if (t !== "select") this.sel.clear();
+    if (t !== "select" && !OP_TOOLS.includes(t)) this.sel.clear();
     this.hideBadge();
     this.render();
     this.renderPanel();
@@ -409,12 +443,17 @@ export class SketchEditor implements InputHandler {
   private preview(p: Vec2, e: { clientX: number; clientY: number }) {
     this.cursor = p;
     const t = this.tool;
-    if (t === "select" || t === "trim" || t === "fillet") {
-      const h = this.hitTest(p, this.tolPx, t === "fillet" ? { ents: false } : t === "trim" ? { pts: false } : {});
+    if (t === "select" || t === "trim" || t === "fillet" || t === "schamfer" || t === "extend" || OP_TOOLS.includes(t)) {
+      const h = this.hitTest(p, this.tolPx, t === "fillet" || t === "schamfer" ? { ents: false } : t === "trim" || t === "extend" ? { pts: false } : {});
       if (h?.id !== this.hov?.id) {
         this.hov = h;
         this.render();
       }
+      return;
+    }
+    if (t === "convert") {
+      const hit = this.host.viewer.pick(e.clientX, e.clientY, { edge: true });
+      this.host.viewer.setHighlight({ faces: [], edges: [], planes: [] }, hit);
       return;
     }
     if (t === "dim") {
@@ -448,6 +487,9 @@ export class SketchEditor implements InputHandler {
         return st.aPos ? `R ${f(d2(st.aPos, p))}` : "";
       case "carc":
         return st.aPos ? `R ${f(d2(st.aPos, st.bPos ?? p))}` : "";
+      case "rect3":
+      case "para":
+        return st.aPos && !st.bPos ? `L ${f(d2(st.aPos, p))}` : st.bPos ? `L ${f(d2(st.bPos, p))}` : "";
       default:
         return "";
     }
@@ -717,6 +759,67 @@ export class SketchEditor implements InputHandler {
         });
         return;
       }
+      case "rect3":
+      case "para": {
+        if (!st.aPos) {
+          st.ainf = this.infer(p);
+          st.aPos = st.ainf.p;
+          return this.render();
+        }
+        if (!st.bPos) {
+          st.binf = this.infer(p, st.aPos);
+          st.bPos = st.binf.p;
+          if (d2(st.aPos, st.bPos) < 1e-9) st.bPos = null;
+          return this.render();
+        }
+        const cinf = this.infer(p);
+        const [A, B, Cc, D] = this.quad(st.aPos, st.bPos, cinf.p);
+        if (Math.abs(crs2(sub2(B, A), sub2(Cc, B))) < 1e-9) return;
+        const ainf = st.ainf as Inference, binf = st.binf as Inference;
+        const isPara = this.tool === "para";
+        this.op(() => {
+          const a = this.makePoint(ainf), b = this.makePoint(binf);
+          const c = isPara && cinf.ptId ? cinf.ptId : addPt(sk, Cc);
+          const dd = addPt(sk, D);
+          const l1 = addLine(sk, a, b), l2 = addLine(sk, b, c), l3 = addLine(sk, c, dd), l4 = addLine(sk, dd, a);
+          if (binf.hv) addRel(sk, binf.hv === "h" ? "horizontal" : "vertical", [l1.id]);
+          addRel(sk, "parallel", [l1.id, l3.id]);
+          addRel(sk, "parallel", [l2.id, l4.id]);
+          if (!isPara) addRel(sk, "perpendicular", [l1.id, l2.id]);
+        });
+        this.st = {};
+        return this.render();
+      }
+      case "circle3": {
+        st.infs = st.infs ?? [];
+        st.infs.push(this.infer(p));
+        if (st.infs.length < 3) {
+          st.aPos = st.infs[0].p;
+          return this.render();
+        }
+        const [i1, i2, i3] = st.infs as Inference[];
+        const cc = circle3(i1.p, i2.p, i3.p);
+        this.st = {};
+        if (!cc) return this.host.toast("Noktalar aynı doğru üzerinde", true);
+        this.op(() => {
+          const c = addPt(sk, cc.c);
+          const ci = addCircle(sk, c, cc.r);
+          for (const inf of [i1, i2, i3]) if (inf.ptId) addRel(sk, "onCircle", [inf.ptId, ci.id]);
+        });
+        return this.render();
+      }
+      case "schamfer":
+        return this.chamferAt(p);
+      case "extend":
+        return this.extendAt(p);
+      case "convert":
+        return this.convertAt(e);
+      case "offset":
+      case "mirror":
+      case "spat":
+      case "scpat":
+      case "move":
+        return this.selectClick(p);
       case "fillet":
         return this.filletAt(p);
       case "trim":
@@ -893,6 +996,193 @@ export class SketchEditor implements InputHandler {
       addRel(sk, "tangent", [L2.id, a.id]);
       sk.dims.push({ id: nid(sk, "d"), t: "rad", refs: [a.id], v: r, lp: add2(Cc, mul2(bis, -r * 2)) as Vec2 });
     });
+  }
+
+  /** 3 noktalı dikdörtgen / paralelkenar köşeleri */
+  private quad(a: Vec2, b: Vec2, c: Vec2): [Vec2, Vec2, Vec2, Vec2] {
+    if (this.tool === "para") return [a, b, c, add2(a, sub2(c, b))];
+    const n = perp(norm2(sub2(b, a)));
+    const w = dot2(sub2(c, b), n);
+    return [a, b, add2(b, mul2(n, w)), add2(a, mul2(n, w))];
+  }
+
+  // ---------------- Eskiz pahı ----------------
+  private chamferAt(p: Vec2) {
+    const sk = this.data;
+    const h = this.hitTest(p, this.tolPx, { ents: false });
+    if (!h || h.id === ORIGIN) return this.host.toast("İki çizginin birleştiği köşeye dokunun");
+    const lines = usersOf(sk, h.id).filter((e) => e.t === "line") as SLine[];
+    if (lines.length !== 2 || usersOf(sk, h.id).length !== 2) return this.host.toast("Köşede tam olarak iki çizgi birleşmeli");
+    const d = this.opts.chamferD;
+    const Pp = P(sk, h.id);
+    const [L1, L2] = lines;
+    const A = P(sk, L1.p1 === h.id ? L1.p2 : L1.p1), B = P(sk, L2.p1 === h.id ? L2.p2 : L2.p1);
+    if (d >= d2(A, Pp) || d >= d2(B, Pp)) return this.host.toast("Pah mesafesi bu köşe için çok büyük", true);
+    const T1 = add2(Pp, mul2(norm2(sub2(A, Pp)), d)), T2 = add2(Pp, mul2(norm2(sub2(B, Pp)), d));
+    this.op(() => {
+      const t1 = addPt(sk, T1), t2 = addPt(sk, T2);
+      for (const [L, t] of [[L1, t1], [L2, t2]] as [SLine, string][]) {
+        if (L.p1 === h.id) L.p1 = t;
+        else L.p2 = t;
+      }
+      sk.rels = sk.rels.filter((x) => !x.refs.includes(h.id));
+      sk.dims = sk.dims.filter((x) => !x.refs.includes(h.id));
+      addLine(sk, t1, t2);
+    });
+  }
+
+  // ---------------- Uzat ----------------
+  private extendAt(p: Vec2) {
+    const sk = this.data;
+    const h = this.hitTest(p, this.tolPx, { pts: false });
+    const e = h && getEnt(sk, h.id);
+    if (!e || e.t !== "line") return this.host.toast("Uzatılacak bir çizgiye dokunun");
+    const A = P(sk, e.p1), B = P(sk, e.p2);
+    const atEnd = d2(h!.q, B) < d2(h!.q, A);
+    const end = atEnd ? e.p2 : e.p1;
+    const from = atEnd ? A : B, to = atEnd ? B : A;
+    if (usersOf(sk, end).length > 1) return this.host.toast("Bu uç başka öğelere bağlı; uzatılamaz", true);
+    const dir = norm2(sub2(to, from));
+    const L = d2(from, to);
+    let best: { p: Vec2; t: number; by: string } | null = null;
+    for (const o of sk.ents) {
+      if (o.id === e.id || o.t === "point") continue;
+      let cands: Vec2[] = [];
+      if (o.t === "line") {
+        const x = lineLine(from, to, P(sk, o.p1), P(sk, o.p2));
+        if (x && x.tb >= -1e-9 && x.tb <= 1 + 1e-9) cands = [x.p];
+      } else {
+        cands = lineCircle(from, to, P(sk, o.c), o.r).map((x) => x.p);
+        if (o.t === "arc") {
+          const { c, s: as, e: ae } = arcAngles(sk, o);
+          cands = cands.filter((q) => inArc(ang(c, q), as, ae));
+        }
+      }
+      for (const q of cands) {
+        const t = dot2(sub2(q, from), dir);
+        if (t > L + 1e-6 && (!best || t < best.t)) best = { p: q, t, by: o.id };
+      }
+    }
+    if (!best) return this.host.toast("Uzatılacak bir hedef bulunamadı", true);
+    const b = best;
+    this.op(() => {
+      sk.pts[end] = { x: b.p[0], y: b.p[1] };
+      sk.dims = sk.dims.filter((d) => !(d.refs.includes(e.p1) && d.refs.includes(e.p2)));
+      const be = getEnt(sk, b.by)!;
+      addRel(sk, be.t === "line" ? "onLine" : "onCircle", [end, b.by]);
+    });
+  }
+
+  // ---------------- Varlıkları dönüştür ----------------
+  private convertAt(e: { clientX: number; clientY: number }) {
+    const v = this.host.viewer;
+    const hit = v.pick(e.clientX, e.clientY, { edge: true });
+    if (!hit || hit.kind !== "edge" || !v.mesh) return this.host.toast("Modelin bir kenarına dokunun");
+    const info = v.mesh.edges[hit.index];
+    const sk = this.data;
+    const L = (w: Vec3) => toLocal(this.frame, w);
+    const exact = (q: Vec2) => {
+      for (const id of [ORIGIN, ...Object.keys(sk.pts)]) if (d2(P(sk, id), q) < 1e-6) return id;
+      return null;
+    };
+    const pt = (q: Vec2) => {
+      const ex = exact(q);
+      if (ex) return ex;
+      const id = addPt(sk, q);
+      addRel(sk, "fix", [id], { fx: q[0], fy: q[1] });
+      return id;
+    };
+    if (info.type === "LINE") {
+      const a = L(info.s), b = L(info.e);
+      if (d2(a, b) < 1e-6) return this.host.toast("Bu kenar eskiz düzlemine dik; dönüştürülemez", true);
+      this.op(() => addLine(sk, pt(a), pt(b)));
+    } else if (info.type === "CIRCLE" && info.c && info.r && info.ax) {
+      if (Math.abs(Math.abs(dot(info.ax, this.frame.n)) - 1) > 1e-4) return this.host.toast("Bu daire eskiz düzlemine paralel değil", true);
+      const c = L(info.c);
+      this.op(() => {
+        const cid = pt(c);
+        if (info.closed) {
+          const ci = addCircle(sk, cid, info.r!);
+          sk.dims.push({ id: nid(sk, "d"), t: "dia", refs: [ci.id], v: info.r! * 2, lp: add2(c, [info.r! * 1.2, info.r! * 1.2]) });
+        } else {
+          const s0 = L(info.s), e0 = L(info.e), m0 = L(info.m);
+          const ccw = inArc(ang(c, m0), ang(c, s0), ang(c, e0));
+          const sId = pt(s0), eId = pt(e0);
+          const a = ccw ? addArc(sk, cid, sId, eId) : addArc(sk, cid, eId, sId);
+          a.r = info.r!;
+        }
+      });
+    } else return this.host.toast("Bu kenar türü henüz dönüştürülemiyor (çizgi ve daire/yay destekleniyor)", true);
+    void sub;
+  }
+
+  // ---------------- Seçim işlemleri ----------------
+  private selEnts(): SEnt[] {
+    return [...this.sel].map((id) => getEnt(this.data, id)).filter(Boolean) as SEnt[];
+  }
+
+  /** İşlem aracını uygular (önizleme için kopya veri üzerinde de çalışır) */
+  private runOp(sk: SketchData): string | null {
+    const ents = [...this.sel].map((id) => sk.ents.find((e) => e.id === id)).filter(Boolean) as SEnt[];
+    const o = this.opts;
+    switch (this.tool) {
+      case "offset":
+        return offsetEnts(sk, ents, o.offD, o.offRev);
+      case "mirror": {
+        const lines = ents.filter((e) => e.t === "line") as SLine[];
+        const axis = lines.find((l) => l.cons) ?? lines[lines.length - 1];
+        if (!axis) return "Ayna ekseni için bir çizgi (tercihen merkez çizgisi) seçin";
+        const rest = ents.filter((e) => e !== axis);
+        if (!rest.length) return "Aynalanacak öğeleri seçin";
+        mirrorEnts(sk, rest, axis);
+        return null;
+      }
+      case "spat":
+        if (!ents.length) return "Çoğaltılacak öğeleri seçin";
+        linearPattern(sk, ents.filter((e) => e.t !== "point" || ents.length === 1), { n1: o.n1, s1: o.s1, a1: o.a1, n2: o.n2, s2: o.s2, a2: o.a2 });
+        return null;
+      case "scpat": {
+        const pts = [...this.sel].filter((id) => id === ORIGIN || sk.pts[id]);
+        const cpt = pts.length === 1 ? P(sk, pts[0]) : ([0, 0] as Vec2);
+        if (!ents.length) return "Çoğaltılacak öğeleri seçin";
+        circularPattern(sk, ents, { c: cpt, n: Math.max(2, Math.round(o.cn)), total: o.ctotal });
+        return null;
+      }
+      case "move":
+        if (!ents.length) return "Taşınacak öğeleri seçin";
+        moveEnts(sk, ents, { dx: o.mdx, dy: o.mdy, ang: o.mang, c: centroid(sk, ents), copy: o.mcopy });
+        return null;
+    }
+    return null;
+  }
+
+  applyOp() {
+    let err: string | null = null;
+    const ok = this.op(() => {
+      err = this.runOp(this.data);
+      if (err) throw new Error(err);
+    });
+    if (ok) {
+      this.sel.clear();
+      this.render();
+      this.renderPanel();
+    }
+  }
+
+  private renderOpPreview() {
+    if (!OP_TOOLS.includes(this.tool) || !this.sel.size) return;
+    const copy: SketchData = JSON.parse(JSON.stringify(this.data));
+    const before = new Set(copy.ents.map((e) => e.id));
+    try {
+      if (this.runOp(copy)) return;
+    } catch {
+      return;
+    }
+    const moved = this.tool === "move" && !this.opts.mcopy;
+    const tmp = this.data;
+    this.data = copy;
+    for (const e of copy.ents) if (moved ? this.sel.has(e.id) : !before.has(e.id)) if (e.t !== "point") this.addLines(this.entPolyline(e), C.prev, 2, !!e.cons);
+    this.data = tmp;
   }
 
   // ---------------- Kırpma ----------------
@@ -1232,6 +1522,7 @@ export class SketchEditor implements InputHandler {
       this.group.add(pts);
     }
     this.renderPreview();
+    this.renderOpPreview();
     this.renderDims();
     if (this.opts.showRels) this.renderRels();
     v.requestRender();
@@ -1326,6 +1617,21 @@ export class SketchEditor implements InputHandler {
           pts.push(pts[0]);
           this.addLines(pts, pc);
           this.addLines([a, b], pc, 1, true);
+        }
+        break;
+      case "rect3":
+      case "para":
+        if (st.aPos && !st.bPos) this.addLines([st.aPos, cur], pc);
+        if (st.aPos && st.bPos) {
+          const [A, B, Cc, D] = this.quad(st.aPos, st.bPos, cur);
+          this.addLines([A, B, Cc, D, A], pc);
+        }
+        break;
+      case "circle3":
+        if (st.infs?.length === 1) this.addLines([st.infs[0].p, cur], pc, 1, true);
+        if (st.infs?.length === 2) {
+          const c = circle3(st.infs[0].p, st.infs[1].p, cur);
+          if (c) this.addLines(this.circlePts(c.c, c.r), pc);
         }
         break;
       case "dim":
@@ -1543,6 +1849,8 @@ export class SketchEditor implements InputHandler {
 
     if (this.tool === "polygon") box.appendChild(this.numField("Kenar sayısı", this.opts.sides, (v) => (this.opts.sides = Math.max(3, Math.round(v)))));
     if (this.tool === "fillet") box.appendChild(this.numField("Yarıçap", this.opts.filletR, (v) => (this.opts.filletR = v)));
+    if (this.tool === "schamfer") box.appendChild(this.numField("Mesafe", this.opts.chamferD, (v) => (this.opts.chamferD = v)));
+    if (OP_TOOLS.includes(this.tool)) this.opPanel(box, h);
     if ((this.tool === "line" || this.tool === "centerline") && this.st.last) {
       const b = h("button", "btn", "Zinciri bitir");
       b.addEventListener("click", () => this.finishChain());
@@ -1623,7 +1931,58 @@ export class SketchEditor implements InputHandler {
     box.appendChild(info);
   }
 
-  private numField(label: string, val: number, set: (v: number) => void) {
+  private opPanel(box: HTMLElement, h: (tag: string, cls?: string, text?: string) => HTMLElement) {
+    const o = this.opts;
+    const num = (label: string, key: keyof typeof o, opts: { min?: number; any?: boolean } = {}) =>
+      box.appendChild(this.numField(label, o[key] as number, (v) => ((o as any)[key] = v), opts));
+    const chk = (label: string, key: keyof typeof o) => {
+      const l = h("label", "pm-check");
+      const c = document.createElement("input");
+      c.type = "checkbox";
+      c.checked = !!o[key];
+      c.addEventListener("change", () => {
+        (o as any)[key] = c.checked;
+        this.render();
+      });
+      l.append(c, document.createTextNode(label));
+      box.appendChild(l);
+    };
+    box.appendChild(h("div", "pm-sub", `Seçili: ${this.selEnts().length} öğe`));
+    switch (this.tool) {
+      case "offset":
+        num("Mesafe", "offD");
+        chk("Yönü ters çevir", "offRev");
+        break;
+      case "mirror":
+        box.appendChild(h("p", "pm-hint", "Eksen: seçimdeki merkez çizgisi (yoksa son seçilen çizgi)."));
+        break;
+      case "spat":
+        box.appendChild(h("div", "pm-sub", "Yön 1"));
+        num("Adet", "n1", { min: 1 });
+        num("Aralık", "s1", { any: true });
+        num("Açı (°)", "a1", { any: true });
+        box.appendChild(h("div", "pm-sub", "Yön 2"));
+        num("Adet", "n2", { min: 1 });
+        num("Aralık", "s2", { any: true });
+        num("Açı (°)", "a2", { any: true });
+        break;
+      case "scpat":
+        num("Adet", "cn", { min: 2 });
+        num("Toplam açı (°)", "ctotal");
+        break;
+      case "move":
+        num("X öteleme", "mdx", { any: true });
+        num("Y öteleme", "mdy", { any: true });
+        num("Döndürme açısı (°)", "mang", { any: true });
+        chk("Kopyala (orijinali koru)", "mcopy");
+        break;
+    }
+    const b = h("button", "btn primary", "Uygula");
+    b.addEventListener("click", () => this.applyOp());
+    box.appendChild(b);
+  }
+
+  private numField(label: string, val: number, set: (v: number) => void, o: { min?: number; any?: boolean } = {}) {
     const l = document.createElement("label");
     l.className = "pm-field";
     l.textContent = label;
@@ -1632,14 +1991,37 @@ export class SketchEditor implements InputHandler {
     inp.value = fmtNum(val, 3);
     inp.addEventListener("input", () => {
       const v = evalNum(inp.value);
-      inp.classList.toggle("bad", v === null || v <= 0);
-      if (v !== null && v > 0) {
-        set(v);
+      const ok = v !== null && (o.any || v >= (o.min ?? 1e-9));
+      inp.classList.toggle("bad", !ok);
+      if (ok) {
+        set(v!);
         this.render();
       }
     });
+    inp.addEventListener("keydown", (ev) => ev.stopPropagation());
     l.appendChild(inp);
     return l;
+  }
+
+  /** Eskiz noktalarının dünya koordinatlarında sınırları */
+  bounds(): [Vec3, Vec3] | null {
+    const ids = Object.keys(this.data.pts);
+    if (!ids.length) return null;
+    const mn: Vec3 = [Infinity, Infinity, Infinity], mx: Vec3 = [-Infinity, -Infinity, -Infinity];
+    const addP = (q: Vec2) => {
+      const w = this.W(q);
+      for (let i = 0; i < 3; i++) {
+        mn[i] = Math.min(mn[i], w[i]);
+        mx[i] = Math.max(mx[i], w[i]);
+      }
+    };
+    for (const id of ids) addP(P(this.data, id));
+    for (const e of this.data.ents) if (e.t === "circle" || e.t === "arc") {
+      const c = P(this.data, e.c);
+      addP([c[0] - e.r, c[1] - e.r]);
+      addP([c[0] + e.r, c[1] + e.r]);
+    }
+    return [mn, mx];
   }
 
   hasContent() {
