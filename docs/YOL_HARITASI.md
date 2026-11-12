@@ -428,3 +428,15 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 |---|---|
 | Profili konumlandır: kutu/boru profilde 17 nokta (merkez, dış 8, iç 8) | ✅ |
 | İnce cidarda nokta ve dokunma alanı otomatik küçülür, ipucu (Dış/İç) | ✅ |
+
+## v0.31 — Yapı elemanı: grup başına profil ve özellikler arası birleşim
+| Özellik | Durum |
+|---|---|
+| Her grubun kendi profili (standart / ölçü / özel / eskizden); "Grup 1 ile aynı profil" | ✅ |
+| Farklı profilli gruplar arasında T, köşe, X birleşimleri ve kırpma önceliği | ✅ |
+| Kesim listesinde her grup kendi profil adıyla | ✅ |
+| Özellikler arası: yeni elemanın ucu önceki elemana değerse onun yüzünde biter (T) | ✅ |
+| Özellikler arası: önceki elemanın ucu yeni elemanın ortasına değerse önceki kırpılır (ters T) | ✅ |
+| Özellikler arası tek elemanlı köşe: önceki eleman uzar, yeni eleman yüzünde biter; gönyeli köşede uzatma yok | ✅ |
+| "Önceki yapı elemanlarına göre kırp / uzat" seçeneği (varsayılan açık) | ✅ |
+| Özellikler arası gönye köşe seçeneği | ⬜ |

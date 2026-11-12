@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.31: Yapı elemanında grup başına profil (tek özellikte çerçeve, ayak, kuşak farklı profillerle; birleşimler otomatik); ayrı yapı elemanı özellikleri arasında otomatik kırp/uzat (T, ters T, köşe)
 - v0.30.3: Profili konumlandır: içi boş profillerde 17 delme noktası (merkez + dış sınırın 8 + iç sınırın 8 noktası; iç noktalar yeşil)
 - v0.30.2: 3B eskiz ilişki çubuğu düzeltildi (başlıklı, gruplu, okunur düğmeler; imlecin üstünde açılır, ikinci seçimi örtmez); panelde Araç seçici ve ilişki listesi düzenlendi
 - v0.30.1: Sağ tık > Dik (Normal To): düzleme / düz yüze (grafik alanda veya ağaçta) karşıdan bakar, ikinci basışta arka taraftan; sağ tık imleç altındaki öğeyi seçer

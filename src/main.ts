@@ -1765,55 +1765,69 @@ function renderFeaturePM(kind: string) {
       break;
     }
     case "member": {
-      const std = d.std as ProfileStd;
       // SolidWorks grupları: etkin grup (0 = özelliğin kendi alanları)
       const gi = Math.min(d._g ?? 0, (d.groups ?? []).length);
       const g = memGroup(d, gi);
+      // profil sahibi: grubun kendi profili varsa grup, yoksa özellik
+      const P: any = gi > 0 && g.std ? g : d;
+      const std = P.std as ProfileStd;
       const lib = loadLibrary();
       const docP = doc.profiles ?? {};
       const closedSk = sketches.filter((x) => extractClosed(x) && !d.segs.some((sg: any) => sg.sk === x.id));
       let sizeOpts: { v: string; t: string }[];
-      if (d.std === "sketch") sizeOpts = closedSk.map((x) => ({ v: x.id, t: x.name }));
-      else if (d.std === "custom") {
+      if (P.std === "sketch") sizeOpts = closedSk.map((x) => ({ v: x.id, t: x.name }));
+      else if (P.std === "custom") {
         const ids = new Set([...Object.keys(docP), ...Object.keys(lib)]);
         sizeOpts = [...ids].map((k) => ({ v: k, t: (docP[k] ?? lib[k]).name + (docP[k] ? "" : " (kütüphane)") }));
       } else sizeOpts = Object.keys(PROFILES[std].sizes).map((z) => ({ v: z, t: z }));
-      if (sizeOpts.length && !sizeOpts.some((o) => o.v === d.size)) d.size = sizeOpts[0].v;
+      if (sizeOpts.length && !sizeOpts.some((o) => o.v === P.size)) P.size = sizeOpts[0].v;
       // kütüphaneden seçilen profil belgeye gömülür
       const embed = () => {
-        if (d.std === "custom" && d.size && !docP[d.size] && lib[d.size]) {
-          doc.profiles = { ...docP, [d.size]: { name: lib[d.size].name, loops: lib[d.size].loops } };
+        if (P.std === "custom" && P.size && !docP[P.size] && lib[P.size]) {
+          doc.profiles = { ...docP, [P.size]: { name: lib[P.size].name, loops: lib[P.size].loops } };
         }
       };
       embed();
       let info = "";
       try {
         let custom: any;
-        if (d.std === "sketch") custom = extractLoops((getFeat(d.size) as SketchFeature).data).loops;
-        else if (d.std === "custom") custom = (doc.profiles ?? {})[d.size]?.loops;
-        const pr = placedProfile(std, d.size, g.align as any, g.mirror, g.rot, custom, g.poff);
+        if (P.std === "sketch") custom = extractLoops((getFeat(P.size) as SketchFeature).data).loops;
+        else if (P.std === "custom") custom = (doc.profiles ?? {})[P.size]?.loops;
+        const pr = placedProfile(std, P.size, g.align as any, g.mirror, g.rot, custom, g.poff);
         const rho = MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85;
         info = `Kesit alanı ${fmtNum(pr.area / 100, 2)} cm² · ≈ ${fmtNum((pr.area * rho) / 1000, 2)} kg/m`;
       } catch {}
       const stdOpts = [...(Object.keys(PROFILES) as ProfileStd[]).map((k) => ({ v: k as string, t: PROFILES[k].label })), { v: "custom", t: "Özel profil (kütüphane)" }, { v: "sketch", t: "Eskizden profil (bu belgede)" }];
       const gp = group(
-        "Profil",
-        selectField("Standart", stdOpts, d.std, (v) => {
-          d.std = v;
-          d.size = "";
+        gi > 0 ? `Profil — Grup ${gi + 1}` : "Profil",
+        ...(gi > 0
+          ? [
+              checkField("Grup 1 ile aynı profil", !g.std, (v) => {
+                if (v) (delete g.std, delete g.size);
+                else ((g.std = d.std), (g.size = d.size));
+                renderFeaturePM(kind);
+                upd();
+              }),
+            ]
+          : []),
+        ...(gi > 0 && !g.std ? [h("p", "pm-hint", "Grup 1'in profili kullanılıyor. Farklı profil için işareti kaldırın.")] : [
+        selectField("Standart", stdOpts, P.std, (v) => {
+          P.std = v;
+          P.size = "";
           renderFeaturePM(kind);
           upd();
         }),
         sizeOpts.length
-          ? selectField(d.std === "sketch" ? "Profil eskizi" : "Ölçü", sizeOpts, d.size, (v) => ((d.size = v), embed(), renderFeaturePM(kind), upd()))
-          : h("p", "pm-hint", d.std === "sketch" ? "Belgede kapalı bir profil eskizi yok. Profilin kesitini kapalı bir eskiz olarak çizin; eskizin orijini delme noktası olur." : "Kütüphanede profil yok. Aşağıdan bir eskizi kütüphaneye ekleyin."),
-        h("p", "pm-hint", `${PROFILES[std]?.std ?? (d.std === "sketch" ? "Eskiz değişince eleman güncellenir" : "Özel profil")} · ${info}`),
+          ? selectField(P.std === "sketch" ? "Profil eskizi" : "Ölçü", sizeOpts, P.size, (v) => ((P.size = v), embed(), renderFeaturePM(kind), upd()))
+          : h("p", "pm-hint", P.std === "sketch" ? "Belgede kapalı bir profil eskizi yok. Profilin kesitini kapalı bir eskiz olarak çizin; eskizin orijini delme noktası olur." : "Kütüphanede profil yok. Aşağıdan bir eskizi kütüphaneye ekleyin."),
+        h("p", "pm-hint", `${PROFILES[std]?.std ?? (P.std === "sketch" ? "Eskiz değişince eleman güncellenir" : "Özel profil")} · ${info}`),
+        ]),
       );
-      if (d.std === "custom" || d.std === "sketch") {
+      if ((P.std === "custom" || P.std === "sketch") && !(gi > 0 && !g.std)) {
         if (closedSk.length)
           gp.appendChild(
             button("Bir eskizi kütüphaneye ekle…", () => {
-              const sk = d.std === "sketch" ? (getFeat(d.size) as SketchFeature) : closedSk[closedSk.length - 1];
+              const sk = P.std === "sketch" ? (getFeat(P.size) as SketchFeature) : closedSk[closedSk.length - 1];
               const nm = prompt("Profil adı (ör. Özel kutu 45x25x2):", sk?.name ?? "Özel profil");
               if (!nm || !sk) return;
               const { loops, error } = extractLoops(sk.data);
@@ -1823,8 +1837,8 @@ function renderFeaturePM(kind: string) {
               l2[pid] = { name: nm, loops };
               saveLibrary(l2);
               doc.profiles = { ...(doc.profiles ?? {}), [pid]: { name: nm, loops } };
-              d.std = "custom";
-              d.size = pid;
+              P.std = "custom";
+              P.size = pid;
               toast(`"${nm}" kütüphaneye eklendi`);
               renderFeaturePM(kind);
               upd();
@@ -1859,7 +1873,11 @@ function renderFeaturePM(kind: string) {
       // gruplar
       const allG = [d, ...(d.groups ?? [])];
       const gbar = h("div", "pm-row");
-      allG.forEach((x: any, k: number) => gbar.appendChild(button(`Grup ${k + 1} (${x.segs.length})`, () => ((d._g = k), renderFeaturePM(kind), drawSketches()), "btn" + (k === gi ? " primary" : ""))));
+      const pname = (x: any) => {
+        const st = x.std && x.size ? x : d;
+        return st.std === "custom" ? ((doc.profiles ?? {})[st.size]?.name ?? "özel") : st.std === "sketch" ? (getFeat(st.size)?.name ?? "eskiz") : `${st.std} ${st.size}`;
+      };
+      allG.forEach((x: any, k: number) => gbar.appendChild(button(`Grup ${k + 1} (${x.segs.length}) · ${pname(x)}`, () => ((d._g = k), renderFeaturePM(kind), drawSketches()), "btn" + (k === gi ? " primary" : ""))));
       gbar.appendChild(button("+ Yeni grup", () => {
         d.groups = [...(d.groups ?? []), { segs: [], align: g.align, mirror: false, rot: 0, corner: g.corner, gap: g.gap }];
         d._g = d.groups.length;
@@ -1874,7 +1892,7 @@ function renderFeaturePM(kind: string) {
         drawSketches();
         upd();
       }, "btn danger"));
-      body.appendChild(group("Gruplar", gbar, h("p", "pm-hint", "Her grubun kendi delme noktası, döndürme, aynalama, hizalama ve köşe işlemi vardır. Grafik alanda tıklanan segment etkin gruba geçer.")));
+      body.appendChild(group("Gruplar", gbar, h("p", "pm-hint", "Her grubun kendi profili (Profil bölümünde \"Grup 1 ile aynı profil\" işaretini kaldırın), delme noktası, döndürme, aynalama, hizalama ve köşe işlemi vardır. Grafik alanda tıklanan segment etkin gruba geçer. Gruplar arası birleşimlerde kırpma önceliği küçük olan sürekli kalır.")));
       body.appendChild(
         group(
           "Konum",
@@ -1917,6 +1935,7 @@ function renderFeaturePM(kind: string) {
         segField([{ v: "miter", t: "Gönye" }, { v: "butt1", t: "Alın 1" }, { v: "butt2", t: "Alın 2" }, { v: "none", t: "Yok" }], g.corner, (v) => ((g.corner = v), renderFeaturePM(kind), upd())),
       );
       if (g.corner !== "none") gc.appendChild(numField("Boşluk", g.gap, (v) => ((g.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }));
+      if (d.ori === 2) gc.appendChild(checkField("Önceki yapı elemanlarına göre kırp / uzat", d.trimPrev !== false, (v) => ((d.trimPrev = v), upd())));
       gc.appendChild(h("p", "pm-hint", "Uç uca birleşen iki eleman köşede kesilir. T birleşimleri, gruplar arası köşeler ve 3+ elemanlı köşeler (ör. ayak + çerçeve) otomatik çözülür: sürekli eleman uzar, diğerleri onun yüzünde biter. Bağlı çizgiler aynı yöne çevrilir, L/U kanatları köşede ters dönmez."));
       body.appendChild(gc);
       // segmentler
@@ -2921,12 +2940,13 @@ function memberAlignPick(x: number, y: number) {
 }
 /** SolidWorks "Profili konumlandır": profil resminde köşe / nokta seçerek delme noktası */
 function openPierceDialog(d: any, g: any) {
+  const P = g.std && g.size ? g : d;
   let custom: any;
-  if (d.std === "sketch") custom = extractLoops((getFeat(d.size) as SketchFeature).data).loops;
-  else if (d.std === "custom") custom = (doc.profiles ?? {})[d.size]?.loops;
+  if (P.std === "sketch") custom = extractLoops((getFeat(P.size) as SketchFeature).data).loops;
+  else if (P.std === "custom") custom = (doc.profiles ?? {})[P.size]?.loops;
   let loops: import("./doc/types").Loop[];
   try {
-    loops = placedProfile(d.std, d.size, "c", false, 0, custom).loops;
+    loops = placedProfile(P.std, P.size, "c", false, 0, custom).loops;
   } catch {
     return toast("Profil okunamadı", true);
   }

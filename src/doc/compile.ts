@@ -349,32 +349,37 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           break;
         }
         case "member": {
-          const std = f.std as ProfileStd;
           if (!f.segs.length && !(f.groups ?? []).some((g) => g.segs.length)) throw new Error("İskelet eskizinden en az bir segment seçin");
-          let custom: Loop[] | undefined, cname = "";
-          if (f.std === "sketch") {
-            const ps = sketchOf(f.size);
-            if (!ps) throw new Error("Profil eskizi bulunamadı");
-            const { loops, error } = extractLoops(ps.data);
-            if (error || !loops.length) throw new Error(`${ps.name}: profil için kapalı kontur gerekir`);
-            custom = loops;
-            cname = ps.name;
-          } else if (f.std === "custom") {
-            const cp = profiles[f.size];
-            if (!cp) throw new Error("Özel profil belgede bulunamadı");
-            custom = cp.loops;
-            cname = cp.name;
-          } else if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
+          // profil çözümü (özellik ya da grup kendi profili)
+          const prof = (pstd: string, psize: string) => {
+            let custom: Loop[] | undefined, cname = "";
+            if (pstd === "sketch") {
+              const ps = sketchOf(psize);
+              if (!ps) throw new Error("Profil eskizi bulunamadı");
+              const { loops, error } = extractLoops(ps.data);
+              if (error || !loops.length) throw new Error(`${ps.name}: profil için kapalı kontur gerekir`);
+              custom = loops;
+              cname = ps.name;
+            } else if (pstd === "custom") {
+              const cp = profiles[psize];
+              if (!cp) throw new Error("Özel profil belgede bulunamadı");
+              custom = cp.loops;
+              cname = cp.name;
+            } else if (!PROFILES[pstd as ProfileStd]) throw new Error("Profil türü bulunamadı");
+            return { std: pstd as ProfileStd, size: psize, custom, name: custom ? cname : profileName(pstd as ProfileStd, psize) };
+          };
+          const P0 = prof(f.std, f.size);
           // SolidWorks grupları: 1. grup = özelliğin kendi alanları, sonra f.groups
           const groups = [{ segs: f.segs, align: f.align, mirror: f.mirror, rot: f.rot, poff: f.poff, corner: f.corner, gap: f.gap, alignAx: f.alignAx, alignTo: f.alignTo, prio: f.prio }, ...(f.groups ?? [])];
           const items: MemberItem[] = [];
-          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number }[] = [];
+          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number; name?: string }[] = [];
           let gi = 0;
           let pr0: ReturnType<typeof placedProfile> | null = null;
           groups.forEach((G, gk) => {
-          const pr = placedProfile(std, f.size, G.align as Align, G.mirror, G.rot, custom, G.poff);
+          const PG = (G as any).std && (G as any).size ? prof((G as any).std!, (G as any).size!) : P0;
+          const pr = placedProfile(PG.std, PG.size, G.align as Align, G.mirror, G.rot, PG.custom, G.poff);
           pr0 ??= pr;
-          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap, auto: !G.rot && !G.mirror && !G.alignTo, prio: G.prio });
+          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap, auto: !G.rot && !G.mirror && !G.alignTo, prio: G.prio, name: PG.name });
           const gItems: MemberItem[] = [];
           // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
           const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];
@@ -435,7 +440,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           for (const it of gItems) items.push({ ...it, g: gk });
           });
           const pr = pr0!;
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, ...(groups.length > 1 ? { gl } : {}) });
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: P0.name, R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, tp: f.trimPrev !== false, ...(groups.length > 1 ? { gl } : {}) });
           break;
         }
         case "trim": {

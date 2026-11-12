@@ -1383,7 +1383,7 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
   else
     f.gl.forEach((gp, k) => {
       const items = f.items.filter((it) => (it.g ?? 0) === k);
-      if (items.length) parts.push({ ...memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap }), g: k, prio: gp.prio });
+      if (items.length) parts.push({ ...memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap, name: gp.name ?? f.name }), g: k, prio: gp.prio });
     });
   // akıllı birleşimler: T birleşimi, gruplar arası köşe, 3+ elemanlı köşe
   xSplits = [];
@@ -1395,7 +1395,83 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
     memberReg.set(xs.key + "/2", { ...reg, key: xs.key + "/2", a: xs.V, len: L2 });
     memberReg.set(xs.key, { ...reg, b: xs.V, len: L1 });
   }
+  if (f.ori === 2 && f.tp) trimToPrevious(f.id, parts, f.gap);
   for (const p of parts) for (const s of p.solids) if (s) for (const q of solidsOf(s)) applyTool(q, false, false);
+}
+/** Özellikler arası birleşim (SolidWorks Kırp/Uzat gibi, otomatik): bu özelliğin uçları önceki yapı elemanlarına değiyorsa
+ *  T: uç, önceki elemanın yüzünde kırpılır; köşe (iki uç aynı noktada): önceki eleman uzatılır, yeni eleman onun yüzünde biter. */
+function trimToPrevious(fid: string, parts: MemberPart[], gap: number) {
+  const prev = [...memberReg.values()].filter((r) => !r.key.startsWith(fid + ":") && !r.arc);
+  if (!prev.length) return;
+  // önceki elemanların gövdeleri (yalnız önceki kayıtlarla eşleştir)
+  const cs = bodies.map((b) => centroid(b));
+  const bodyOf = new Map<string, number>();
+  const used = new Set<number>();
+  for (const r of prev) {
+    let best = -1, bd = Infinity;
+    cs.forEach((c, i) => {
+      if (used.has(i)) return;
+      const d = segDist(c, r.a, r.b);
+      if (d < bd) [bd, best] = [d, i];
+    });
+    if (best >= 0 && bd < r.R * 1.2 + 1) (bodyOf.set(r.key, best), used.add(best));
+  }
+  const extended = new Set<string>();
+  for (const p of parts)
+    p.lines.forEach((li, i) => {
+      if (!li || p.chained.has(i) || !p.solids[i]) return;
+      ([li.a, li.b] as Vec3[]).forEach((V, end) => {
+        const dO = end === 0 ? li.d : vmul(li.d, -1); // elemanın içine doğru
+        for (const h of prev) {
+          if (Math.abs(vdot(h.d, li.d)) > 0.9999) continue; // aynı doğrultu: dokunma
+          const t = vdot(vsub(V, h.a), h.d);
+          if (t < -1e-3 || t > h.len + 1e-3) continue;
+          if (vlen(vsub(vadd(h.a, vmul(h.d, t)), V)) > 1e-3) continue;
+          const corner = t < 1e-3 || t > h.len - 1e-3;
+          // köşede başka önceki eleman da bitiyorsa (gönyeli çerçeve köşesi) uzatma: köşe zaten dolu
+          const mates = prev.filter((o) => vlen(vsub(o.a, V)) < 1e-3 || vlen(vsub(o.b, V)) < 1e-3).length;
+          if (corner && mates === 1 && !extended.has(h.key)) {
+            // önceki elemanı yeni elemanın profilini kaplayacak kadar uzat
+            const hEnd = t < h.len / 2 ? 0 : 1;
+            const dH = hEnd === 0 ? vmul(h.d, -1) : h.d; // uçtan dışarı
+            const e = profileSupport(p.loops, li.x, li.d, dH);
+            const bi = bodyOf.get(h.key);
+            if (e > 1e-6 && bi !== undefined) {
+              const o = hEnd === 0 ? vsub(h.a, vmul(h.d, e)) : h.b;
+              try {
+                const ext = profile(h.loops).sketchOnPlane(new Plane(o, h.x, h.d)).extrude(e);
+                bodies[bi] = bodies[bi].fuse(ext);
+                extended.add(h.key);
+              } catch {}
+            }
+          }
+          // yeni elemanı önceki elemanın yüzünde bitir
+          const sup = profileSupport(h.loops, h.x, h.d, dO);
+          try {
+            p.solids[i] = keepFar(p.solids[i]!.cut(halfSpace(vadd(V, vmul(dO, sup + gap)), dO)), V, dO);
+          } catch {}
+          break;
+        }
+      });
+    });
+  // ters T: önceki elemanın ucu yeni elemanın orta kısmına değiyor → önceki eleman yeni elemanın yüzünde biter
+  for (const h of prev) {
+    const bi = bodyOf.get(h.key);
+    if (bi === undefined) continue;
+    ([h.a, h.b] as Vec3[]).forEach((E, end) => {
+      for (const p of parts)
+        p.lines.forEach((li, i) => {
+          if (!li || !p.solids[i] || Math.abs(vdot(h.d, li.d)) > 0.9999) return;
+          const t = vdot(vsub(E, li.a), li.d);
+          if (t < 1e-3 || t > li.L - 1e-3 || vlen(vsub(vadd(li.a, vmul(li.d, t)), E)) > 1e-3) return;
+          const dO = end === 0 ? h.d : vmul(h.d, -1);
+          const sup = profileSupport(p.loops, li.x, li.d, dO);
+          try {
+            bodies[bi] = keepFar(bodies[bi].cut(halfSpace(vadd(E, vmul(dO, sup + gap)), dO)), E, dO);
+          } catch {}
+        });
+    });
+  }
 }
 /** düzlemsel bağlı zincirde (ör. ters U çerçeve) tüm segmentlerin profil dikey ekseni = zincir düzlemi normali (2B eskizdeki gibi; köşede profiller aynı yönde buluşur) */
 function planarize(f: Extract<KFeature, { type: "member" }>): MemberItem[] {

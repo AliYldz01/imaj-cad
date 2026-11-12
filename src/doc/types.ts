@@ -502,10 +502,15 @@ export interface MemberFeature extends FeatBase {
   prio?: number;
   /** ek gruplar (1. grup = özelliğin kendi alanları) */
   groups?: MemberGroup[];
+  /** önceki yapı elemanı özelliklerine değen uçları onların yüzünde kırp (varsayılan açık) */
+  trimPrev?: boolean;
 }
 /** Yapı elemanı grubu: kendi segmentleri ve profil konumu / köşe işlemi */
 export interface MemberGroup {
   segs: { sk: string; ent: string }[];
+  /** grubun kendi profili (boşsa özelliğin profili) */
+  std?: string;
+  size?: string;
   align: string;
   mirror: boolean;
   rot: number;
@@ -677,7 +682,7 @@ export type KFeature =
   | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
   | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
   | { id: string; type: "vchamfer"; v: Vec3; d: number }
-  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; auto?: boolean; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number }[] }
+  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; auto?: boolean; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number; name?: string }[]; tp?: boolean }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }
