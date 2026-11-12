@@ -309,7 +309,79 @@ export interface PlaneFeature extends FeatBase {
   flip: boolean;
 }
 
+// ---------------- Sac metal ----------------
+
+/** Taban flanş: kapalı eskizden düz levha, açık eskizden bükümlü profil. Sac parametrelerini taşır. */
+export interface SheetBaseFeature extends FeatBase {
+  type: "sheetbase";
+  sketch: string;
+  /** sac kalınlığı */
+  t: number;
+  /** iç büküm yarıçapı */
+  r: number;
+  /** K faktörü (nötr eksen konumu, 0..1) */
+  k: number;
+  /** kalınlık yönünü ters çevir */
+  rev: boolean;
+  /** açık profil: ekstrüzyon derinliği */
+  d: number;
+  /** açık profil: orta düzlem */
+  mid: boolean;
+  /** büküm boşaltma oranı (× kalınlık) */
+  relief: number;
+}
+export type FlangePos = "inside" | "outside" | "bendout";
+export type FlangeLen = "outer" | "inner" | "tangent";
+/** Kenar flanş */
+export interface EdgeFlangeFeature extends FeatBase {
+  type: "edgeflange";
+  edges: EdgeRef[];
+  /** flanş uzunluğu */
+  L: number;
+  /** büküm açısı (derece) */
+  angle: number;
+  pos: FlangePos;
+  lenRef: FlangeLen;
+  flip: boolean;
+  /** varsayılan büküm yarıçapını kullan */
+  useDef: boolean;
+  r: number;
+  /** kenar başı / sonu kısaltma */
+  o1: number;
+  o2: number;
+  /** köşe boşluğu (birlikte seçilen komşu kenarlarda gönye) */
+  gap: number;
+}
+/** Kenet (hem) */
+export interface HemFeature extends FeatBase {
+  type: "hem";
+  edges: EdgeRef[];
+  kind: "closed" | "open";
+  L: number;
+  /** açık kenet aralığı */
+  gap: number;
+  pos: "inside" | "bendout";
+  flip: boolean;
+}
+/** Çizgiden büküm: yüz üzerindeki eskiz çizgisinden levhayı büker */
+export interface SketchBendFeature extends FeatBase {
+  type: "sketchbend";
+  sketch: string;
+  angle: number;
+  /** bükülecek taraf: çizginin sağı/solu */
+  side: boolean;
+  /** büküm yönü: yüzün normaline doğru / ters */
+  flip: boolean;
+  pos: "center" | "inside" | "outside";
+  useDef: boolean;
+  r: number;
+}
+
 export type Feature =
+  | SheetBaseFeature
+  | EdgeFlangeFeature
+  | HemFeature
+  | SketchBendFeature
   | SketchFeature
   | ExtrudeFeature
   | RevolveFeature
@@ -384,7 +456,27 @@ export type KFeature =
   | { id: string; type: "shell"; t: number; faces: FaceRef[] }
   | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[] }
   | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number }
-  | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame };
+  | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame }
+  | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
+  | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
+  | { id: string; type: "sketchbend"; pl: KPlane; line: [Vec2, Vec2]; angle: number; side: boolean; flip: boolean; pos: "center" | "inside" | "outside"; r: number; t: number; k: number };
+
+/** Açınım (düz desen) 2B öğeleri: çizgi, yay (saat yönü tersine a0→a1, derece), daire */
+export type Flat2D =
+  | { k: "l"; a: Vec2; b: Vec2 }
+  | { k: "a"; c: Vec2; r: number; a0: number; a1: number }
+  | { k: "c"; c: Vec2; r: number };
+export interface FlatBend { a: Vec2; b: Vec2; up: boolean; angle: number; r: number; a3: Vec3; b3: Vec3 }
+export interface FlatResult {
+  mesh: MeshData | null;
+  outline: Flat2D[];
+  bends: FlatBend[];
+  /** levha ölçüleri ve alanı */
+  w: number;
+  h: number;
+  area: number;
+  error?: string;
+}
 
 export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string }
 export interface EdgeInfo {
@@ -436,7 +528,8 @@ export type KernelRequest =
   | { id: number; type: "section"; frame: Frame }
   | { id: number; type: "export"; format: "step" | "stl" }
   | { id: number; type: "measure"; items: MeasureItem[] }
-  | { id: number; type: "props" };
+  | { id: number; type: "props" }
+  | { id: number; type: "flat"; body: number; t: number; k: number };
 
 export type KernelResponse =
   | { type: "ready" }
@@ -445,4 +538,5 @@ export type KernelResponse =
   | { id: number; type: "measured"; lines: string[] }
   | { id: number; type: "section"; items: SectionItem[] }
   | { id: number; type: "props"; props: MassProps | null }
-  | { id: number; type: "exported"; blob: Blob | null; message?: string };
+  | { id: number; type: "exported"; blob: Blob | null; message?: string }
+  | ({ id: number; type: "flat" } & FlatResult);

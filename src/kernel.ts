@@ -1,5 +1,5 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult } from "./doc/types";
 
 export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame> };
 
@@ -48,6 +48,11 @@ export class Kernel {
   async export(format: "step" | "stl"): Promise<{ blob: Blob | null; message?: string }> {
     await this.ready;
     return this.request({ type: "export", format } as any);
+  }
+
+  async flat(body: number, t: number, k: number): Promise<FlatResult> {
+    await this.ready;
+    return this.request<FlatResult>({ type: "flat", body, t, k } as any);
   }
 
   async measure(items: MeasureItem[]): Promise<string[]> {

@@ -136,8 +136,9 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 
 | Modül | İçerik | Durum |
 |---|---|---|
-| Sac metal **(sıradaki: v0.5)** | Taban flanş, kenar flanş, büküm, K-faktörü, açınım, DXF | ⬜ |
-| Kaynaklı yapı / profil | İskelet eskiz, profil kütüphanesi, köşe işlemleri, kesim listesi | ⬜ |
+| Sac metal (v0.5) | Taban flanş (kapalı/açık profil), kenar flanş (açı, uzunluk referansı, konum, kısaltma, köşe gönyesi, büküm boşaltma), kenet (açık/kapalı), çizgiden büküm, K faktörü, düzleştir, büküm tablosu, DXF | ✅ |
+| Sac metal — sonraki | Gönye flanş, kademe (jog), köşe kapatma, kalıptan sac'a dönüştür, büküm tablosu dosyası | ⬜ |
+| Kaynaklı yapı / profil **(sıradaki)** | İskelet eskiz, profil kütüphanesi, köşe işlemleri, kesim listesi | ⬜ |
 | Montaj | Bileşen ekleme, çakışık/eş merkezli/mesafe eşleşmeleri, patlatma | ⬜ |
 | Teknik resim | Görünüşler, kesit, ölçülendirme, antet, PDF | ⬜ |
 | Saha özellikleri | Fotoğraf ekleme, Bluetooth kumpas | ⬜ |

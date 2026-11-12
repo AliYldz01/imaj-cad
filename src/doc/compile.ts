@@ -2,6 +2,7 @@
 import type { Feature, Frame, KFeature, KPlane, PlaneRef, SketchFeature, Vec3 } from "./types";
 import { AXES, STD_FRAMES, offsetFrame } from "./math";
 import { extractLoops, extractPath, extractChains, pointPos, thinRegion } from "../sketch/profile";
+import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
 
 export function resolveFrame(ref: PlaneRef, feats: Feature[]): Frame | null {
   if (ref.k === "std") return STD_FRAMES[ref.n];
@@ -105,6 +106,58 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
           kfeats.push({ id: f.id, type: "rib", pl, chain: open[0].segs, normal: f.dir === "normal", flip: f.flip, t: f.t, side: f.side });
           break;
         }
+        case "sheetbase": {
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Taban flanş eskizini seçin");
+          const pl = kplane(sk.plane, feats, sk.id);
+          if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+          if (!(f.t > 0)) throw new Error("Sac kalınlığı sıfırdan büyük olmalı");
+          const { chains, error } = extractChains(sk.data);
+          if (error) throw new Error(`${sk.name}: ${error}`);
+          if (!chains.length) throw new Error(`${sk.name}: eskiz boş`);
+          const open = chains.filter((c) => !c.closed);
+          if (open.length) {
+            if (open.length > 1 || chains.length > 1) throw new Error("Açık profilli taban flanş tek bir açık zincir olmalı");
+            if (!(f.d > 0)) throw new Error("Derinlik sıfırdan büyük olmalı");
+            kfeats.push({ id: f.id, type: "sheetbase", pl, loops: sheetOpenRegion(open[0].segs, f.t, f.r, f.rev), open: true, t: f.t, rev: f.rev, d: f.d, mid: f.mid });
+          } else {
+            const { loops } = profileOf(f.sketch);
+            kfeats.push({ id: f.id, type: "sheetbase", pl, loops, open: false, t: f.t, rev: f.rev, d: f.d, mid: f.mid });
+          }
+          break;
+        }
+        case "edgeflange":
+        case "hem": {
+          const sp = sheetParamsBefore(feats, f.id);
+          if (!sp) throw new Error("Önce bir taban flanş oluşturun");
+          if (!f.edges.length) throw new Error("Flanş eklenecek kenar(lar)ı seçin");
+          if (f.type === "edgeflange") {
+            if (!(f.L > 0)) throw new Error("Flanş uzunluğu sıfırdan büyük olmalı");
+            if (!(f.angle > 0 && f.angle <= 180)) throw new Error("Büküm açısı 0–180° arasında olmalı");
+            const r = f.useDef ? sp.r : f.r;
+            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: f.angle, pos: f.pos, lenRef: f.lenRef, flip: f.flip, r, t: sp.t, o1: f.o1, o2: f.o2, gap: f.gap, relief: sp.relief });
+          } else {
+            if (!(f.L > 0)) throw new Error("Kenet uzunluğu sıfırdan büyük olmalı");
+            const r = f.kind === "open" ? Math.max(0.05, f.gap / 2) : 0.05;
+            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: 180, pos: f.pos, lenRef: "tangent", flip: f.flip, r, t: sp.t, o1: 0, o2: 0, gap: 0, relief: sp.relief });
+          }
+          break;
+        }
+        case "sketchbend": {
+          const sp = sheetParamsBefore(feats, f.id);
+          if (!sp) throw new Error("Önce bir taban flanş oluşturun");
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Büküm çizgisi eskizini seçin");
+          const pl = kplane(sk.plane, feats, sk.id);
+          if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+          if (sk.plane.k !== "face") throw new Error("Büküm çizgisi eskizi sacın düz yüzüne çizilmeli");
+          const lines = sk.data.ents.filter((e) => e.t === "line" && !e.cons);
+          if (lines.length !== 1) throw new Error("Eskizde tek bir büküm çizgisi olmalı");
+          const ln = lines[0] as Extract<typeof lines[0], { t: "line" }>;
+          if (!(f.angle > 0 && f.angle <= 180)) throw new Error("Büküm açısı 0–180° arasında olmalı");
+          kfeats.push({ id: f.id, type: "sketchbend", pl, line: [pointPos(sk.data, ln.p1), pointPos(sk.data, ln.p2)], angle: f.angle, side: f.side, flip: f.flip, pos: f.pos, r: f.useDef ? sp.r : f.r, t: sp.t, k: sp.k });
+          break;
+        }
         case "dome":
           if (!f.face) throw new Error("Kubbe yapılacak düz yüzü seçin");
           kfeats.push({ id: f.id, type: "dome", face: f.face, h: f.h });
@@ -139,10 +192,10 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
           break;
         }
         case "fillet":
-          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces });
+          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, r2: f.r2 });
           break;
         case "chamfer":
-          kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces });
+          kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, angle: f.angle, flip: f.flip });
           break;
         case "shell":
           kfeats.push({ id: f.id, type: "shell", t: f.t, faces: f.faces });
@@ -181,6 +234,6 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
     (f) =>
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
-      ((f.type === "rib" || f.type === "wrap") && f.sketch === sketchId),
+      ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId),
   );
 }

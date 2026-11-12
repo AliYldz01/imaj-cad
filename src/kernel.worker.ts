@@ -6,13 +6,14 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
   Seg, SectionItem, TextItem, Vec2, Vec3,
 } from "./doc/types";
 import { thinRegion } from "./sketch/profile";
+import { unfold } from "./sheet/unfold";
 
 type Shape = any;
 /** Çoklu gövde: her eleman ayrı bir katı */
@@ -506,8 +507,208 @@ function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number }
   return { edges: new Set([best.a.hashCode, best.b.hashCode]), r: (best.d / 2) * 0.995 };
 }
 
+// ---------- Sac metal ----------
+
+/** Yerel eksenlerde kutu: x = s yönü [sa,sb], y = u yönü [wa,wb], e yönünde [za,zb] (O başlangıç) */
+function boxIn(O: Vec3, s: Vec3, u: Vec3, e: Vec3, sa: number, sb: number, wa: number, wb: number, za: number, zb: number): Shape {
+  const pn = vcross(s, u);
+  const sign = vdot(pn, e) > 0 ? 1 : -1;
+  const pl = new Plane(vadd(O, vmul(e, za)), s, pn);
+  return (draw([sa, wa]).lineTo([sb, wa]).lineTo([sb, wb]).lineTo([sa, wb]).close() as any).sketchOnPlane(pl).extrude(sign * (zb - za));
+}
+
+const volOf = (s: Shape) => {
+  try {
+    return measureShapeVolumeProperties(s).volume;
+  } catch {
+    return 0;
+  }
+};
+
+function sheetBaseTool(f: Extract<KFeature, { type: "sheetbase" }>): Shape {
+  const frame = resolvePlane(f.pl);
+  if (!f.open) return profile(f.loops).sketchOnPlane(makePlane(frame)).extrude((f.rev ? -1 : 1) * f.t);
+  if (f.mid) return profile(f.loops).sketchOnPlane(makePlane(frame, -f.d / 2)).extrude(f.d);
+  return profile(f.loops).sketchOnPlane(makePlane(frame)).extrude(f.d);
+}
+
+interface FlangeEdge { bi: number; A: Vec3; e: Vec3; Le: number; nF: Vec3; s: Vec3 }
+
+/** Seçili kenarın sac bilgisi: büyük yüz normali nF ve kalınlık yüzünün dış normali s */
+function flangeEdgeInfo(ref: EdgeRef, t: number): FlangeEdge {
+  const h = [...matchEdges([ref])][0];
+  if (h === undefined) throw new Error("Seçili kenar modelde bulunamadı");
+  const bi = bodies.findIndex((b) => (b.edges as any[]).some((x) => x.hashCode === h));
+  const E = (bodies[bi].edges as any[]).find((x) => x.hashCode === h);
+  if (String(E.geomType) !== "LINE") throw new Error("Flanş için düz bir kenar seçin");
+  const A = tup(E.startPoint), B = tup(E.endPoint);
+  const e = vnorm(vsub(B, A)), Le = vlen(vsub(B, A));
+  const mid = vmul(vadd(A, B), 0.5);
+  const fs = facesOfEdge(bodies[bi], h).filter((f) => String(f.geomType) === "PLANE");
+  if (fs.length !== 2) throw new Error("Kenar iki düz yüz arasında olmalı (sacın dış kenarı)");
+  const ns = fs.map((f) => vnorm(tup(f.normalAt(mid))));
+  // Doğru eşleşmede büyük yüzün t kadar karşısında, kenarın hemen yanında paralel bir karşı yüz vardır
+  const valid = (iF: number) => {
+    const nF = ns[iF], sN = ns[1 - iF];
+    const p = vsub(vsub(mid, vmul(nF, t)), vmul(sN, Math.min(0.05, t / 4)));
+    const v = makeVertex(p);
+    return (bodies[bi].faces as any[]).some((fc) => {
+      if (String(fc.geomType) !== "PLANE") return false;
+      try {
+        if (vdot(vnorm(tup(fc.normalAt(p))), nF) > -0.999) return false;
+        return measureDistanceBetween(fc, v) < 1e-4;
+      } catch {
+        return false;
+      }
+    });
+  };
+  const ok = [0, 1].filter(valid);
+  if (!ok.length) throw new Error("Seçili kenar sacın dış kenarı değil (kalınlık yüzü bulunamadı)");
+  const iF = ok.length === 1 ? ok[0] : 0;
+  const info = [{ n: ns[1 - iF] }, { n: ns[iF] }];
+  return { bi, A, e, Le, nF: info[1].n, s: info[0].n };
+}
+
+function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
+  if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
+  const t = f.t, r = Math.max(0.01, f.r);
+  const th = (f.angle * Math.PI) / 180;
+  const shift = f.pos === "bendout" ? 0 : f.pos === "outside" ? -r : -(r + t);
+  let Lf = f.L;
+  if (f.lenRef !== "tangent") {
+    const R = f.lenRef === "outer" ? r + t : r;
+    Lf = f.L - (f.angle <= 90 ? R * Math.tan(th / 2) : R);
+  }
+  if (Lf < -1e-9) throw new Error("Flanş uzunluğu büküm için çok kısa");
+  Lf = Math.max(0, Lf);
+  const infos = f.edges.map((ref) => flangeEdgeInfo(ref, t));
+  const big = bodySize();
+  const ops: { bi: number; cut: Shape[]; add: Shape }[] = [];
+  infos.forEach((g, idx) => {
+    const u = f.flip ? vmul(g.nF, -1) : g.nF;
+    const O = f.flip ? vsub(g.A, vmul(g.nF, t)) : g.A;
+    const z0 = f.o1, z1 = g.Le - f.o2;
+    if (z1 - z0 < 1e-3) throw new Error("Kısaltmalar kenar uzunluğundan büyük");
+    const pn = vcross(g.s, u);
+    const sign = vdot(pn, g.e) > 0 ? 1 : -1;
+    const pl = new Plane(vadd(O, vmul(g.e, z0)), g.s, pn);
+    const P = (rad: number, phi: number): Vec2 => [shift + rad * Math.sin(phi), r - rad * Math.cos(phi)];
+    const T: Vec2 = [Math.cos(th), Math.sin(th)];
+    const Ai1 = P(r, th), Ao1 = P(r + t, th);
+    let pen: any = draw([shift, -t]).lineTo([shift, 0]).threePointsArcTo(Ai1, P(r, th / 2));
+    if (Lf > 1e-6) pen = pen.lineTo([Ai1[0] + T[0] * Lf, Ai1[1] + T[1] * Lf]).lineTo([Ao1[0] + T[0] * Lf, Ao1[1] + T[1] * Lf]).lineTo(Ao1);
+    else pen = pen.lineTo(Ao1);
+    let flange: Shape = pen.threePointsArcTo([shift, -t], P(r + t, th / 2)).close().sketchOnPlane(pl).extrude(sign * (z1 - z0));
+    // birlikte seçilen komşu kenarlar: dışbükey köşede gönye
+    infos.forEach((h, jdx) => {
+      if (jdx === idx || h.bi !== g.bi || vdot(g.nF, h.nF) < 0.999) return;
+      const gE = [g.A, vadd(g.A, vmul(g.e, g.Le))], hE = [h.A, vadd(h.A, vmul(h.e, h.Le))];
+      for (const V of gE)
+        for (const W of hE) {
+          if (vlen(vsub(V, W)) > 1e-3) continue;
+          const dh = vlen(vsub(hE[0], W)) < 1e-6 ? h.e : vmul(h.e, -1);
+          if (vdot(dh, g.s) > -1e-6) continue; // içbükey köşe
+          const nm = vnorm(vsub(g.s, h.s));
+          flange = flange.cut(boxIn(vadd(V, vmul(nm, f.gap / 2)), nm, u, vcross(nm, u), -big, 0, -big, big, -big, big));
+        }
+    });
+    const cuts: Shape[] = [];
+    if (shift < 0) {
+      cuts.push(boxIn(O, g.s, u, g.e, shift, 0.01, -t - 0.01, 0.01, z0, z1));
+      const rr = f.relief * t;
+      if (rr > 0) {
+        if (z0 > 1e-6) cuts.push(boxIn(O, g.s, u, g.e, shift - rr, 0.01, -t - 0.01, 0.01, Math.max(0, z0 - rr), z0));
+        if (g.Le - z1 > 1e-6) cuts.push(boxIn(O, g.s, u, g.e, shift - rr, 0.01, -t - 0.01, 0.01, z1, Math.min(g.Le, z1 + rr)));
+      }
+    }
+    ops.push({ bi: g.bi, cut: cuts, add: flange });
+  });
+  const res = new Map<number, Shape>();
+  for (const op of ops) {
+    let b = res.get(op.bi) ?? bodies[op.bi];
+    for (const c of op.cut) b = b.cut(c);
+    res.set(op.bi, b);
+  }
+  for (const op of ops) res.set(op.bi, res.get(op.bi).fuse(op.add));
+  const out: Shape[] = [];
+  bodies.forEach((b, i) => out.push(...(res.has(i) ? solidsOf(res.get(i)) : [b])));
+  bodies = out;
+}
+
+function sketchBend(f: Extract<KFeature, { type: "sketchbend" }>) {
+  if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
+  const frame = resolvePlane(f.pl);
+  const P0 = toWorld(frame, f.line[0]), Q0 = toWorld(frame, f.line[1]);
+  const e = vnorm(vsub(Q0, P0));
+  const nF = frame.n;
+  const hs = f.pl.face ? matchFaces([f.pl.face]) : new Set<number>();
+  let bi = bodies.findIndex((b) => (b.faces as any[]).some((x) => hs.has(x.hashCode)));
+  if (bi < 0) bi = 0;
+  const body = bodies[bi];
+  const t = f.t, r = Math.max(0.01, f.r), th = (f.angle * Math.PI) / 180;
+  const BA = th * (r + f.k * t);
+  const left = vcross(nF, e);
+  const m = f.side ? left : vmul(left, -1);
+  const u = f.flip ? vmul(nF, -1) : nF;
+  const O = f.flip ? vsub(P0, vmul(nF, t)) : P0;
+  const s0 = f.pos === "center" ? -BA / 2 : f.pos === "inside" ? -(r + t) : -r;
+  const big = bodySize();
+  const zz = vcross(m, u);
+  const A = body.intersect(boxIn(O, m, u, zz, -big, s0, -big, big, -big, big));
+  const S = body.intersect(boxIn(O, m, u, zz, s0, s0 + BA, -big, big, -big, big));
+  const B = body.intersect(boxIn(O, m, u, zz, s0 + BA, big, -big, big, -big, big));
+  if (volOf(S) < 1e-9) throw new Error("Büküm çizgisi sacın üzerinde değil");
+  if (volOf(B) < 1e-9 || volOf(A) < 1e-9) throw new Error("Büküm çizgisinin bir tarafında malzeme yok");
+  let lo = Infinity, hi = -Infinity;
+  for (const ed of S.edges as any[])
+    for (const p of [tup(ed.startPoint), tup(ed.endPoint)]) {
+      const d = vdot(vsub(p, O), zz);
+      lo = Math.min(lo, d);
+      hi = Math.max(hi, d);
+    }
+  const P = (rad: number, phi: number): Vec2 => [s0 + rad * Math.sin(phi), r - rad * Math.cos(phi)];
+  const ring = (draw([s0, -t]).lineTo([s0, 0]).threePointsArcTo(P(r, th), P(r, th / 2)).lineTo(P(r + t, th)).threePointsArcTo([s0, -t], P(r + t, th / 2)).close() as any)
+    .sketchOnPlane(new Plane(vadd(O, vmul(zz, lo)), m, zz))
+    .extrude(hi - lo);
+  const C3 = vadd(vadd(O, vmul(m, s0)), vmul(u, r));
+  const moved = B.translate(vmul(m, -BA)).rotate(f.angle, C3, zz);
+  bodies[bi] = A.fuse(ring).fuse(moved);
+  bodies = bodies.flatMap(solidsOf);
+}
+
+function flatPattern(id: number, bodyIdx: number, t: number, k: number) {
+  try {
+    if (!bodies.length) throw new Error("Açılacak sac yok");
+    const b = bodies[Math.max(0, Math.min(bodyIdx, bodies.length - 1))];
+    const u = unfold(b, t, k);
+    const solid = profile(u.loops).sketchOnPlane(makePlane(u.frame)).extrude(-t);
+    const mesh = toMesh(solid);
+    const sh = (p: Vec2): Vec2 => [p[0] - u.min[0], p[1] - u.min[1]];
+    const outline = u.outline.map((o) => (o.k === "l" ? { ...o, a: sh(o.a), b: sh(o.b) } : { ...o, c: sh(o.c) }));
+    const lift = vmul(u.frame.n, 0.05);
+    const bends = u.bends.map((x) => ({ ...x, a: sh(x.a), b: sh(x.b), a3: vadd(x.a3, lift), b3: vadd(x.b3, lift) }));
+    post({ id, type: "flat", mesh, outline, bends, w: u.max[0] - u.min[0], h: u.max[1] - u.min[1], area: u.area }, [
+      mesh.vertices.buffer, mesh.normals.buffer, mesh.triangles.buffer, mesh.lines.buffer, mesh.faceGroups.buffer, mesh.edgeGroups.buffer,
+    ]);
+  } catch (e) {
+    post({ id, type: "flat", mesh: null, outline: [], bends: [], w: 0, h: 0, area: 0, error: errMsg(e) });
+  }
+}
+
 async function buildFeature(f: KFeature) {
   switch (f.type) {
+    case "sheetbase": {
+      const solid = sheetBaseTool(f);
+      tools.set(f.id, { solid, cut: false, merge: f.merge !== false });
+      applyTool(solid, false, f.merge !== false);
+      return;
+    }
+    case "edgeflange":
+      edgeFlange(f);
+      return;
+    case "sketchbend":
+      sketchBend(f);
+      return;
     case "extrude":
     case "revolve":
     case "sweep":
@@ -866,6 +1067,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "measure") measure(req.id, req.items);
     else if (req.type === "props") props(req.id);
     else if (req.type === "section") section(req.id, req.frame);
+    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, req.k);
    } catch (e) {
     // Hata kuyruğu kilitlemesin; isteği yanıtsız bırakma
     const t = req.type === "build" ? "built" : req.type === "export" ? "exported" : req.type === "measure" ? "measured" : req.type;
