@@ -6,11 +6,11 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
-  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem,
+  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData,
 } from "./doc/types";
 import { thinRegion } from "./sketch/profile";
 import { unfold, cylinderParams } from "./sheet/unfold";
@@ -209,6 +209,12 @@ function planarFace(ref: FaceRef): { c: Vec3; n: Vec3; face: any } | null {
   for (const face of allFaces()) {
     const c = tup(face.center);
     let d = vlen(vsub(c, ref.c));
+    if (ref.n && String(face.geomType) === "PLANE") {
+      // aynı merkezli zıt yönlü yüzleri normal ile ayır
+      try {
+        d += (1 - vdot(vnorm(tup(face.normalAt(c))), ref.n)) * 5;
+      } catch {}
+    }
     if (ref.r !== undefined) {
       // aynı merkezli silindirleri yarıçapla ayır
       if (String(face.geomType) !== "CYLINDRE") d += 1000;
@@ -477,13 +483,21 @@ function matchEdges(refs: EdgeRef[]): Set<number> {
 }
 
 function matchFaces(refs: FaceRef[]): Set<number> {
-  const info = allFaces().map((f) => ({ h: f.hashCode, c: tup(f.center) }));
+  const info = allFaces().map((f) => {
+    const c = tup(f.center);
+    let n: Vec3 | null = null;
+    if (String(f.geomType) === "PLANE")
+      try {
+        n = vnorm(tup(f.normalAt(c)));
+      } catch {}
+    return { h: f.hashCode, c, n };
+  });
   const out = new Set<number>();
   for (const r of refs) {
     let best: (typeof info)[0] | null = null;
     let bd = Infinity;
     for (const i of info) {
-      const d = vlen(vsub(i.c, r.c));
+      const d = vlen(vsub(i.c, r.c)) + (r.n && i.n ? (1 - vdot(i.n, r.n)) * 5 : 0);
       if (d < bd) [bd, best] = [d, i];
     }
     if (best && bd < 2) out.add(best.h);
@@ -1069,6 +1083,140 @@ function cutList(id: number) {
     console.warn(e);
   }
   post({ id, type: "cutlist", items, welds: weldInfo });
+}
+
+// ---------- İmalat resmi ----------
+
+/** Gövdenin dir yönünde bakılan görünüşü; yatay eksen xAxis */
+function projectView(shape: Shape, name: string, origin: Vec3, dir: Vec3, xAxis: Vec3): DrawView {
+  const cam = new ProjectionCamera(origin, dir, xAxis);
+  const { visible, hidden } = makeProjectedEdges(shape, cam, true);
+  const v: DrawView = { name, vis: [], hid: [], circles: [], min: [Infinity, Infinity], max: [-Infinity, -Infinity] };
+  const grow = (x: number, y: number) => {
+    v.min = [Math.min(v.min[0], x), Math.min(v.min[1], y)];
+    v.max = [Math.max(v.max[0], x), Math.max(v.max[1], y)];
+  };
+  const add = (edges: any[], arr: number[], hid: boolean) => {
+    for (const e of edges) {
+      const t = String(e.geomType);
+      const P = (q: number) => tup(e.pointAt(q));
+      if (t === "LINE") {
+        const a = tup(e.startPoint), b = tup(e.endPoint);
+        arr.push(a[0], a[1], b[0], b[1]);
+        grow(a[0], a[1]);
+        grow(b[0], b[1]);
+        continue;
+      }
+      if (t === "CIRCLE") {
+        const a = tup(e.startPoint), b = tup(e.endPoint);
+        if (vlen(vsub(a, b)) < 1e-6) {
+          const c = circle3d(P(0), P(1 / 3), P(2 / 3));
+          if (c) {
+            v.circles.push({ c: [c.c[0], c.c[1]], r: c.r, hidden: hid });
+            grow(c.c[0] - c.r, c.c[1] - c.r);
+            grow(c.c[0] + c.r, c.c[1] + c.r);
+            continue;
+          }
+        }
+      }
+      const n = t === "CIRCLE" ? 16 : 24;
+      let prev = P(0);
+      grow(prev[0], prev[1]);
+      for (let k = 1; k <= n; k++) {
+        const cur = P(k / n);
+        arr.push(prev[0], prev[1], cur[0], cur[1]);
+        grow(cur[0], cur[1]);
+        prev = cur;
+      }
+    }
+  };
+  add(visible, v.vis, false);
+  add(hidden, v.hid, true);
+  return v;
+}
+
+function drawingData(id: number, bi: number) {
+  const out: DrawData = { kind: "part", views: [], holes: [], length: 0, a1: 0, a2: 0 };
+  try {
+    const b = bodies[bi];
+    if (!b) throw new Error("Gövde bulunamadı");
+    const map = memberBodyMap();
+    const key = [...map].find(([, i]) => i === bi)?.[0];
+    const reg = key ? memberReg.get(key) : undefined;
+    const cyls = (b.faces as any[]).filter((fc) => String(fc.geomType) === "CYLINDRE").map((fc) => ({ fc, ...cylinderParams(fc) }));
+    if (reg && !reg.arc) {
+      out.kind = "member";
+      const d = reg.d, x = reg.x, y = vcross(d, x);
+      // gövdenin eksen boyunca başlangıcı
+      let lo = Infinity, hi = -Infinity;
+      for (const e of b.edges as any[])
+        for (const q of [0, 0.5, 1]) {
+          const t = vdot(vsub(tup(e.pointAt(q)), reg.a), d);
+          lo = Math.min(lo, t);
+          hi = Math.max(hi, t);
+        }
+      const O = vadd(reg.a, vmul(d, lo));
+      out.length = hi - lo;
+      out.views.push(projectView(b, "Önden", O, vmul(x, -1), d));
+      out.views.push(projectView(b, "Üstten", O, y, d));
+      out.views.push(projectView(b, "Yandan (kesit)", O, d, x));
+      // delikler: eksene dik silindirik yüzler (profil dış yüzeyi hariç)
+      for (const c of cyls) {
+        if (Math.abs(vdot(c.a, d)) > 1e-3 || c.rho > reg.R * 0.95) continue;
+        const ax = Math.abs(vdot(c.a, x)) > 0.999 ? 0 : Math.abs(vdot(c.a, y)) > 0.999 ? 1 : -1;
+        if (ax < 0) continue;
+        const rel = vsub(c.L, O);
+        const pos: Vec2 = ax === 0 ? [vdot(rel, d), vdot(rel, y)] : [vdot(rel, d), vdot(rel, x)];
+        if (!out.holes.some((hh) => hh.view === ax && Math.hypot(hh.c[0] - pos[0], hh.c[1] - pos[1]) < 1e-3 && Math.abs(hh.d - 2 * c.rho) < 1e-3))
+          out.holes.push({ view: ax, c: pos, d: 2 * c.rho });
+      }
+    } else {
+      // levha: en büyük düz yüz
+      let big: any = null, ba = 0;
+      for (const fc of b.faces as any[]) {
+        if (String(fc.geomType) !== "PLANE") continue;
+        const ar = measureArea(fc);
+        if (ar > ba) [ba, big] = [ar, fc];
+      }
+      const vol = volOf(b);
+      const bb = b.boundingBox.bounds as [Vec3, Vec3];
+      if (big && !reg) {
+        const c = tup(big.center);
+        const n = vnorm(tup(big.normalAt(c)));
+        let ux: Vec3 | null = null, lm = 0;
+        for (const e of big.edges as any[]) {
+          if (String(e.geomType) !== "LINE") continue;
+          const dv = vsub(tup(e.endPoint), tup(e.startPoint));
+          if (vlen(dv) > lm) [lm, ux] = [vlen(dv), vnorm(dv)];
+        }
+        if (!ux) ux = vnorm(Math.abs(n[2]) < 0.9 ? vcross(n, [0, 0, 1]) : vcross(n, [1, 0, 0]));
+        const uy = vcross(n, ux);
+        const t = vol / ba;
+        const isPlate = t < 0.25 * Math.sqrt(ba);
+        out.kind = isPlate ? "plate" : "part";
+        out.t = isPlate ? t : undefined;
+        out.views.push(projectView(b, "Önden", c, n, ux));
+        out.views.push(projectView(b, isPlate ? "Kenar" : "Üstten", c, vmul(uy, -1), ux));
+        if (!isPlate) out.views.push(projectView(b, "Yandan", c, ux, vmul(uy, -1)));
+        for (const cy of cyls) {
+          if (Math.abs(Math.abs(vdot(cy.a, n)) - 1) > 1e-3) continue;
+          const rel = vsub(cy.L, c);
+          const pos: Vec2 = [vdot(rel, ux), vdot(rel, uy)];
+          if (!out.holes.some((hh) => Math.hypot(hh.c[0] - pos[0], hh.c[1] - pos[1]) < 1e-3 && Math.abs(hh.d - 2 * cy.rho) < 1e-3)) out.holes.push({ view: 0, c: pos, d: 2 * cy.rho });
+        }
+      } else {
+        // genel parça (ör. bükümlü boru): standart görünüşler
+        const c = vmul(vadd(bb[0], bb[1]), 0.5);
+        out.views.push(projectView(b, "Önden", c, [0, 0, 1], [1, 0, 0]));
+        out.views.push(projectView(b, "Üstten", c, [0, 1, 0], [1, 0, 0]));
+        out.views.push(projectView(b, "Sağdan", c, [1, 0, 0], [0, 0, -1]));
+        if (reg) out.length = reg.len;
+      }
+    }
+    post({ id, type: "drawing", ...out });
+  } catch (e) {
+    post({ id, type: "drawing", ...out, error: errMsg(e) });
+  }
 }
 
 function exportBody(id: number, i: number) {
@@ -1677,6 +1825,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "flat") flatPattern(req.id, req.body, req.t, req.k);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
+    else if (req.type === "drawing") drawingData(req.id, req.body);
    } catch (e) {
     // Hata kuyruğu kilitlemesin; isteği yanıtsız bırakma
     const t = req.type === "build" ? "built" : req.type === "export" ? "exported" : req.type === "measure" ? "measured" : req.type;

@@ -555,6 +555,29 @@ export interface CutItem {
   key?: string;
 }
 
+/** İmalat resmi görünüşü (mm, görünüş düzleminde) */
+export interface DrawView {
+  name: string;
+  /** görünür / gizli çizgiler: [x1,y1,x2,y2] dizileri */
+  vis: number[];
+  hid: number[];
+  circles: { c: Vec2; r: number; hidden: boolean }[];
+  min: Vec2;
+  max: Vec2;
+}
+export interface DrawHole { view: number; c: Vec2; d: number }
+export interface DrawData {
+  kind: "member" | "plate" | "part";
+  views: DrawView[];
+  holes: DrawHole[];
+  /** elemanlar: boy ve uç açıları; levha: kalınlık */
+  length: number;
+  a1: number;
+  a2: number;
+  t?: number;
+  error?: string;
+}
+
 /** Kaynak tablosu satırı */
 export interface WeldItem { name: string; a: number; length: number; count: number; vol: number }
 
@@ -628,7 +651,8 @@ export type KernelRequest =
   | { id: number; type: "props" }
   | { id: number; type: "flat"; body: number; t: number; k: number }
   | { id: number; type: "cutlist" }
-  | { id: number; type: "exportBody"; body: number };
+  | { id: number; type: "exportBody"; body: number }
+  | { id: number; type: "drawing"; body: number };
 
 export type KernelResponse =
   | { type: "ready" }
@@ -639,4 +663,5 @@ export type KernelResponse =
   | { id: number; type: "props"; props: MassProps | null }
   | { id: number; type: "exported"; blob: Blob | null; message?: string }
   | ({ id: number; type: "flat" } & FlatResult)
-  | { id: number; type: "cutlist"; items: CutItem[]; welds: WeldItem[] };
+  | { id: number; type: "cutlist"; items: CutItem[]; welds: WeldItem[] }
+  | ({ id: number; type: "drawing" } & DrawData);

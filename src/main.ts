@@ -16,6 +16,7 @@ import { lastSheetBase, sheetParamsBefore, bendAllowance } from "./sheet/sheet";
 import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
+import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
 import { holeDefaults, MATERIALS, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
 import { ICONS } from "./ui/icons";
@@ -437,7 +438,7 @@ function nearestFace(r: FaceRef) {
   const m = viewer.mesh!;
   let best = -1, bd = 0.5;
   m.faces.forEach((f, i) => {
-    const d = dist3(f.c, r.c) + (r.r !== undefined ? (f.r === undefined ? 1 : Math.abs(f.r - r.r) * 10) : 0);
+    const d = dist3(f.c, r.c) + (r.r !== undefined ? (f.r === undefined ? 1 : Math.abs(f.r - r.r) * 10) : 0) + (r.n && f.n ? (1 - (f.n[0] * r.n[0] + f.n[1] * r.n[1] + f.n[2] * r.n[2])) * 5 : 0);
     if (d < bd) [bd, best] = [d, i];
   });
   return best;
@@ -2028,7 +2029,7 @@ async function cutRows(): Promise<CutRow[]> {
   const groups = new Map<string, CutRow>();
   for (const it of items) {
     const [p, q] = [it.a1, it.a2].map((x) => Math.round(x * 10) / 10).sort((x, y) => x - y);
-    const key = it.kind === "member" ? `${it.name}|${Math.round(it.length * 10)}|${p}|${q}` : `${it.name}|${it.dims.map((x) => Math.round(x * 10)).join("x")}|${Math.round(it.vol / 100)}`;
+    const key = it.kind === "member" ? `${it.name}|${Math.round(it.length * 10)}|${p}|${q}|${Math.round(it.vol / 50)}` : `${it.name}|${it.dims.map((x) => Math.round(x * 10)).join("x")}|${Math.round(it.vol / 100)}`;
     const g = groups.get(key);
     if (g) {
       g.qty++;
@@ -2040,6 +2041,48 @@ async function cutRows(): Promise<CutRow[]> {
   return rows;
 }
 const rowDesc = (r: CutRow) => (r.kind === "member" ? r.name : `${r.name} · ${fmtNum(r.dims[0], 1)} × ${fmtNum(r.dims[1], 1)}`);
+async function openDrawings(rows: CutRow[]) {
+  setStatus("busy", "İmalat resimleri hazırlanıyor…");
+  const mat = MATERIALS[doc.material ?? "steel"]?.name ?? "-";
+  const date = new Date().toLocaleDateString("tr-TR");
+  const sheets: string[] = [];
+  let plate: { name: string; dxf: string } | null = null;
+  for (const r of rows) {
+    const d = await kernel.drawing(r.bodies[0]);
+    if (d.error || !d.views.length) {
+      toast(`${r.no}. kalem: ${d.error ?? "görünüş üretilemedi"}`, true);
+      continue;
+    }
+    const info: SheetInfo = { project: doc.name, no: r.no, qty: r.qty, desc: rowDesc(r), material: mat, kg: r.kg, a1: r.a1, a2: r.a2, length: d.length || r.length, date };
+    sheets.push(sheetSvg(d, info));
+    if (rows.length === 1 && d.kind === "plate") plate = { name: `${doc.name}_${r.no}_levha.dxf`, dxf: plateDxf(d.views[0]) };
+  }
+  setStatus("ok", "Hazır");
+  if (!sheets.length) return;
+  const html = sheetsHtml(sheets, `${doc.name} imalat resimleri`);
+  const dlg = h("dialog", "cut-dialog draw-dialog");
+  dlg.innerHTML = `<h2>İmalat resmi${rows.length > 1 ? `leri (${sheets.length} sayfa)` : ` — ${rows[0].no}. kalem`}</h2>`;
+  const fr = h("iframe", "draw-frame") as HTMLIFrameElement;
+  fr.srcdoc = html;
+  dlg.appendChild(fr);
+  const bar = h("div", "cut-bar");
+  const left = h("div", "pm-row");
+  left.append(
+    button("Yazdır / PDF", () => fr.contentWindow?.print(), "btn primary"),
+    button("HTML indir", () => download(new Blob([html], { type: "text/html" }), `${doc.name}_imalat_resimleri.html`), "btn"),
+  );
+  if (sheets.length === 1) left.appendChild(button("SVG indir", () => download(new Blob([sheets[0]], { type: "image/svg+xml" }), `${doc.name}_${rows[0].no}.svg`), "btn"));
+  if (plate) left.appendChild(button("Levha DXF (1:1)", () => download(new Blob([plate!.dxf], { type: "application/dxf" }), plate!.name), "btn"));
+  const form = h("form");
+  form.method = "dialog";
+  form.innerHTML = `<button class="btn" value="ok">Kapat</button>`;
+  bar.append(left, form);
+  dlg.appendChild(bar);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  (dlg as HTMLDialogElement).showModal();
+}
+
 async function openCutList() {
   if (mode.k === "pm") return toast("Önce açık özelliği tamamlayın (✓ veya ✕)");
   if (mode.k === "sketch") exitSketch(true);
@@ -2074,7 +2117,7 @@ async function openCutList() {
       h("td", "num", fmtNum(r.kg * r.qty, 2)),
     );
     const td = h("td");
-    td.appendChild(st);
+    td.append(button("Resim", () => openDrawings([r]), "btn"), st);
     tr.appendChild(td);
     tr.addEventListener("click", (ev) => {
       if ((ev.target as HTMLElement).tagName === "BUTTON") return;
@@ -2122,7 +2165,10 @@ async function openCutList() {
   form.method = "dialog";
   form.innerHTML = `<button class="btn primary" value="ok">Kapat</button>`;
   const bar = h("div", "cut-bar");
-  bar.append(csv, form);
+  const allDw = button("Tüm imalat resimleri", () => openDrawings(rows), "btn");
+  const left = h("div", "pm-row");
+  left.append(csv, allDw);
+  bar.append(left, form);
   dlg.appendChild(bar);
   document.body.appendChild(dlg);
   dlg.addEventListener("close", () => (dlg.remove(), refreshHighlight()));

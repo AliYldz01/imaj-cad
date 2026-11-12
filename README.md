@@ -6,7 +6,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 
 **Canlı sürüm:** https://aliyldz01.github.io/imaj-cad/
 
-## v0.6 — Kaynaklı yapı (profil) modülü
+## v0.7 — Kaynaklı yapı modülü tamamlandı
 
 Ayrıntılı özellik listesi ve sonraki adımlar: [docs/YOL_HARITASI.md](docs/YOL_HARITASI.md)
 
@@ -18,6 +18,10 @@ Ayrıntılı özellik listesi ve sonraki adımlar: [docs/YOL_HARITASI.md](docs/Y
 - **Sac metal:** taban flanş (kapalı eskizden levha, açık eskizden bükümlü profil), kenar flanş (büküm açısı, dış/iç sanal keskin veya teğet uzunluk, malzeme içte/dışta/bükümün dışı, kenar kısaltma, birlikte seçilen kenarlarda köşe gönyesi, büküm boşaltma), açık/kapalı kenet, çizgiden büküm; sac kalınlığı, iç büküm yarıçapı ve K faktörü
 - **Açınım:** düzleştir görünümü, levha ölçüsü, alan, ağırlık, büküm tablosu (yön, açı, yarıçap); sonradan açılan delik ve kesimler açınıma yansır; DXF çıktısı (KESIM, BUKUM_YUKARI, BUKUM_ASAGI, NOTLAR katmanları)
 - **Kaynaklı yapı:** iskelet eskiz çizgileri ve yayları boyunca yapı elemanı; EN profil kütüphanesi (kare/dikdörtgen kutu, boru, eşit kollu L, UPN, IPE, HEA, HEB, lama, yuvarlak ve kare dolu çubuk); delme noktası, döndürme, aynalama; gönye ve alın köşe işlemleri; kırp/uzat (düz kesim veya profile göre koplama); uç kapağı; köşe takviyesi
+- **3B eskiz:** yön düğmesi + uzunluk, göreli (Δ) ve mutlak koordinatla nokta ekleme, köşelere yakalama, köşe büküm yarıçapı (bükümlü boru / profil)
+- **Kaynak dikişi:** a ölçüsüyle köşe kaynağı, boru–levha çevresel dikiş, kesikli kaynak; kaynak tablosu
+- **Özel profiller:** eskizden profil (parametrik), cihaz kütüphanesi, dosyaya aktarma; kullanılan profil belgeye gömülür
+- **İmalat resimleri:** her kalem için A4 sayfa (görünüşler, kesit, boy, uç açıları, delik konumları, antet); yazdır/PDF, SVG, levhalar için 1:1 DXF
 - **Kesim listesi:** aynı profil, boy ve açılar gruplanır; adet, kesim boyu, uç açıları, ağırlık, profil başına toplam boy; CSV (Excel) çıktısı ve her kalem için ayrı STEP
 - **Henüz yok:** loft kılavuz eğrileri; esnet (Flex) — kullandığımız çekirdek derlemesi desteklemediği için yerine Ölçekle eklendi
 - **Değerlendir:** ölçme (uzunluk, çap, alan, mesafe, açı), kütle özellikleri ve malzeme, kesit görünüşü
