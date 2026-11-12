@@ -76,8 +76,8 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 5. Sıradaki işler (öncelik sırasıyla)
 
-0. **SolidWorks fark raporundaki düzeltmeler** (`docs/SOLIDWORKS_FARK_RAPORU.md` §6 paket sırası A→D) — kullanıcı onayı bekleniyor.
-1. **MONTAJ MODÜLÜ** (sıradaki büyük iş): bileşen ekleme (parça dosyaları / mevcut parça), sabitleme, eşleşmeler (çakışık, paralel, dik, eş merkezli, mesafe, açı, teğet), serbestlik göstergesi, bileşeni sürükleyerek taşıma/döndürme, girişim kontrolü, patlatılmış görünüm, montaj ağacı, BOM (malzeme listesi), STEP montaj dışa aktarma. SolidWorks davranışına uygun olmalı; telefon kontrolleriyle de çalışmalı.
+0. **SolidWorks fark raporundaki düzeltmeler** (`docs/SOLIDWORKS_FARK_RAPORU.md` §7 paket sırası A→E; montaj = Paket D) — sıradaki: **Paket A** (E1, E2, F1, F2, E3, F9, G2, G7).
+1. **MONTAJ MODÜLÜ** (fark raporu M1–M10) (sıradaki büyük iş): bileşen ekleme (parça dosyaları / mevcut parça), sabitleme, eşleşmeler (çakışık, paralel, dik, eş merkezli, mesafe, açı, teğet), serbestlik göstergesi, bileşeni sürükleyerek taşıma/döndürme, girişim kontrolü, patlatılmış görünüm, montaj ağacı, BOM (malzeme listesi), STEP montaj dışa aktarma. SolidWorks davranışına uygun olmalı; telefon kontrolleriyle de çalışmalı.
 2. **Teknik resim modülü:** görünüşler, kesit, ölçülendirme, antet, PDF (kaynaklı imalat resimleri altyapısı `src/weld/drawing.ts` kullanılabilir).
 3. Kalemsiz kullanım ekleri: model üzerinde sürüklenen derinlik oku, üst üste adaylar arasında dokunarak geçiş, sihirbaz eskizlerine tam ölçülendirme, fotoğraftan kenar izleme, sesle ölçü girişi.
 4. Saha özellikleri: fotoğraf ekleme, Bluetooth kumpas.
