@@ -458,6 +458,7 @@ export interface SketchBendFeature extends FeatBase {
 // ---------------- Kaynaklı yapı ----------------
 
 /** 3B eskiz: uzayda noktalar ve aralarındaki çizgiler (iskelet için) */
+export type Dim3Type = "len" | "dist" | "pl" | "ll" | "pc" | "ang" | "rad" | "dia";
 export interface Sketch3DFeature extends FeatBase {
   type: "sketch3d";
   /** nokta kimlikleri ve koordinatları (paralel diziler; denklemler xyz[i][k] ile bağlanır) */
@@ -470,7 +471,8 @@ export interface Sketch3DFeature extends FeatBase {
   /** 3B ilişkiler (çakışık, sabit, paralel, dik, eşit, orta nokta, üzerinde, doğrusal, düzleme paralel) */
   cons3?: { id: string; t: import("../sketch/solver3d").Rel3; e: string[]; p?: Vec3 }[];
   /** 3B sürücü ölçüler: çizgi boyu, iki nokta arası, iki çizgi arası açı */
-  dims3?: { id: string; t: "len" | "dist" | "ang" | "rad"; e: string[]; v: number }[];
+  /** 3B ölçüler: len boy, dist nokta-nokta, pl nokta-çizgi, ll çizgi-çizgi, ang açı, rad yarıçap, dia çap; ref = sürülen (referans) ölçü; o = ekranda ölçü çizgisi ötelemesi (px) */
+  dims3?: { id: string; t: Dim3Type; e: string[]; v: number; ref?: boolean; o?: number; /** açı: çizgi yönlerinin işaretleri (ölçünün yerleştirildiği bölge) */ s?: [number, number] }[];
   /** 3B yaylar: başlangıç a, bitiş b, yay üzerindeki nokta m (nokta kimlikleri) */
   arcs3?: { id: string; a: string; b: string; m: string; cons?: boolean }[];
 }

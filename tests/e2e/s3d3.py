@@ -38,7 +38,7 @@ with sync_playwright() as p:
     print("status2:", pg.inner_text("#pm-body .pm-group >> nth=0").split("\n")[-1])
     print("labels:", pg.locator(".s3-labels .s3-dim").all_inner_texts(), pg.locator(".s3-labels .s3-rel").count())
     # ölçüyü etikete tıklayarak değiştir (250 → 400)
-    pg.locator(".s3-labels .s3-dim").first.click(); time.sleep(0.2)
+    pg.locator(".s3-labels .s3-dim").first.dblclick(); time.sleep(0.2)
     pg.keyboard.press("Control+a"); pg.keyboard.type("400"); pg.keyboard.press("Enter"); time.sleep(0.3)
     print("edit dim:", D("JSON.stringify(d.xyz)"))
     # çapraz çizgi + açı ölçüsü: 3B çizgi (400,0,0)->(400,0,300) ve iki çizgi arasında açı

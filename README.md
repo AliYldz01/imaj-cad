@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.32.1: 3B eskiz Akıllı Ölçü: ölçü çizgileri, uzatma çizgileri, oklar, açı yayı, yarıçap/çap kılavuzu; imleci izleyen önizleme ve yerleştirme; nokta–çizgi, paralel çizgi, nokta–yay merkezi mesafesi, çap (D); açı yerleştirildiği bölgeye göre; fazlalık/çelişen ölçü → sürülen (referans) ölçü; ölçüyü tek tık seç / çift tık düzenle / sürükle / Delete
 - v0.32: Montaj SolidWorks mantığıyla yenilendi: eşzamanlı eşleşme çözücüsü, eşleşmelere uyarak sürükleme/döndürme, aşırı tanım reddi, eşleşme paneli (Standart/Gelişmiş/Mekanik, canlı önizleme), düzenle/bastır/çevir; simetrik, genişlik, limit açı, bağlayıcı, menteşe, dişli, kremayer, vida; kenar/köşe seçimi, SmartMates, bileşen aynala, patlatma adımları, kütle özellikleri
 - v0.31: Yapı elemanında grup başına profil (tek özellikte çerçeve, ayak, kuşak farklı profillerle; birleşimler otomatik); ayrı yapı elemanı özellikleri arasında otomatik kırp/uzat (T, ters T, köşe)
 - v0.30.3: Profili konumlandır: içi boş profillerde 17 delme noktası (merkez + dış sınırın 8 + iç sınırın 8 noktası; iç noktalar yeşil)

@@ -6,8 +6,8 @@
 // - rakama basınca uzunluk girişi (yön önizlemeden alınır)
 import * as THREE from "three";
 import type { Viewer, InputHandler } from "../viewer";
-import type { Sketch3DFeature, Vec3 } from "../doc/types";
-import { solve3d, dimValue, REL3_TAG, arcPts, circum, type Solve3Result } from "./solver3d";
+import type { Sketch3DFeature, Vec3, Dim3Type } from "../doc/types";
+import { solve3d, dimValue, dofOf, REL3_TAG, arcPts, circum, type Solve3Result } from "./solver3d";
 
 export type Axis3 = "x" | "y" | "z";
 export const PLANES = ["XY", "YZ", "ZX"] as const;
@@ -48,6 +48,9 @@ export class Sketch3DTool {
   mode: S3Mode = "line";
   sel: S3Sel[] = [];
   private dimPick: S3Sel[] = [];
+  /** seçimi tamamlanmış, yerleştirilmeyi bekleyen ölçü (imleci izler) */
+  private dimPend: { t: Dim3Type; e: string[] } | null = null;
+  private mouse: [number, number] = [0, 0];
   private rectP: Vec3 | null = null;
   private rectFix = false;
   /** 3 noktalı yay: seçilen başlangıç / bitiş */
@@ -358,6 +361,8 @@ export class Sketch3DTool {
   input: InputHandler = {
     hover: (e) => {
       if (this.mode === "select" || this.mode === "dim") {
+        this.mouse = [e.clientX, e.clientY];
+        if (this.dimPend) this.ctx.viewer.requestRender();
         const h = this.pickEnt(e.clientX, e.clientY);
         if (JSON.stringify(h) !== JSON.stringify(this.hov)) ((this.hov = h), (this.ctx.selChanged ?? this.ctx.changed)());
         return;
@@ -367,6 +372,7 @@ export class Sketch3DTool {
       this.draw(c, { x: e.clientX, y: e.clientY });
     },
     down: (e) => {
+      if (this.selDim) ((this.selDim = null), document.querySelector(".s3-relbar")?.remove(), this.ctx.viewer.requestRender());
       this.press = { x: e.clientX, y: e.clientY };
       // var olan noktaya basıldı: sürükleme adayı (SolidWorks: noktayı sürükle)
       const d = this.ctx.draft();
@@ -423,6 +429,7 @@ export class Sketch3DTool {
     document.querySelector(".s3-relbar")?.remove();
     this.mode = m;
     this.dimPick = [];
+    this.dimPend = null;
     this.rectP = null;
     this.arcPick = [];
     const d = this.ctx.draft();
@@ -485,46 +492,71 @@ export class Sketch3DTool {
       this.showRelBar(e.clientX, e.clientY);
       return;
     }
-    // Akıllı Ölçü
+    // Akıllı Ölçü (SolidWorks): seçim tamamlanınca ölçü imleci izler, boşluğa tıklayınca yerleşir
     const P = this.dimPick;
+    const pend = this.dimPend;
     if (!en) {
-      // boşluğa tık: tek çizgi seçiliyse boyunu ölç
-      if (P.length === 1 && P[0].k === "l") this.addDim("len", [P[0].id], e);
+      if (pend) this.placeDim(pend.t, pend.e, e);
       this.dimPick = [];
+      this.dimPend = null;
       return this.ctx.changed();
     }
-    if (P.length === 0 && en.k === "a") {
-      this.addDim("rad", [en.id], e);
-      return this.ctx.changed();
-    }
+    if (P.some((q) => q.k === en.k && q.id === en.id)) return;
     P.push(en);
-    if (P.length === 1 && en.k === "l") {
-      // SolidWorks: çizgiye tıklayınca boy ölçüsü; ikinci çizgi seçilirse açı
-      this.ctx.hint("Boy için boşluğa tıklayın veya açı için ikinci çizgiyi seçin");
-      this.ctx.changed();
-      return;
+    const ps = P.filter((q) => q.k === "p"), ls = P.filter((q) => q.k === "l"), as = P.filter((q) => q.k === "a");
+    let next: { t: Dim3Type; e: string[] } | null = null;
+    if (P.length === 1) {
+      if (en.k === "l") next = { t: "len", e: [en.id] };
+      if (en.k === "a") next = { t: "rad", e: [en.id] };
+    } else if (P.length === 2) {
+      if (ps.length === 2) next = { t: "dist", e: [ps[0].id, ps[1].id] };
+      else if (ps.length === 1 && ls.length === 1) next = { t: "pl", e: [ps[0].id, ls[0].id] };
+      else if (ls.length === 2) {
+        const d = this.ctx.draft()!;
+        const dir = (lid: string) => {
+          const l = d.lines.find((q) => q.id === lid)!;
+          const a = d.xyz[d.ids.indexOf(l.a)], b = d.xyz[d.ids.indexOf(l.b)];
+          return new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize();
+        };
+        const par = Math.abs(dir(ls[0].id).dot(dir(ls[1].id))) > 0.9998;
+        next = par ? { t: "ll", e: [ls[0].id, ls[1].id] } : { t: "ang", e: [ls[0].id, ls[1].id] };
+      } else if (as.length === 1 && ps.length === 1) next = { t: "pc", e: [ps[0].id, as[0].id] };
     }
-    if (P.length === 2) {
-      const [a, b] = P;
-      this.dimPick = [];
-      if (a.k === "p" && b.k === "p" && a.id !== b.id) this.addDim("dist", [a.id, b.id], e);
-      else if (a.k === "l" && b.k === "l" && a.id !== b.id) this.addDim("ang", [a.id, b.id], e);
-      else if (a.k === "l" && b.k === "p") this.addDim("len", [a.id], e);
-      else this.ctx.toast?.("Bu seçimle ölçü verilemez", true);
+    if (!next) {
+      this.dimPick = P.length >= 2 ? [] : P;
+      this.dimPend = null;
+      if (P.length >= 2) this.ctx.toast?.("Bu seçimle ölçü verilemez", true);
+      return this.ctx.changed();
     }
+    this.dimPend = next;
+    this.ctx.hint(next.t === "len" ? "Ölçüyü yerleştirmek için boşluğa tıklayın · açı / mesafe için ikinci çizgiyi veya noktayı seçin" : next.t === "rad" ? "Yarıçap: yerleştirmek için tıklayın (D = çap)" : "Ölçüyü yerleştirmek için boşluğa tıklayın");
     this.ctx.changed();
+    this.ctx.viewer.requestRender();
   }
-  addDim(t: "len" | "dist" | "ang" | "rad", e: string[], ev: { clientX: number; clientY: number }) {
+  /** yerleştir: ekran ötelemesini imleçten hesapla, değeri sor, ekle */
+  placeDim(t: Dim3Type, e: string[], ev: { clientX: number; clientY: number }) {
+    const g = this.dimGeom({ t, e } as any, [ev.clientX, ev.clientY]);
+    this.addDim(t, e, ev, g?.o, g && g.k === "ang" ? g.s : undefined);
+  }
+  addDim(t: Dim3Type, e: string[], ev: { clientX: number; clientY: number }, o?: number, sg?: [number, number]) {
     const d = this.ctx.draft();
     if (!d) return;
-    const cur = dimValue(d, t, e);
+    const cur = dimValue(d, t, e, sg);
+    this.dimPend = null;
     this.askValue(ev.clientX, ev.clientY, Math.round(cur * 1000) / 1000, (v) => {
-      const dm = { id: `d${d.seq++}`, t, e, v };
+      const dm: NonNullable<typeof d.dims3>[number] = { id: `d${d.seq++}`, t, e, v, ...(o !== undefined ? { o } : {}), ...(sg ? { s: sg } : {}) };
+      const dof0 = dofOf(d);
       d.dims3 = [...(d.dims3 ?? []), dm];
-      if (!this.resolve()) {
+      // SolidWorks: serbestliği azaltmayan (fazlalık) veya çözülemeyen ölçü aşırı tanımlar
+      if (!this.resolve() || dofOf(d) >= dof0) {
         d.dims3 = d.dims3.filter((q) => q !== dm);
         this.resolve();
-        this.ctx.toast?.("Bu ölçü eskizi aşırı tanımlar veya çözülemez; eklenmedi", true);
+        // SolidWorks: aşırı tanımlıyorsa sürülen (referans) ölçü yap
+        if (confirm("Bu ölçü eskizi aşırı tanımlıyor. Sürülen (referans) ölçü olarak eklensin mi?")) {
+          dm.ref = true;
+          dm.v = Math.round(cur * 1000) / 1000;
+          d.dims3 = [...d.dims3, dm];
+        }
       }
       this.ctx.changed();
     });
@@ -886,7 +918,188 @@ export class Sketch3DTool {
     box.focus();
     box.select();
   }
-  /** ölçü / ilişki etiketleri (ekran üstü) */
+  /** ölçünün ekran geometrisi (SolidWorks ölçü çizgisi); cur verilirse öteleme imleçten */
+  dimGeom(m: { t: Dim3Type; e: string[]; o?: number; s?: [number, number] }, cur?: [number, number]):
+    | { k: "lin"; S1: number[]; S2: number[]; E1: number[]; E2: number[]; L: number[]; nrm: number[]; o: number }
+    | { k: "ang"; V: number[]; a1: number; a2: number; r: number; L: number[]; o: number; s: [number, number]; ext: number[] }
+    | { k: "rad"; C: number[]; A: number[]; B: number[] | null; L: number[]; o: number }
+    | null {
+    const d = this.ctx.draft();
+    if (!d) return null;
+    const P = (id: string) => d.xyz[d.ids.indexOf(id)];
+    const S = (p: Vec3) => {
+      const r = this.ctx.viewer.renderer.domElement.getBoundingClientRect();
+      const s = this.ctx.viewer.toScreen(p);
+      return [r.left + s[0], r.top + s[1]];
+    };
+    const ln = (id: string) => {
+      const l = d.lines.find((q) => q.id === id);
+      return l ? [P(l.a), P(l.b)] : null;
+    };
+    const foot = (q: Vec3, a: Vec3, b: Vec3): Vec3 => {
+      const dv = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L2 = dv[0] ** 2 + dv[1] ** 2 + dv[2] ** 2 || 1;
+      const t = ((q[0] - a[0]) * dv[0] + (q[1] - a[1]) * dv[1] + (q[2] - a[2]) * dv[2]) / L2;
+      return [a[0] + dv[0] * t, a[1] + dv[1] * t, a[2] + dv[2] * t];
+    };
+    if (m.t === "rad" || m.t === "dia") {
+      const ar = d.arcs3?.find((q) => q.id === m.e[0]);
+      if (!ar) return null;
+      const A3 = P(ar.a), M3 = P(ar.m), B3 = P(ar.b);
+      const C3 = circum(A3, M3, B3);
+      if (!C3) return null;
+      const C = S(C3.c as Vec3);
+      const pts = arcPts(A3, M3, B3, 36).map(S);
+      const ang = cur ? Math.atan2(cur[1] - C[1], cur[0] - C[0]) : m.o ?? Math.atan2(S(M3)[1] - C[1], S(M3)[0] - C[0]);
+      let A = pts[0], best = Infinity;
+      for (const q of pts) {
+        const da = Math.abs(Math.atan2(Math.sin(Math.atan2(q[1] - C[1], q[0] - C[0]) - ang), Math.cos(Math.atan2(q[1] - C[1], q[0] - C[0]) - ang)));
+        if (da < best) (best = da), (A = q);
+      }
+      const R = Math.hypot(A[0] - C[0], A[1] - C[1]) || 1;
+      const L = [C[0] + Math.cos(ang) * (R + 26), C[1] + Math.sin(ang) * (R + 26)];
+      const B = m.t === "dia" ? [2 * C[0] - A[0], 2 * C[1] - A[1]] : null;
+      return { k: "rad", C, A, B, L, o: ang };
+    }
+    if (m.t === "ang") {
+      const l1 = ln(m.e[0]), l2 = ln(m.e[1]);
+      if (!l1 || !l2) return null;
+      const s1 = l1.map(S), s2 = l2.map(S);
+      // tepe: ortak nokta, yoksa ekrandaki kesişim
+      const near = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.5;
+      let V: number[] | null = null;
+      for (const a of s1) for (const b of s2) if (!V && near(a, b)) V = a;
+      if (!V) {
+        const [p, q] = s1, [u, w] = s2;
+        const d1 = [q[0] - p[0], q[1] - p[1]], d2 = [w[0] - u[0], w[1] - u[1]];
+        const den = d1[0] * d2[1] - d1[1] * d2[0];
+        if (Math.abs(den) < 1e-9) return null;
+        const t = ((u[0] - p[0]) * d2[1] - (u[1] - p[1]) * d2[0]) / den;
+        V = [p[0] + d1[0] * t, p[1] + d1[1] * t];
+      }
+      // yön işaretleri: imleç hangi iki ışın arasındaysa o açı (SolidWorks: yerleştirme bölgesi)
+      const dir = (s: number[][]) => Math.atan2(s[1][1] - s[0][1], s[1][0] - s[0][0]);
+      const b1 = dir(s1), b2 = dir(s2);
+      const shared = (() => {
+        const l1 = d.lines.find((q) => q.id === m.e[0])!, l2 = d.lines.find((q) => q.id === m.e[1])!;
+        const sh = [l1.a, l1.b].find((q) => q === l2.a || q === l2.b);
+        return sh === undefined ? null : ([sh === l1.a ? 1 : -1, sh === l2.a ? 1 : -1] as [number, number]);
+      })();
+      let sg: [number, number] = m.s ?? shared ?? [1, 1];
+      const wrapA = (x: number) => Math.atan2(Math.sin(x), Math.cos(x));
+      if (cur) {
+        const ac = Math.atan2(cur[1] - V[1], cur[0] - V[0]);
+        for (const c of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as [number, number][]) {
+          const r1 = b1 + (c[0] < 0 ? Math.PI : 0), r2 = b2 + (c[1] < 0 ? Math.PI : 0);
+          const span = wrapA(r2 - r1), off = wrapA(ac - r1);
+          if ((span >= 0 && off >= 0 && off <= span) || (span < 0 && off <= 0 && off >= span)) {
+            sg = c;
+            break;
+          }
+        }
+      }
+      const a1 = b1 + (sg[0] < 0 ? Math.PI : 0);
+      const a2 = a1 + wrapA(b2 + (sg[1] < 0 ? Math.PI : 0) - a1);
+      const r = cur ? Math.max(14, Math.hypot(cur[0] - V[0], cur[1] - V[1])) : m.o ?? 40;
+      const am = (a1 + a2) / 2;
+      // ışın segmentin üzerinde değilse uzatma çizgisi gerekir
+      const onSeg = (sArr: number[][], a: number) => sArr.some((q) => Math.hypot(q[0] - V![0], q[1] - V![1]) > 1 && Math.cos(Math.atan2(q[1] - V![1], q[0] - V![0]) - a) > 0.99);
+      const ext = [onSeg(s1, a1) ? 0 : 1, onSeg(s2, a2) ? 0 : 1];
+      return { k: "ang", V, a1, a2, r, L: [V[0] + Math.cos(am) * (r + 14), V[1] + Math.sin(am) * (r + 14)], o: r, s: sg, ext };
+    }
+    // doğrusal: iki uç nokta
+    let p1: Vec3, p2: Vec3;
+    if (m.t === "len") {
+      const l = ln(m.e[0]);
+      if (!l) return null;
+      [p1, p2] = l as [Vec3, Vec3];
+    } else if (m.t === "dist") [p1, p2] = [P(m.e[0]), P(m.e[1])];
+    else if (m.t === "pc") {
+      const ar = d.arcs3?.find((q) => q.id === m.e[1]);
+      const C3 = ar && circum(P(ar.a), P(ar.m), P(ar.b));
+      if (!C3) return null;
+      [p1, p2] = [P(m.e[0]), C3.c as Vec3];
+    }
+    else if (m.t === "pl") {
+      const l = ln(m.e[1]);
+      if (!l) return null;
+      p1 = P(m.e[0]);
+      p2 = foot(p1, l[0], l[1]);
+    } else {
+      const l1 = ln(m.e[0]), l2 = ln(m.e[1]);
+      if (!l1 || !l2) return null;
+      p1 = [(l2[0][0] + l2[1][0]) / 2, (l2[0][1] + l2[1][1]) / 2, (l2[0][2] + l2[1][2]) / 2];
+      p2 = foot(p1, l1[0], l1[1]);
+    }
+    if (!p1 || !p2) return null;
+    const S1 = S(p1), S2 = S(p2);
+    let ux = S2[0] - S1[0], uy = S2[1] - S1[1];
+    const L0 = Math.hypot(ux, uy);
+    if (L0 < 1e-6) (ux = 1), (uy = 0);
+    else (ux /= L0), (uy /= L0);
+    const nrm = [-uy, ux];
+    const o = cur ? (cur[0] - S1[0]) * nrm[0] + (cur[1] - S1[1]) * nrm[1] : m.o ?? 24;
+    const E1 = [S1[0] + nrm[0] * o, S1[1] + nrm[1] * o], E2 = [S2[0] + nrm[0] * o, S2[1] + nrm[1] * o];
+    const L = [(E1[0] + E2[0]) / 2 + nrm[0] * Math.sign(o || 1) * 12, (E1[1] + E2[1]) / 2 + nrm[1] * Math.sign(o || 1) * 12];
+    return { k: "lin", S1, S2, E1, E2, L, nrm, o };
+  }
+  private dimGeo = new Map<string, NonNullable<ReturnType<Sketch3DTool["dimGeom"]>>>();
+  /** seçili ölçü (SolidWorks: tek tık seç, çift tık düzenle) */
+  selDim: string | null = null;
+  private dimClickT = 0;
+  /** seçili ölçünün bağlam çubuğu */
+  private showDimBar(id: string, x: number, y: number) {
+    document.querySelector(".s3-relbar")?.remove();
+    const d = this.ctx.draft();
+    const m = d?.dims3?.find((q) => q.id === id);
+    if (!d || !m) return;
+    const bar = document.createElement("div");
+    bar.className = "sw-popup s3-relbar";
+    bar.style.left = Math.max(4, Math.min(innerWidth - 300, x + 18)) + "px";
+    bar.style.top = Math.max(4, y + 18) + "px";
+    bar.innerHTML = `<div class="s3-rb-head"><span>Ölçü ${m.ref ? "(sürülen)" : ""}</span></div><div class="s3-rb-sec"><div class="s3-rb-row"></div></div>`;
+    const row = bar.querySelector(".s3-rb-row")!;
+    const add = (t: string, fn: () => void, cls = "") => {
+      const b = document.createElement("button");
+      b.className = "s3-rb" + (cls ? " " + cls : "");
+      b.textContent = t;
+      b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      b.addEventListener("click", () => (bar.remove(), fn()));
+      row.appendChild(b);
+    };
+    if (!m.ref) add("Değeri değiştir…", () => this.editDim(id, { clientX: x, clientY: y }));
+    add(m.ref ? "Sürücü yap" : "Sürülen yap", () => this.toggleRef(id));
+    add("Sil", () => this.deleteDim(id), "del");
+    add("✕", () => ((this.selDim = null), this.ctx.viewer.requestRender()));
+    bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    document.body.appendChild(bar);
+  }
+  deleteDim(id: string) {
+    const d = this.ctx.draft();
+    if (!d) return;
+    d.dims3 = (d.dims3 ?? []).filter((q) => q.id !== id);
+    if (this.selDim === id) this.selDim = null;
+    document.querySelector(".s3-relbar")?.remove();
+    this.resolve();
+    this.ctx.changed();
+  }
+  /** sürücü ↔ sürülen (referans) ölçü */
+  toggleRef(id: string) {
+    const d = this.ctx.draft();
+    const m = d?.dims3?.find((q) => q.id === id);
+    if (!d || !m) return;
+    if (m.ref) {
+      const dof0 = dofOf(d);
+      m.ref = undefined;
+      m.v = Math.round(dimValue(d, m.t, m.e, m.s) * 1000) / 1000;
+      if (!this.resolve() || dofOf(d) >= dof0) {
+        m.ref = true;
+        this.resolve();
+        this.ctx.toast?.("Sürücü yapılamaz: eskizi aşırı tanımlar", true);
+      }
+    } else m.ref = true;
+    this.ctx.changed();
+  }
+  /** ölçü / ilişki etiketleri ve ölçü çizgileri (ekran üstü) */
   renderLabels() {
     const d = this.ctx.draft();
     if (!d) {
@@ -895,6 +1108,7 @@ export class Sketch3DTool {
     }
     const r = this.ctx.viewer.renderer.domElement.getBoundingClientRect();
     const out: string[] = [];
+    const svg: string[] = [];
     const P = (id: string) => d.xyz[d.ids.indexOf(id)];
     const mid = (lid: string, f = 0.5): Vec3 | null => {
       const l = d.lines.find((q) => q.id === lid);
@@ -908,16 +1122,65 @@ export class Sketch3DTool {
       const X = s[0] + dx, Y = s[1] + dy;
       return X < 0 || Y < 0 || X > r.width || Y > r.height ? null : [r.left + X, r.top + Y];
     };
-    for (const m of d.dims3 ?? []) {
-      if (m.t === "rad") {
-        const ar = d.arcs3?.find((z) => z.id === m.e[0]);
-        const s = ar && at(P(ar.m), 0, -16);
-        if (s) out.push(`<span class="s3-dim" data-id="${m.id}" style="left:${s[0]}px;top:${s[1]}px">R${fmt(m.v)}</span>`);
-        continue;
+    const inView = (q: number[]) => q[0] >= r.left && q[1] >= r.top && q[0] <= r.right && q[1] <= r.bottom;
+    const f2 = (v: number) => v.toFixed(1);
+    const arrow = (T: number[], from: number[], col: string) => {
+      let dx = T[0] - from[0], dy = T[1] - from[1];
+      const L = Math.hypot(dx, dy) || 1;
+      (dx /= L), (dy /= L);
+      const b = [T[0] - dx * 9, T[1] - dy * 9];
+      return `<polygon points="${f2(T[0])},${f2(T[1])} ${f2(b[0] - dy * 3.2)},${f2(b[1] + dx * 3.2)} ${f2(b[0] + dy * 3.2)},${f2(b[1] - dx * 3.2)}" fill="${col}"/>`;
+    };
+    const line = (a: number[], b: number[], col: string, dash = false) => `<line x1="${f2(a[0])}" y1="${f2(a[1])}" x2="${f2(b[0])}" y2="${f2(b[1])}" stroke="${col}" stroke-width="1.2"${dash ? ' stroke-dasharray="4 3"' : ""}/>`;
+    const drawDim = (g: NonNullable<ReturnType<Sketch3DTool["dimGeom"]>>, col: string) => {
+      if (g.k === "lin") {
+        const sg = Math.sign(g.o || 1);
+        const ext = (S: number[], E: number[]) => line([S[0] + g.nrm[0] * sg * 3, S[1] + g.nrm[1] * sg * 3], [E[0] + g.nrm[0] * sg * 5, E[1] + g.nrm[1] * sg * 5], col);
+        svg.push(ext(g.S1, g.E1), ext(g.S2, g.E2), line(g.E1, g.E2, col));
+        const span = Math.hypot(g.E2[0] - g.E1[0], g.E2[1] - g.E1[1]);
+        if (span > 24) svg.push(arrow(g.E1, g.E2, col), arrow(g.E2, g.E1, col));
+        else {
+          // dar ölçü: oklar dışarıdan
+          const ux = (g.E2[0] - g.E1[0]) / (span || 1), uy = (g.E2[1] - g.E1[1]) / (span || 1);
+          svg.push(arrow(g.E1, [g.E1[0] - ux * 12, g.E1[1] - uy * 12], col), arrow(g.E2, [g.E2[0] + ux * 12, g.E2[1] + uy * 12], col));
+        }
+      } else if (g.k === "ang") {
+        const n = 24, pts: string[] = [];
+        for (let i = 0; i <= n; i++) {
+          const a = g.a1 + ((g.a2 - g.a1) * i) / n;
+          pts.push(`${f2(g.V[0] + Math.cos(a) * g.r)},${f2(g.V[1] + Math.sin(a) * g.r)}`);
+        }
+        svg.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="1.2"/>`);
+        ([g.a1, g.a2] as number[]).forEach((a, i) => g.ext[i] && svg.push(line(g.V, [g.V[0] + Math.cos(a) * (g.r + 8), g.V[1] + Math.sin(a) * (g.r + 8)], col, true)));
+        const P1 = [g.V[0] + Math.cos(g.a1) * g.r, g.V[1] + Math.sin(g.a1) * g.r], P2 = [g.V[0] + Math.cos(g.a2) * g.r, g.V[1] + Math.sin(g.a2) * g.r];
+        const s = Math.sign(g.a2 - g.a1) || 1;
+        svg.push(arrow(P1, [P1[0] - Math.sin(g.a1) * s * 10, P1[1] + Math.cos(g.a1) * s * 10], col), arrow(P2, [P2[0] + Math.sin(g.a2) * s * 10, P2[1] - Math.cos(g.a2) * s * 10], col));
+      } else {
+        svg.push(line(g.B ?? g.C, g.L, col), arrow(g.A, g.L, col));
+        if (g.B) svg.push(arrow(g.B, g.A, col));
+        else svg.push(`<circle cx="${f2(g.C[0])}" cy="${f2(g.C[1])}" r="2.5" fill="${col}"/>`);
       }
-      const p = m.t === "len" ? mid(m.e[0]) : m.t === "dist" ? (() => { const a = P(m.e[0]), b = P(m.e[1]); return a && b ? ([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2] as Vec3) : null; })() : mid(m.e[0], 0.25);
-      const s = at(p, 0, -16);
-      if (s) out.push(`<span class="s3-dim" data-id="${m.id}" style="left:${s[0]}px;top:${s[1]}px">${m.t === "ang" ? fmt(m.v) + "°" : fmt(m.v)}</span>`);
+    };
+    this.dimGeo.clear();
+    for (const m of d.dims3 ?? []) {
+      const g = this.dimGeom(m);
+      if (!g || !inView(g.L)) continue;
+      this.dimGeo.set(m.id, g);
+      const col = this.selDim === m.id ? "#e8590c" : m.ref ? "#6b7686" : "#1c7ed6";
+      drawDim(g, col);
+      const v = m.ref ? dimValue(d, m.t, m.e, m.s) : m.v;
+      const txt = (m.t === "rad" ? "R" : m.t === "dia" ? "Ø" : "") + fmt(v) + (m.t === "ang" ? "°" : "");
+      out.push(`<span class="s3-dim${m.ref ? " ref" : ""}${this.selDim === m.id ? " sel" : ""}" data-id="${m.id}" style="left:${g.L[0]}px;top:${g.L[1]}px">${m.ref ? "(" + txt + ")" : txt}</span>`);
+    }
+    // yerleştirilmeyi bekleyen ölçü (imleci izler)
+    if (this.dimPend && this.mode === "dim") {
+      const g = this.dimGeom({ t: this.dimPend.t, e: this.dimPend.e }, this.mouse);
+      if (g) {
+        drawDim(g, "#f76707");
+        const v = dimValue(d, this.dimPend.t, this.dimPend.e, g.k === "ang" ? g.s : undefined);
+        const t = this.dimPend.t;
+        out.push(`<span class="s3-dim ghost" style="left:${g.L[0]}px;top:${g.L[1]}px">${(t === "rad" ? "R" : t === "dia" ? "Ø" : "") + fmt(v) + (t === "ang" ? "°" : "")}</span>`);
+      }
     }
     const tags = new Map<string, string[]>();
     const tag = (lid: string, t: string) => tags.set(lid, [...(tags.get(lid) ?? []), t]);
@@ -936,13 +1199,50 @@ export class Sketch3DTool {
       const s = at(P(c.e[0]), 8, 8);
       if (s) out.push(`<span class="s3-rel" style="left:${s[0]}px;top:${s[1]}px">${REL3_TAG.fix}</span>`);
     }
-    const html = out.join("");
+    const clip = `<clipPath id="s3clip"><rect x="${r.left}" y="${r.top}" width="${r.width}" height="${r.height}"/></clipPath>`;
+    const html = (svg.length ? `<svg class="s3-dimsvg" width="${innerWidth}" height="${innerHeight}">${clip}<g clip-path="url(#s3clip)">${svg.join("")}</g></svg>` : "") + out.join("");
     if (this.labels.innerHTML !== html) {
       this.labels.innerHTML = html;
-      this.labels.querySelectorAll<HTMLElement>(".s3-dim").forEach((el) =>
-        el.addEventListener("click", (ev) => (ev.stopPropagation(), this.editDim(el.dataset.id!, ev))),
-      );
+      this.labels.querySelectorAll<HTMLElement>(".s3-dim:not(.ghost)").forEach((el) => el.addEventListener("pointerdown", (ev) => this.dimDrag(el.dataset.id!, ev)));
     }
+  }
+  /** ölçü etiketini sürükle (konum) / tıkla (değer) */
+  private dimDrag(id: string, ev: PointerEvent) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    const d = this.ctx.draft();
+    const m = d?.dims3?.find((q) => q.id === id);
+    if (!d || !m) return;
+    const x0 = ev.clientX, y0 = ev.clientY;
+    let moved = false;
+    const mv = (e: PointerEvent) => {
+      if (!moved && Math.hypot(e.clientX - x0, e.clientY - y0) < 4) return;
+      moved = true;
+      const g = this.dimGeom(m, [e.clientX, e.clientY]);
+      if (g) m.o = g.o;
+      if (g && g.k === "ang" && (!m.s || g.s[0] * g.s[1] !== m.s[0] * m.s[1])) {
+        m.s = g.s;
+        m.v = Math.round(dimValue(d, m.t, m.e, m.s) * 1000) / 1000;
+      } else if (g && g.k === "ang") m.s = g.s;
+      this.ctx.viewer.requestRender();
+    };
+    const up = (e: PointerEvent) => {
+      removeEventListener("pointermove", mv);
+      removeEventListener("pointerup", up);
+      if (moved) return this.ctx.changed();
+      const now = performance.now();
+      const dbl = now - this.dimClickT < 400 && this.selDim === id;
+      this.dimClickT = now;
+      this.selDim = id;
+      this.ctx.viewer.requestRender();
+      if (dbl && !m.ref) {
+        document.querySelector(".s3-relbar")?.remove();
+        return this.editDim(id, e);
+      }
+      this.showDimBar(id, e.clientX, e.clientY);
+    };
+    addEventListener("pointermove", mv);
+    addEventListener("pointerup", up);
   }
   /** ölçü değerini değiştir (çift tık / panel) */
   editDim(id: string, ev?: { clientX: number; clientY: number }, value?: number) {
@@ -1062,16 +1362,29 @@ export class Sketch3DTool {
       e.preventDefault();
       e.stopPropagation();
       this.cyclePlane(e.shiftKey ? -1 : 1);
+    } else if ((e.key === "Delete" || e.key === "Backspace") && this.selDim) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.deleteDim(this.selDim);
     } else if ((e.key === "Delete" || e.key === "Backspace") && this.sel.length) {
       e.preventDefault();
       e.stopPropagation();
       this.deleteSel();
-    } else if (e.key === "Escape" && (this.rectP || this.dimPick.length || this.sel.length || this.arcPick.length)) {
+    } else if ((e.key === "d" || e.key === "D") && this.dimPend && (this.dimPend.t === "rad" || this.dimPend.t === "dia")) {
+      // yarıçap ↔ çap
       e.preventDefault();
       e.stopPropagation();
+      this.dimPend = { ...this.dimPend, t: this.dimPend.t === "rad" ? "dia" : "rad" };
+      this.ctx.viewer.requestRender();
+    } else if (e.key === "Escape" && (this.rectP || this.dimPick.length || this.sel.length || this.arcPick.length || this.dimPend || this.selDim)) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.selDim = null;
+      document.querySelector(".s3-relbar")?.remove();
       this.rectP = null;
       this.arcPick = [];
       this.dimPick = [];
+      this.dimPend = null;
       this.sel = [];
       this.ctx.changed();
     } else if (e.key === "Escape" && this.mode !== "select" && !(this.mode === "line" && this.anchor() >= 0)) {

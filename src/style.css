@@ -444,3 +444,9 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .mate-status.err { color: var(--danger); font-weight: 600; }
 #tree li.err { color: var(--danger); }
 .asm-matebar { display: flex; }
+.s3-dimsvg { position: fixed; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.s3-dim.ref { border-color: #6b7686; color: #6b7686; }
+.s3-dim.ghost { border-color: #f76707; color: #f76707; pointer-events: none; }
+.pm-relrow .pm-field { flex: 1 1 auto; text-align: left; display: flex; flex-direction: column; }
+.pm-relrow .pm-field input { width: 100%; min-width: 60px; }
+.s3-dim.sel { border-color: #e8590c; color: #e8590c; background: #fff4e6; }

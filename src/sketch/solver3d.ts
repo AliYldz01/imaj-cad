@@ -1,7 +1,7 @@
 // 3B eskiz kısıt çözücü (Levenberg–Marquardt, sayısal Jacobian).
 // Değişkenler: nokta koordinatları. Kısıtlar: çizgi `ax` (X/Y/Z boyunca), ilişkiler (cons3) ve sürücü ölçüler (dims3).
 // Sönümlü en küçük kareler, kısıtlanmamış noktaları yerinde bırakır (SolidWorks gibi en az değişiklik).
-import type { Sketch3DFeature, Vec3 } from "../doc/types";
+import type { Sketch3DFeature, Vec3, Dim3Type } from "../doc/types";
 
 export type Rel3 = "coinc" | "fix" | "par" | "perp" | "equal" | "mid" | "on" | "collin" | "parXY" | "parYZ" | "parZX" | "tan" | "eqX" | "eqY" | "eqZ";
 export const REL3_NAMES: Record<Rel3 | "alongX" | "alongY" | "alongZ", string> = {
@@ -153,6 +153,43 @@ function residuals(f: F, X: number[], fixed0: Map<number, Vec3>): number[] {
     }
   }
   for (const m of f.dims3 ?? []) {
+    if (m.ref) continue; // sürülen ölçü çözücüye girmez
+    if (m.t === "pl" || m.t === "ll") {
+      const le = lineEnds(f, m.e[m.t === "pl" ? 1 : 0]);
+      if (!le) continue;
+      const A = P(le[0]), B = P(le[1]);
+      let Q: number[];
+      if (m.t === "pl") {
+        const i = f.ids.indexOf(m.e[0]);
+        if (i < 0) continue;
+        Q = P(i);
+      } else {
+        const l2 = lineEnds(f, m.e[1]);
+        if (!l2) continue;
+        const a2 = P(l2[0]), b2 = P(l2[1]);
+        Q = [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2, (a2[2] + b2[2]) / 2];
+      }
+      const d = sub(B, A), w = sub(Q, A);
+      const L = len(d) || 1;
+      const c = [d[1] * w[2] - d[2] * w[1], d[2] * w[0] - d[0] * w[2], d[0] * w[1] - d[1] * w[0]] as Vec3;
+      r.push(len(c) / L - m.v);
+      continue;
+    }
+    if (m.t === "pc") {
+      const ar = f.arcs3?.find((q) => q.id === m.e[1]);
+      const i = f.ids.indexOf(m.e[0]);
+      if (!ar || i < 0) continue;
+      const C = circum(P(f.ids.indexOf(ar.a)), P(f.ids.indexOf(ar.m)), P(f.ids.indexOf(ar.b)));
+      if (C) r.push(len(sub(P(i), C.c)) - m.v);
+      continue;
+    }
+    if (m.t === "dia") {
+      const ar = f.arcs3?.find((q) => q.id === m.e[0]);
+      if (!ar) continue;
+      const C = circum(P(f.ids.indexOf(ar.a)), P(f.ids.indexOf(ar.m)), P(f.ids.indexOf(ar.b)));
+      if (C) r.push(2 * C.r - m.v);
+      continue;
+    }
     if (m.t === "len" || m.t === "dist") {
       let a: number, b: number;
       if (m.t === "len") {
@@ -172,7 +209,7 @@ function residuals(f: F, X: number[], fixed0: Map<number, Vec3>): number[] {
       if (!d1 || !d2) continue;
       const l1 = lineEnds(f, m.e[0])!, l2 = lineEnds(f, m.e[1])!;
       const sh = [l1[0], l1[1]].find((q) => q === l2[0] || q === l2[1]);
-      const sg = sh !== undefined && (sh === l1[0]) !== (sh === l2[0]) ? -1 : 1;
+      const sg = m.s ? m.s[0] * m.s[1] : sh !== undefined && (sh === l1[0]) !== (sh === l2[0]) ? -1 : 1;
       r.push((sg * dot(d1, d2) / ((len(d1) || 1) * (len(d2) || 1)) - Math.cos((m.v * Math.PI) / 180)) * 100);
     }
   }
@@ -309,12 +346,32 @@ export function dofOf(f: F, fixed0?: Map<number, Vec3>): number {
 }
 
 /** ölçünün güncel değeri */
-export function dimValue(f: F, t: "len" | "dist" | "ang" | "rad", e: string[]): number {
+export function dimValue(f: F, t: Dim3Type, e: string[], sgn?: [number, number]): number {
   const P = (id: string) => f.xyz[f.ids.indexOf(id)];
-  if (t === "rad") {
+  if (t === "rad" || t === "dia") {
     const ar = f.arcs3?.find((q) => q.id === e[0]);
     const C = ar && circum(P(ar.a), P(ar.m), P(ar.b));
-    return C ? C.r : 0;
+    return C ? C.r * (t === "dia" ? 2 : 1) : 0;
+  }
+  if (t === "pc") {
+    const ar = f.arcs3?.find((q) => q.id === e[1]);
+    const C = ar && circum(P(ar.a), P(ar.m), P(ar.b));
+    return C ? len(sub(P(e[0]), C.c)) : 0;
+  }
+  if (t === "pl" || t === "ll") {
+    const le = lineEnds(f, e[t === "pl" ? 1 : 0]);
+    if (!le) return 0;
+    const A = f.xyz[le[0]], B = f.xyz[le[1]];
+    let Q = P(e[0]);
+    if (t === "ll") {
+      const l2 = lineEnds(f, e[1]);
+      if (!l2) return 0;
+      const a2 = f.xyz[l2[0]], b2 = f.xyz[l2[1]];
+      Q = [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2, (a2[2] + b2[2]) / 2];
+    }
+    const d = sub(B, A), w = sub(Q, A);
+    const c = [d[1] * w[2] - d[2] * w[1], d[2] * w[0] - d[0] * w[2], d[0] * w[1] - d[1] * w[0]] as Vec3;
+    return len(c) / (len(d) || 1);
   }
   if (t === "len") {
     const le = lineEnds(f, e[0]);
@@ -326,6 +383,7 @@ export function dimValue(f: F, t: "len" | "dist" | "ang" | "rad", e: string[]): 
   const d1 = sub(f.xyz[l1[1]], f.xyz[l1[0]]), d2 = sub(f.xyz[l2[1]], f.xyz[l2[0]]);
   let a = (Math.acos(Math.max(-1, Math.min(1, dot(d1, d2) / ((len(d1) || 1) * (len(d2) || 1))))) * 180) / Math.PI;
   // ortak noktada iç açı (SolidWorks gibi): uçlar ortaksa yönleri ortak noktadan dışa al
+  if (sgn) return sgn[0] * sgn[1] < 0 ? 180 - a : a;
   const sh = [l1[0], l1[1]].find((q) => q === l2[0] || q === l2[1]);
   if (sh !== undefined && ((sh === l1[0]) !== (sh === l2[0]))) a = 180 - a;
   return a;

@@ -453,3 +453,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Bileşen aynala (kopya / ters el), saydam | ✅ |
 | Patlatma adımları + animasyon, kütle özellikleri | ✅ |
 | Alt montaj, bağlam içi düzenleme, yol/kam/yuva/üniversal mafsal, hareket etüdü | ⬜ |
+
+## v0.32.1 — 3B eskiz Akıllı Ölçü
+| Özellik | Durum |
+|---|---|
+| Ölçü çizgisi, uzatma çizgileri, oklar (dar ölçüde dıştan), açı yayı + ışın uzatma, yarıçap/çap kılavuzu | ✅ |
+| Seçim tamamlanınca ölçü imleci izler, tıklanan yere yerleşir (öteleme kaydedilir), etiket sürüklenebilir | ✅ |
+| Yeni ölçüler: nokta–çizgi, çizgi–çizgi (paralel), nokta–yay merkezi, çap (D ile yarıçap↔çap) | ✅ |
+| Açı: yerleştirildiği bölgeye göre dar / geniş (SolidWorks gibi), sürükleyince değer güncellenir | ✅ |
+| Çelişen veya fazlalık ölçü → sürülen (referans) ölçü; sürücü ↔ sürülen | ✅ |
+| Ölçü: tek tık seç + bağlam çubuğu, çift tık düzenle, Delete sil | ✅ |

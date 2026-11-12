@@ -26,7 +26,7 @@ import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
 import { Sketch3DTool, PLANES as S3PLANES, setLineLength } from "./sketch/sketch3d";
-import { REL3_NAMES, dofOf as dof3, arcPts as arcPts3, solve3d } from "./sketch/solver3d";
+import { REL3_NAMES, dofOf as dof3, arcPts as arcPts3, solve3d, dimValue as dimValue3 } from "./sketch/solver3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -2051,7 +2051,12 @@ function renderFeaturePM(kind: string) {
         (f3.dims3 ?? []).forEach((m, j) => {
           const row = h("div", "pm-relrow");
           row.append(
-            numField(`${m.t === "len" ? "Boy" : m.t === "dist" ? "Mesafe" : m.t === "rad" ? "Yarıçap" : "Açı"} ${m.e.map(nm).join("–")}`, m.v, (v) => s3tool.editDim(m.id, undefined, v), { unit: m.t === "ang" ? "°" : "mm", key: `${f3.id}.dims3[${j}].v` }),
+            ...(() => {
+              const DN: Record<string, string> = { len: "Boy", dist: "Mesafe", pl: "Nokta–çizgi", ll: "Çizgi–çizgi", ang: "Açı", rad: "Yarıçap", dia: "Çap" };
+              const lb = `${DN[m.t] ?? m.t} ${m.e.map(nm).join("–")}`;
+              if (m.ref) return [h("span", "", `${lb}: (${fmtNum(dimValue3(f3, m.t, m.e), 3)}) — sürülen`)];
+              return [numField(lb, m.v, (v) => s3tool.editDim(m.id, undefined, v), { unit: m.t === "ang" ? "°" : "mm", key: `${f3.id}.dims3[${j}].v` })];
+            })(),
             button("✕", () => (f3.dims3!.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger rel-x"),
           );
           dl.appendChild(row);
