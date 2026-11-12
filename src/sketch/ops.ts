@@ -217,7 +217,9 @@ function chains(sk: SketchData, ents: (SLine | SArc)[]): { pieces: Piece[]; clos
 type OffCurve = { t: "l"; a: Vec2; b: Vec2 } | { t: "c"; c: Vec2; r: number; s: Vec2; e: Vec2 };
 
 export function offsetEnts(sk: SketchData, ents: SEnt[], dist: number, reverse: boolean): string | null {
-  const curves = ents.filter(isCurve);
+  // SolidWorks: yapı geometrisi (ör. merkez dikdörtgenin köşegenleri) ötelenmez; köşede zinciri bozmasın
+  const all = ents.filter(isCurve);
+  const curves = all.some((e) => !e.cons) ? all.filter((e) => !e.cons) : all;
   const circles = curves.filter((e) => e.t === "circle");
   const segs = curves.filter((e) => e.t !== "circle") as (SLine | SArc)[];
   if (!curves.length) return "Ötelemek için çizgi, yay veya daire seçin";

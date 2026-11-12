@@ -346,7 +346,10 @@ export class SketchEditor implements InputHandler {
     if (k === this.curKind) return;
     this.curKind = k;
     const cv = this.host.viewer.renderer.domElement;
-    if (k === "pointer" || k === "default") return void (cv.style.cursor = k);
+    if (k === "pointer" || k === "default") {
+      this.host.viewer.snapIcon = null;
+      return void (cv.style.cursor = k);
+    }
     const O = "#e8590c", Y = "#ffd43b";
     // sağ alttaki küçük simge (x:20..36, y:20..36)
     const icons: Record<string, string> = {
@@ -367,6 +370,9 @@ export class SketchEditor implements InputHandler {
     };
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M10 1v6M10 13v6M1 10h6M13 10h6' stroke='#111' stroke-width='1.6'/>${icons[k] ?? ""}</svg>`;
     cv.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 10 10, crosshair`;
+    // telefon/kalem: aynı simge çizim noktasının yanında rozet olarak (büyütülmüş)
+    this.host.viewer.snapIcon = k === "draw" ? null : `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='10 10 30 30'><rect x='16' y='16' width='24' height='24' rx='6' fill='#fff' opacity='.92'/>${icons[k] ?? ""}</svg>`;
+    this.host.viewer.requestRender();
   }
   /** çıkarım sonucundan imleç türü */
   private snapKind(inf: Inference | null | undefined, draw = true): string {

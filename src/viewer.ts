@@ -368,11 +368,15 @@ export class Viewer {
     this.setDrawPt(null);
   }
   private tcursor: HTMLDivElement | null = null;
+  /** dokunmatik/kalemde yakalama türü simgesi (fare imleci görünmediği için; eskiz düzenleyici ayarlar) */
+  snapIcon: string | null = null;
+  private sbadge: HTMLDivElement | null = null;
   private setDrawPt(e: { clientX: number; clientY: number; pointerType: string } | null) {
     this.drawPt = e ? { x: e.clientX, y: e.clientY, type: e.pointerType } : null;
     if (!e) {
       if (this.loupe) this.loupe.style.display = "none";
       if (this.tcursor) this.tcursor.style.display = "none";
+      if (this.sbadge) this.sbadge.style.display = "none";
       return;
     }
     this.requestRender();
@@ -387,11 +391,24 @@ export class Viewer {
     tc.className = "touch-cursor";
     document.body.appendChild(tc);
     this.tcursor = tc;
+    const sb = document.createElement("div");
+    sb.className = "snap-badge";
+    sb.style.cssText = "position:fixed;z-index:45;pointer-events:none;width:40px;height:40px;display:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))";
+    document.body.appendChild(sb);
+    this.sbadge = sb;
     this.onRender(() => this.drawLoupe());
   }
   private drawLoupe() {
     const d = this.drawPt, lc = this.loupe!, tc = this.tcursor!;
     if (!d) return;
+    // yakalama simgesi: fare dışındaki girişlerde çizim noktasının yanında göster
+    const sb = this.sbadge!;
+    if (this.snapIcon && d.type !== "mouse") {
+      if (sb.dataset.k !== this.snapIcon) ((sb.innerHTML = this.snapIcon), (sb.dataset.k = this.snapIcon));
+      sb.style.display = "block";
+      sb.style.left = d.x - 2 + "px";
+      sb.style.top = d.y - 2 + "px";
+    } else sb.style.display = "none";
     const off = (d.type === "touch" && touchOffset() > 0) || d.type === "tp";
     tc.style.display = off ? "block" : "none";
     if (off) {

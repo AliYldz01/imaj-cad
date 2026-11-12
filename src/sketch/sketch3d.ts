@@ -32,7 +32,7 @@ export interface S3Ctx {
 export type S3Mode = "line" | "rect" | "point" | "arc" | "trim" | "extend" | "select" | "dim";
 export type S3Sel = { k: "p" | "l" | "a"; id: string };
 
-type Cand = { p: Vec3; idx: number; ax: Axis3 | null; kind: "pt" | "model" | "axis" | "plane" | "face" };
+type Cand = { p: Vec3; idx: number; ax: Axis3 | null; kind: "pt" | "model" | "axis" | "plane" | "face" | "on"; lid?: string };
 
 export class Sketch3DTool {
   plane = 0;
@@ -149,6 +149,39 @@ export class Sketch3DTool {
       }
     }
     const ray = v.ray(x, y).ray;
+    // 1b) çizgi / yay üzerinde yakalama (SolidWorks: kontur üzerinde, "Üzerinde" ilişkisi); eksen çıkarımından sonra değerlendirilir
+    let onHit: { c: Cand; dist: number } | null = null;
+    if (snap) {
+      let best: Cand | null = null, bd = 9;
+      for (const l of d.lines) {
+        const ia = d.ids.indexOf(l.a), ib = d.ids.indexOf(l.b);
+        if (ia === ai || ib === ai) continue;
+        const a = this.screenOf(d.xyz[ia]), b = this.screenOf(d.xyz[ib]);
+        const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+        const t = L2 ? ((x - a[0]) * dx + (y - a[1]) * dy) / L2 : -1;
+        if (t <= 0.02 || t >= 0.98) continue;
+        const dd = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
+        if (dd < bd) {
+          const A = new THREE.Vector3(...d.xyz[ia]), B = new THREE.Vector3(...d.xyz[ib]);
+          const dir = B.clone().sub(A);
+          const q = closestOnLine(ray, A, dir.clone().normalize());
+          const tt = q.clone().sub(A).dot(dir) / dir.lengthSq();
+          if (tt > 0 && tt < 1) (bd = dd), (best = { p: round3([q.x, q.y, q.z]), idx: -1, ax: null, kind: "on", lid: l.id });
+        }
+      }
+      for (const ar of d.arcs3 ?? []) {
+        for (const q of arcPts(d.xyz[d.ids.indexOf(ar.a)], d.xyz[d.ids.indexOf(ar.m)], d.xyz[d.ids.indexOf(ar.b)], 48)) {
+          const sp = this.screenOf(q), dd = Math.hypot(sp[0] - x, sp[1] - y);
+          if (dd < bd) (bd = dd), (best = { p: round3(q), idx: -1, ax: null, kind: "on" });
+        }
+      }
+      if (best) {
+        const b = best as Cand;
+        if (A) b.ax = axisOf(A, b.p);
+        onHit = { c: b, dist: bd };
+      }
+    }
+    if (onHit && (onHit.dist < 4 || !A || this.mode !== "line")) return onHit.c;
     // 2) çapa varsa: eksen çıkarımı (ekranda eksen yönüne 7° yakınsa o eksene kilitlen)
     if (A && this.mode === "line") {
       const sa = this.screenOf(A);
@@ -174,6 +207,7 @@ export class Sketch3DTool {
         if (best) return { p: round3(best.p), idx: -1, ax: best.ax, kind: "axis" };
       }
     }
+    if (onHit) return onHit.c;
     // 3) model yüzü (çapa yokken veya düzleme kapalı açıda)
     if (!A) {
       const s = this.ctx.surface(x, y);
@@ -230,13 +264,14 @@ export class Sketch3DTool {
       if (A && this.mode !== "arc") this.g.add(v.fatLines([...A, ...c.p], c.ax ? AXCOL[c.ax] : 0xf76707, 2, !c.ax));
       const r = k * 5;
       const p = c.p;
-      this.g.add(v.fatLines([p[0] - r, p[1], p[2], p[0] + r, p[1], p[2], p[0], p[1] - r, p[2], p[0], p[1] + r, p[2], p[0], p[1], p[2] - r, p[0], p[1], p[2] + r], c.kind === "pt" || c.kind === "model" ? 0xf59f00 : 0x0ca5e9, c.kind === "pt" || c.kind === "model" ? 3 : 1.5));
+      this.g.add(v.fatLines([p[0] - r, p[1], p[2], p[0] + r, p[1], p[2], p[0], p[1] - r, p[2], p[0], p[1] + r, p[2], p[0], p[1], p[2] - r, p[0], p[1], p[2] + r], c.kind === "pt" || c.kind === "model" || c.kind === "on" ? 0xf59f00 : 0x0ca5e9, c.kind === "pt" || c.kind === "model" || c.kind === "on" ? 3 : 1.5));
     }
     if (c && ev) {
       const parts: string[] = [this.planeName];
       if (A) parts.push(`L ${fmt(Math.hypot(c.p[0] - A[0], c.p[1] - A[1], c.p[2] - A[2]))}`);
       if (c.ax) parts.push(`boyunca ${c.ax.toUpperCase()}`);
       else if (c.kind === "pt" || c.kind === "model") parts.push("nokta");
+      else if (c.kind === "on") parts.push("üzerinde");
       this.tip.textContent = parts.join(" · ");
       this.tip.style.left = ev.x + 16 + "px";
       this.tip.style.top = ev.y + 14 + "px";
@@ -260,6 +295,7 @@ export class Sketch3DTool {
       d.ids.push(`p${d.seq++}`);
       d.xyz.push(round3(c.p));
       j = d.xyz.length - 1;
+      if (c.kind === "on" && c.lid) d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "on", e: [d.ids[j], c.lid] }];
     }
     if (ai >= 0 && ai !== j) {
       const a = d.ids[ai], b = d.ids[j];

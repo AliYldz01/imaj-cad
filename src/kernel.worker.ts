@@ -193,6 +193,8 @@ function applyTool(solid: Shape, cut: boolean, merge = true) {
 }
 
 /** Hash'leri içeren gövdeye işlem uygular */
+/** son sabit yarıçaplı radyüs (sonraki radyüs başarısız olursa sırayı değiştirip yeniden denemek için) */
+let filletHist: { before: Shape; after: Shape; refs: EdgeRef[]; rad: number } | null = null;
 function onOwner(hashes: Set<number>, kind: "edges" | "faces", fn: (b: Shape) => Shape) {
   let done = false;
   bodies = bodies.map((b) => {
@@ -2591,7 +2593,47 @@ async function buildFeature(f: KFeature) {
             const rr = f.radii![i];
             if (rr > 0) matchEdges([ref]).forEach((hh) => per.set(hh, rr));
           });
-        onOwner(set, "edges", (b) => b.fillet((e: any) => (set.has(e.hashCode) ? per.get(e.hashCode) ?? rad : null)));
+        const simple = typeof rad === "number" && !per.size && !f.faces?.length;
+        const hist = filletHist;
+        try {
+          onOwner(set, "edges", (b) => {
+            const before = simple ? b.clone() : null;
+            const out = b.fillet((e: any) => (set.has(e.hashCode) ? per.get(e.hashCode) ?? rad : null));
+            filletHist = before ? { before, after: out, refs: f.edges, rad: rad as number } : null;
+            return out;
+          });
+        } catch (err) {
+          // SolidWorks'te çalışan durum: önceki radyüse değen kenarlar (ör. üst kenarlar sonra düşey kenarlar, R2 ≥ R1).
+          // OCC bunu tek başına yapamıyor → önceki radyüsten önceki gövdeye dön, önce bu kenarları sonra öncekileri radyüsle.
+          if (!simple || !hist || !bodies.includes(hist.after)) throw err;
+          const cur = (hist.after.edges as any[]).filter((e) => set.has(e.hashCode)).map((e) => {
+            const A = tup(e.pointAt(0)), B = tup(e.pointAt(1));
+            return { A, d: vnorm(vsub(B, A)) };
+          });
+          const S0 = hist.before.clone();
+          const on = (q: Vec3, A: Vec3, d: Vec3) => vlen(vsub(vsub(q, A), vmul(d, vdot(vsub(q, A), d)))) < 1e-3;
+          const set0 = new Set<number>();
+          for (const e of S0.edges as any[]) {
+            if (String(e.geomType) !== "LINE") continue;
+            const P = tup(e.pointAt(0.5)), D = vnorm(vsub(tup(e.pointAt(1)), tup(e.pointAt(0))));
+            if (cur.some((c) => Math.abs(Math.abs(vdot(c.d, D)) - 1) < 1e-6 && on(P, c.A, c.d))) set0.add(e.hashCode);
+          }
+          if (set0.size !== set.size) throw err;
+          const s1 = S0.fillet((e: any) => (set0.has(e.hashCode) ? (rad as number) : null));
+          const prev = new Set<number>();
+          for (const r of hist.refs) {
+            let bh = -1, bd = 2;
+            for (const e of s1.edges as any[]) {
+              const dd = vlen(vsub(tup(e.pointAt(0.5)), r.m));
+              if (dd < bd) [bd, bh] = [dd, e.hashCode];
+            }
+            if (bh >= 0) prev.add(bh);
+          }
+          if (prev.size !== hist.refs.length) throw err;
+          const s2 = s1.fillet((e: any) => (prev.has(e.hashCode) ? hist.rad : null));
+          bodies = bodies.map((x) => (x === hist.after ? s2 : x));
+          filletHist = null;
+        }
       } else {
         const kind = f.kind ?? "equal";
         onOwner(set, "edges", (b) =>

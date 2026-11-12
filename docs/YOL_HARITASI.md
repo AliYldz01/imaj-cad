@@ -335,3 +335,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Özellik | Durum |
 |---|---|
 | Düzlemsel zincirde ortak profil yönü (ters U çerçeve köşeleri) | ✅ |
+
+## v0.23
+
+| Özellik | Durum |
+|---|---|
+| Çizim araçları yalnız eskiz modunda (SolidWorks gibi) | ✅ |
+| Merkez dikdörtgen ötelemesi (yapı çizgileri ötelenmez) | ✅ |
+| Dokunmatik/kalemde yakalama simgesi rozeti | ✅ |
+| 3B eskizde çizgi/yay üzerine yakalama + Üzerinde ilişkisi | ✅ |
+| Radyüse değen kenara sonradan radyüs (sıra değiştirerek yeniden deneme) | ✅ |

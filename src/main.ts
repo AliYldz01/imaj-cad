@@ -768,6 +768,8 @@ function beginSketchCommand(tool?: SkTool) {
     return;
   }
   if (mode.k === "pm") return toast("Önce açık özelliği tamamlayın (✓ veya ✕)");
+  // SolidWorks: çizim araçları yalnız eskiz modunda çalışır; eskize "Eskiz" komutu + düzlem/yüz seçimiyle girilir
+  if (tool) return toast("Önce Eskiz komutuna basıp bir düzlem veya düz yüz seçin", true);
   const ref = planeRefFromSelection();
   if (ref) return startSketch(ref, tool);
   mode = { k: "pickSketchPlane", tool };
@@ -3998,7 +4000,7 @@ function deleteFeature(id: string) {
 // =====================================================================
 // Komut çubuğu
 // =====================================================================
-type Cmd = { id: string; label: string; icon: string; run: () => void; active?: () => boolean } | "sep";
+type Cmd = { id: string; label: string; icon: string; run: () => void; active?: () => boolean; disabled?: () => boolean } | "sep";
 let tab: "features" | "sketch" | "evaluate" | "sheet" | "weld" | "asm" = "features";
 function setTab(t: "features" | "sketch" | "evaluate" | "sheet" | "weld" | "asm") {
   if (t !== "asm" && asmUI?.on) asmUI.leave();
@@ -4017,6 +4019,7 @@ const skTool = (t: SkTool, icon: string, label = TOOL_NAMES[t]): Cmd => ({
   icon,
   run: () => beginSketchCommand(t),
   active: () => mode.k === "sketch" && mode.editor.tool === t,
+  disabled: () => mode.k !== "sketch",
 });
 
 function commands(): Cmd[] {
@@ -4260,7 +4263,8 @@ function renderCommands() {
       box.appendChild(h("div", "cmd-sep"));
       continue;
     }
-    const b = h("button", "cmd" + (c.active?.() ? " active" : ""));
+    const b = h("button", "cmd" + (c.active?.() ? " active" : "") + (c.disabled?.() ? " disabled" : ""));
+    if (c.disabled?.()) b.setAttribute("aria-disabled", "true");
     b.innerHTML = ICONS[c.icon] ?? "";
     b.appendChild(h("span", "lbl", c.label));
     b.title = c.label;

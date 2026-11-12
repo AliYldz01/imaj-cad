@@ -316,3 +316,5 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .s3-labels span { position: fixed; transform: translate(-50%, -50%); font: 12px system-ui; white-space: nowrap; }
 .s3-dim { background: #fff; border: 1px solid #1c7ed6; color: #1c7ed6; padding: 1px 5px; border-radius: 4px; cursor: pointer; pointer-events: auto; min-width: 22px; text-align: center; }
 .s3-rel { background: #ebfbee; color: #2b8a3e; border: 1px solid #2b8a3e; padding: 0 3px; border-radius: 3px; font-size: 10px; pointer-events: none; }
+
+#cmds button.cmd.disabled { opacity: .38; }
