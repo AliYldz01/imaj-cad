@@ -2381,39 +2381,97 @@ export class SketchEditor implements InputHandler {
   }
 
   // ---------------- Eskiz radyüsü ----------------
+  /** köşe kümesi: aynı yerde duran (kırpmadan kalan) veya çakışık ilişkili noktalar */
+  private cornerCluster(pid: string): string[] {
+    const sk = this.data;
+    const q0 = P(sk, pid);
+    const ids = new Set<string>([pid]);
+    for (const id of Object.keys(sk.pts)) if (id !== ORIGIN && d2(P(sk, id), q0) < 1e-4) ids.add(id);
+    for (const r of sk.rels) if (r.t === "coincident" && r.refs.some((x) => ids.has(x))) r.refs.forEach((x) => sk.pts[x] && x !== ORIGIN && ids.add(x));
+    return [...ids];
+  }
+  /** kümedeki noktaları tek noktada birleştir (varlık, ilişki, ölçü kimliklerini değiştir) */
+  private mergeCorner(ids: string[]): string {
+    const sk = this.data;
+    const [keep, ...rest] = ids;
+    if (!rest.length) return keep;
+    const R = new Set(rest);
+    const sw = (x: string) => (R.has(x) ? keep : x);
+    for (const e of sk.ents as any[]) for (const k of ["p1", "p2", "c", "s", "e", "p"]) if (typeof e[k] === "string") e[k] = sw(e[k]);
+    sk.rels = sk.rels.filter((r) => !(r.t === "coincident" && r.refs.every((x) => x === keep || R.has(x))));
+    for (const r of sk.rels) r.refs = r.refs.map(sw);
+    for (const d of sk.dims) d.refs = d.refs.map(sw);
+    for (const x of rest) delete sk.pts[x];
+    return keep;
+  }
   private filletAt(p: Vec2) {
     const sk = this.data;
     const h = this.hitTest(p, this.tolPx, { ents: false });
-    if (!h || h.id === ORIGIN) return this.host.toast("İki çizginin birleştiği köşeye dokunun");
-    const lines = usersOf(sk, h.id).filter((e) => e.t === "line") as SLine[];
-    if (lines.length !== 2 || usersOf(sk, h.id).length !== 2) return this.host.toast("Köşede tam olarak iki çizgi birleşmeli");
+    if (!h || h.id === ORIGIN) return this.host.toast("İki çizginin/yayın birleştiği köşeye dokunun");
+    const cl = this.cornerCluster(h.id);
+    const curves = sk.ents.filter((e) => (e.t === "line" || e.t === "arc") && !e.cons && entPoints(e).some((x) => cl.includes(x))) as (SLine | SArc)[];
+    if (curves.length !== 2) return this.host.toast(curves.length < 2 ? "Köşede birleşen iki çizgi/yay bulunamadı" : "Köşede ikiden fazla çizgi/yay var; önce fazlasını kırpın");
     const r = this.opts.filletR;
     const Pp = P(sk, h.id);
-    const [L1, L2] = lines;
-    const A = P(sk, L1.p1 === h.id ? L1.p2 : L1.p1), B = P(sk, L2.p1 === h.id ? L2.p2 : L2.p1);
-    const u1 = norm2(sub2(A, Pp)), u2 = norm2(sub2(B, Pp));
-    const th = Math.acos(Math.max(-1, Math.min(1, dot2(u1, u2))));
-    if (th < 1e-3 || Math.abs(th - Math.PI) < 1e-3) return this.host.toast("Çizgiler paralel; köşe yuvarlatılamaz");
-    const d = r / Math.tan(th / 2);
-    if (d >= d2(A, Pp) || d >= d2(B, Pp)) return this.host.toast("Yarıçap bu köşe için çok büyük", true);
-    const T1 = add2(Pp, mul2(u1, d)), T2 = add2(Pp, mul2(u2, d));
-    const bis = norm2(add2(u1, u2));
-    const Cc = add2(Pp, mul2(bis, r / Math.sin(th / 2)));
+    // her eğri için: köşedeki uç, ofset adayları, eğri üzerinde mi testi, izdüşüm
+    type Cv = { e: SLine | SArc; offs: ({ t: "l"; a: Vec2; b: Vec2 } | { t: "c"; c: Vec2; r: number })[]; on: (q: Vec2) => boolean; proj: (q: Vec2) => Vec2 };
+    const mkCv = (e: SLine | SArc): Cv => {
+      if (e.t === "line") {
+        const atStart = cl.includes(e.p1);
+        const A = Pp, B = P(sk, atStart ? e.p2 : e.p1);
+        const dir = norm2(sub2(B, A)), n = perp(dir), L = d2(A, B);
+        const ext = mul2(dir, L * 4);
+        return {
+          e,
+          offs: [1, -1].map((sg) => ({ t: "l" as const, a: add2(sub2(A, ext), mul2(n, sg * r)), b: add2(add2(B, ext), mul2(n, sg * r)) })),
+          on: (q) => { const t = dot2(sub2(q, A), dir); return t > 1e-7 && t < L - 1e-7; },
+          proj: (q) => add2(A, mul2(dir, dot2(sub2(q, A), dir))),
+        };
+      }
+      const c = P(sk, e.c), R0 = d2(c, P(sk, e.s));
+      const { s: as, e: ae } = arcAngles(sk, e);
+      return {
+        e,
+        offs: [R0 + r, R0 - r].filter((x) => x > 1e-9).map((rr) => ({ t: "c" as const, c, r: rr })),
+        on: (q) => { const a = ang(c, q); return inArc(a, as, ae) && d2(q, P(sk, e.s)) > 1e-7 && d2(q, P(sk, e.e)) > 1e-7; },
+        proj: (q) => add2(c, mul2(norm2(sub2(q, c)), R0)),
+      };
+    };
+    const [C1, C2] = curves.map(mkCv);
+    let best: { C: Vec2; T1: Vec2; T2: Vec2; d: number } | null = null;
+    for (const o1 of C1.offs)
+      for (const o2 of C2.offs) {
+        let xs: Vec2[] = [];
+        if (o1.t === "l" && o2.t === "l") { const x = lineLine(o1.a, o1.b, o2.a, o2.b); xs = x ? [x.p] : []; }
+        else if (o1.t === "l" && o2.t === "c") xs = lineCircle(o1.a, o1.b, o2.c, o2.r).map((x) => x.p);
+        else if (o1.t === "c" && o2.t === "l") xs = lineCircle(o2.a, o2.b, o1.c, o1.r).map((x) => x.p);
+        else if (o1.t === "c" && o2.t === "c") xs = circleCircle(o1.c, o1.r, o2.c, o2.r);
+        for (const C of xs) {
+          const T1 = C1.proj(C), T2 = C2.proj(C);
+          if (!C1.on(T1) || !C2.on(T2)) continue;
+          const dd = d2(T1, Pp) + d2(T2, Pp);
+          if (!best || dd < best.d) best = { C, T1, T2, d: dd };
+        }
+      }
+    if (!best) return this.host.toast("Bu yarıçapla köşe yuvarlatılamıyor (yarıçap çok büyük veya eğriler teğet)", true);
+    const { C: Cc, T1, T2 } = best;
     const ccw = crs2(sub2(T1, Cc), sub2(T2, Cc)) > 0;
     this.op(() => {
+      const pid = this.mergeCorner(cl);
       const t1 = addPt(sk, T1), t2 = addPt(sk, T2), c = addPt(sk, Cc);
-      for (const [L, t] of [[L1, t1], [L2, t2]] as [SLine, string][]) {
-        if (L.p1 === h.id) L.p1 = t;
-        else L.p2 = t;
+      for (const [E, t] of [[C1.e, t1], [C2.e, t2]] as [SLine | SArc, string][]) {
+        if (E.t === "line") E.p1 === pid ? (E.p1 = t) : (E.p2 = t);
+        else E.s === pid ? (E.s = t) : (E.e = t);
       }
-      // köşe noktasına bağlı ilişki ve ölçüleri kaldır
-      sk.rels = sk.rels.filter((x) => !x.refs.includes(h.id));
-      sk.dims = sk.dims.filter((x) => !x.refs.includes(h.id));
+      // köşe noktasına bağlı ilişki ve ölçüleri kaldır, noktayı sil (başka kullanan yoksa)
+      sk.rels = sk.rels.filter((x) => !x.refs.includes(pid));
+      sk.dims = sk.dims.filter((x) => !x.refs.includes(pid));
+      if (!sk.ents.some((e) => entPoints(e).includes(pid))) delete sk.pts[pid];
       const a = ccw ? addArc(sk, c, t1, t2) : addArc(sk, c, t2, t1);
       a.r = r;
-      addRel(sk, "tangent", [L1.id, a.id]);
-      addRel(sk, "tangent", [L2.id, a.id]);
-      sk.dims.push({ id: nid(sk, "d"), t: "rad", refs: [a.id], v: r, lp: add2(Cc, mul2(bis, -r * 2)) as Vec2 });
+      addRel(sk, "tangent", [C1.e.id, a.id]);
+      addRel(sk, "tangent", [C2.e.id, a.id]);
+      sk.dims.push({ id: nid(sk, "d"), t: "rad", refs: [a.id], v: r, lp: add2(Cc, mul2(norm2(sub2(Pp, Cc)), -r * 2)) as Vec2 });
     });
   }
 
@@ -2594,8 +2652,10 @@ export class SketchEditor implements InputHandler {
     const sk = this.data;
     const h = this.hitTest(p, this.tolPx, { ents: false });
     if (!h || h.id === ORIGIN) return this.host.toast("İki çizginin birleştiği köşeye dokunun");
-    const lines = usersOf(sk, h.id).filter((e) => e.t === "line") as SLine[];
-    if (lines.length !== 2 || usersOf(sk, h.id).length !== 2) return this.host.toast("Köşede tam olarak iki çizgi birleşmeli");
+    const cl = this.cornerCluster(h.id);
+    if (cl.length > 1) this.op(() => void this.mergeCorner(cl));
+    const lines = usersOf(sk, h.id).filter((e) => e.t === "line" && !e.cons) as SLine[];
+    if (lines.length !== 2) return this.host.toast("Pah için köşede tam olarak iki çizgi birleşmeli");
     const d = this.opts.chamferD;
     const Pp = P(sk, h.id);
     const [L1, L2] = lines;

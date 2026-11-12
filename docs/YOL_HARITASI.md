@@ -371,3 +371,11 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | 3B: orijin/model köşesine yakalanan nokta sabit | ✅ |
 | 3B: hizalama ile konan noktaya nokta hizalama ilişkisi (eqX/eqY/eqZ) | ✅ |
 | 3B: orijinden kare + 2 ölçü → tam tanımlı | ✅ |
+
+## v0.27 — Eskiz radyüsü
+
+| Özellik | Durum |
+|---|---|
+| Çift noktalı / çakışık ilişkili köşeyi birleştirip radyüsleme | ✅ |
+| Çizgi–yay ve yay–yay köşesine radyüs | ✅ |
+| Yapı çizgileri köşe sayımına katılmaz | ✅ |
