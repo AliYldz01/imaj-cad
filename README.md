@@ -6,6 +6,12 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 
 **Canlı sürüm:** https://aliyldz01.github.io/imaj-cad/
 
+## v0.9 — Bilgisayarda SolidWorks ile aynı kullanım
+
+- **Fare ve klavye:** SolidWorks varsayılan fare tuşları, tekerlek yönü, fare hareketleri, bağlam menüsü ve kısayollar (Ctrl+1…8, Boşluk, F, Z, S, Enter, A, Ctrl+B …)
+- **Eskiz çıkarımı:** uç/orta/merkez/çeyrek/kesişim yakalama, uyandırılan noktalardan hizalama çizgileri, dik/doğrusal/teğet çıkarımı, Ctrl ile kapatma
+- **Çizim ve seçim:** çizgi→yay otomatik geçişi, pencere/kesişen seçim, Ctrl ile çoklu seçim, ölçü Değiştir kutusunda tekerlekle artım
+
 ## v0.8 — Eskiz, katı ve sac metal eksikleri tamamlandı
 
 Ayrıntılı özellik listesi ve sonraki adımlar: [docs/YOL_HARITASI.md](docs/YOL_HARITASI.md)

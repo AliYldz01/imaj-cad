@@ -15,7 +15,7 @@ import {
 import { extractLoops, segPoints } from "./profile";
 import {
   add2, ang, arcMid, circle3, circleCircle, crs2, d2, dot2, inArc, len2, lineCircle, lineLine, mul2, nearestOnArc,
-  nearestOnSeg, niceStep, norm2, normAng, perp, sub2, TAU,
+  nearestOnSeg, niceStep, norm2, normAng, perp, pointInPoly, sub2, TAU,
 } from "./geom";
 
 export type SkTool =
@@ -133,12 +133,24 @@ const C = {
 };
 
 type Hit = { kind: "pt" | "ent"; id: string; q: Vec2 };
+interface Guide {
+  a: Vec2;
+  b: Vec2;
+  /** true: ilişki eklenir (sarı), false: yalnız hizalama (mavi) */
+  rel: boolean;
+}
 interface Inference {
   p: Vec2;
   ptId?: string;
   on?: { id: string; t: "line" | "circle" | "arc" };
+  /** kesişim: ikinci eğri */
+  on2?: { id: string; t: "line" | "circle" | "arc" };
   mid?: string;
   hv?: "h" | "v";
+  /** zincirdeki önceki eğriye göre ilişki (yeni çizgiye) */
+  lineRel?: { t: "perpendicular" | "collinear" | "tangent"; ref: string };
+  guides?: Guide[];
+  glyph?: string;
   label?: string;
 }
 
@@ -166,10 +178,21 @@ export class SketchEditor implements InputHandler {
   private defined = { pts: new Set<string>(), radii: new Set<string>() };
   private cursor: Vec2 | null = null;
   private press: { x: number; y: number; local: Vec2; hit: Hit | null; moved: boolean } | null = null;
+  /** son basışın değiştirici tuşları (SolidWorks: Ctrl/Shift ile çoklu seçim) */
+  private mods = { add: false, mouse: false };
+  /** pencere / kesişen seçim kutusu */
+  private boxSel: { x0: number; y0: number; x1: number; y1: number; el: HTMLDivElement } | null = null;
   private lastClick = { t: 0, p: [0, 0] as Vec2 };
   private offRender: () => void;
   opts = {
     sides: 6, filletR: 5, chamferD: 3, showRels: true,
+    gridSnap: (() => {
+      try {
+        return localStorage.getItem("imajcad.gridSnap") === "1";
+      } catch {
+        return false;
+      }
+    })(),
     offD: 5, offRev: false,
     n1: 3, s1: 20, a1: 0, n2: 1, s2: 20, a2: 90,
     cn: 6, ctotal: 360,
@@ -203,6 +226,7 @@ export class SketchEditor implements InputHandler {
     this.labelBox.remove();
     this.offRender();
     this.hideBadge();
+    this.boxSel?.el.remove();
   }
 
   // ---------------- Koordinatlar ----------------
@@ -298,6 +322,7 @@ export class SketchEditor implements InputHandler {
     this.finishChain();
     this.tool = t;
     this.st = {};
+    this.wake = [];
     if (t !== "select" && !OP_TOOLS.includes(t)) this.sel.clear();
     this.hideBadge();
     this.render();
@@ -312,6 +337,7 @@ export class SketchEditor implements InputHandler {
   toggleLineArc() {
     if (this.tool === "line" && this.st.last && this.st.lastEnt) {
       this.st.arc = !this.st.arc;
+      this.st.arcDir = this.st.arcNormal = undefined;
       this.host.toast(this.st.arc ? "Yay modu (A: çizgiye dön)" : "Çizgi modu");
       this.render();
     } else if (this.tool === "line") this.host.toast("Yaya geçmek için önce bir çizgi çizin");
@@ -446,61 +472,228 @@ export class SketchEditor implements InputHandler {
     return Math.round(v / step) * step;
   }
 
-  /** SolidWorks benzeri otomatik ilişki çıkarımı */
-  private infer(p: Vec2, from?: Vec2 | null, exclude: Set<string> = new Set()): Inference {
-    const tol = this.tolPx * this.wpp();
+  /** Ctrl basılıyken çıkarım kapalı (SolidWorks) */
+  private noInfer = false;
+  /** "Uyandırılmış" noktalar: imleç üzerinde bekletilen noktalardan hizalama çizgileri */
+  private wake: string[] = [];
+  private wakeHover: { id: string; t: number } | null = null;
+
+  private curveKind(e: SEnt | undefined): "line" | "circle" | "arc" | null {
+    return e?.t === "line" ? "line" : e?.t === "circle" ? "circle" : e?.t === "arc" ? "arc" : null;
+  }
+
+  /** İki eğrinin kesişimleri */
+  private pairX(a: SEnt, b: SEnt): Vec2[] {
     const sk = this.data;
-    const h = this.hitTest(p, this.tolPx, { ents: false, exclude });
-    if (h) return { p: h.q, ptId: h.id, label: h.id === ORIGIN ? "Orijin" : "Çakışık" };
-    // çizgi orta noktası
-    for (const e of sk.ents) {
-      if (e.t !== "line" || exclude.has(e.id)) continue;
-      const m = mul2(add2(P(sk, e.p1), P(sk, e.p2)), 0.5);
-      if (d2(m, p) < tol * 0.8) return { p: m, mid: e.id, label: "Orta nokta" };
+    const geo = (e: SEnt) =>
+      e.t === "line" ? { k: "l" as const, A: P(sk, e.p1), B: P(sk, e.p2) } : e.t === "circle" ? { k: "c" as const, c: P(sk, e.c), r: e.r, arc: null as null | { s: number; e: number } } : e.t === "arc" ? (() => { const g = arcAngles(sk, e); return { k: "c" as const, c: g.c, r: e.r, arc: { s: g.s, e: g.e } }; })() : null;
+    const ga = geo(a), gb = geo(b);
+    if (!ga || !gb) return [];
+    const onArc = (g: any, q: Vec2) => !g.arc || inArc(ang(g.c, q), g.arc.s, g.arc.e);
+    const out: Vec2[] = [];
+    if (ga.k === "l" && gb.k === "l") {
+      const x = lineLine(ga.A, ga.B, gb.A, gb.B);
+      if (x && x.ta >= -1e-9 && x.ta <= 1 + 1e-9 && x.tb >= -1e-9 && x.tb <= 1 + 1e-9) out.push(x.p);
+    } else if (ga.k === "l" || gb.k === "l") {
+      const L = (ga.k === "l" ? ga : gb) as any, Cc = (ga.k === "l" ? gb : ga) as any;
+      for (const x of lineCircle(L.A, L.B, Cc.c, Cc.r)) if (x.t >= -1e-9 && x.t <= 1 + 1e-9 && onArc(Cc, x.p)) out.push(x.p);
+    } else {
+      const A = ga as any, B = gb as any;
+      for (const q of circleCircle(A.c, A.r, B.c, B.r)) if (onArc(A, q) && onArc(B, q)) out.push(q);
     }
-    const he = this.hitTest(p, this.tolPx * 0.8, { pts: false, exclude });
-    if (he) {
-      const e = getEnt(sk, he.id)!;
-      const t = e.t === "line" ? "line" : e.t === "circle" ? "circle" : e.t === "arc" ? "arc" : null;
-      if (t) {
-        let q = he.q;
-        let hv: "h" | "v" | undefined;
-        // eğri üzerinde + yatay/dikey hizalama
-        if (from && t === "line") {
-          const l = e as SLine;
-          const A = P(sk, l.p1), B = P(sk, l.p2);
-          if (Math.abs(q[1] - from[1]) < tol * 0.7) {
-            const x = lineLine(A, B, from, [from[0] + 1, from[1]]);
-            if (x && x.ta >= 0 && x.ta <= 1) [q, hv] = [x.p, "h"];
-          } else if (Math.abs(q[0] - from[0]) < tol * 0.7) {
-            const x = lineLine(A, B, from, [from[0], from[1] + 1]);
-            if (x && x.ta >= 0 && x.ta <= 1) [q, hv] = [x.p, "v"];
+    return out;
+  }
+
+  /**
+   * SolidWorks benzeri çıkarım motoru.
+   * Öncelik: nokta (çakışık) → orta nokta → kesişim → çeyrek nokta →
+   * eğri üzerinde (+ hizalama çizgisiyle kesişim) → iki hizalama çizgisinin kesişimi → tek hizalama çizgisi → serbest.
+   * Sarı kesikli çizgiler ilişki ekler (yatay/dikey/dik/doğrusal/teğet), mavi çizgiler yalnız hizalar.
+   */
+  private infer(p: Vec2, from?: Vec2 | null, exclude: Set<string> = new Set()): Inference {
+    if (this.noInfer) return { p };
+    const wpp = this.wpp();
+    const tol = this.tolPx * wpp;
+    const sk = this.data;
+    // 1) nokta
+    const h = this.hitTest(p, this.tolPx, { ents: false, exclude });
+    if (h) return { p: h.q, ptId: h.id, glyph: REL_GLYPH.coincident, label: h.id === ORIGIN ? "Orijin" : "Çakışık" };
+    // 2) orta noktalar (çizgi: ilişki eklenir, yay: yalnız konum)
+    for (const e of sk.ents) {
+      if (exclude.has(e.id)) continue;
+      if (e.t === "line") {
+        const m = mul2(add2(P(sk, e.p1), P(sk, e.p2)), 0.5);
+        if (d2(m, p) < tol * 0.8) return { p: m, mid: e.id, glyph: REL_GLYPH.midpoint, label: "Orta nokta" };
+      } else if (e.t === "arc") {
+        const g = arcAngles(sk, e);
+        const m = arcMid(g.c, e.r, g.s, g.e);
+        if (d2(m, p) < tol * 0.8) return { p: m, on: { id: e.id, t: "arc" }, glyph: REL_GLYPH.onCircle, label: "Yay ortası" };
+      }
+    }
+    // yakındaki eğriler
+    const near: { e: SEnt; t: "line" | "circle" | "arc"; q: Vec2; d: number }[] = [];
+    for (const e of sk.ents) {
+      if (exclude.has(e.id)) continue;
+      const t = this.curveKind(e);
+      if (!t) continue;
+      const r = this.nearestOnEnt(e, p);
+      if (r && r.d < tol * 2.5) near.push({ e, t, q: r.q, d: r.d });
+    }
+    near.sort((x, y) => x.d - y.d);
+    // 3) kesişim
+    for (let i = 0; i < near.length; i++)
+      for (let j = i + 1; j < near.length; j++)
+        for (const x of this.pairX(near[i].e, near[j].e))
+          if (d2(x, p) < tol)
+            return { p: x, on: { id: near[i].e.id, t: near[i].t }, on2: { id: near[j].e.id, t: near[j].t }, glyph: "✕", label: "Kesişim" };
+    // 4) çeyrek noktalar
+    for (const n of near) {
+      if (n.t === "line") continue;
+      const c = P(sk, (n.e as SCircle).c), r = (n.e as SCircle).r;
+      for (let k = 0; k < 4; k++) {
+        const q: Vec2 = [c[0] + r * Math.cos((k * Math.PI) / 2), c[1] + r * Math.sin((k * Math.PI) / 2)];
+        if (n.t === "arc") {
+          const g = arcAngles(sk, n.e as SArc);
+          if (!inArc((k * Math.PI) / 2, g.s, g.e)) continue;
+        }
+        if (d2(q, p) < tol * 0.8) return { p: q, on: { id: n.e.id, t: n.t }, glyph: "◔", label: "Çeyrek" };
+      }
+    }
+    // hizalama çizgileri
+    type G = { o: Vec2; d: Vec2; rel: boolean; ray: boolean; hv?: "h" | "v"; lineRel?: Inference["lineRel"]; label: string; glyph: string };
+    const G: G[] = [];
+    if (from) {
+      G.push({ o: from, d: [1, 0], rel: true, ray: false, hv: "h", label: "Yatay", glyph: REL_GLYPH.horizontal });
+      G.push({ o: from, d: [0, 1], rel: true, ray: false, hv: "v", label: "Dikey", glyph: REL_GLYPH.vertical });
+      const st = this.st;
+      const prev = st.lastEnt && st.last && st.lastPos && d2(st.lastPos, from) < 1e-9 ? getEnt(sk, st.lastEnt) : null;
+      if (prev && (prev.t === "line" || prev.t === "arc")) {
+        const t = this.tangentAt(prev.id, st.last);
+        const axis = Math.abs(t[0]) < 1e-6 || Math.abs(t[1]) < 1e-6;
+        if (prev.t === "line") {
+          if (!axis) {
+            G.push({ o: from, d: t, rel: true, ray: true, lineRel: { t: "collinear", ref: prev.id }, label: "Doğrusal", glyph: REL_GLYPH.collinear });
+            G.push({ o: from, d: perp(t), rel: true, ray: false, lineRel: { t: "perpendicular", ref: prev.id }, label: "Dik", glyph: REL_GLYPH.perpendicular });
+          }
+        } else G.push({ o: from, d: t, rel: true, ray: true, lineRel: { t: "tangent", ref: prev.id }, label: "Teğet", glyph: REL_GLYPH.tangent });
+      }
+    }
+    for (const id of this.wake) {
+      if (exclude.has(id) || (id !== ORIGIN && !sk.pts[id])) continue;
+      const o = P(sk, id);
+      if (from && d2(o, from) < 1e-9) continue;
+      G.push({ o, d: [1, 0], rel: false, ray: false, label: "", glyph: "" });
+      G.push({ o, d: [0, 1], rel: false, ray: false, label: "", glyph: "" });
+    }
+    const gDist = (g: G, q: Vec2) => {
+      const v = sub2(q, g.o);
+      if (g.ray && dot2(v, g.d) < 0) return Infinity;
+      return Math.abs(v[0] * g.d[1] - v[1] * g.d[0]);
+    };
+    const proj = (g: G, q: Vec2): Vec2 => add2(g.o, mul2(g.d, dot2(sub2(q, g.o), g.d)));
+    const close = G.filter((g) => gDist(g, p) < tol * 0.7).sort((a, b) => gDist(a, p) - gDist(b, p));
+    const ext = (g: G, q: Vec2): Guide => {
+      const u = norm2(sub2(q, g.o));
+      return { a: g.o, b: d2(q, g.o) > 1e-9 ? add2(q, mul2(u, 30 * wpp)) : q, rel: g.rel };
+    };
+    const pack = (q: Vec2, gs: G[], extra: Partial<Inference> = {}): Inference => {
+      const relG = gs.find((g) => g.rel);
+      const labels = [extra.label, ...gs.filter((g) => g.label).map((g) => g.label)].filter(Boolean);
+      return {
+        p: q,
+        hv: relG?.hv,
+        lineRel: relG?.lineRel,
+        guides: gs.map((g) => ext(g, q)),
+        glyph: [extra.glyph, ...gs.map((g) => g.glyph)].filter(Boolean).join(" ") || undefined,
+        ...extra,
+        label: labels.join(" · ") || undefined,
+      };
+    };
+    // 5) eğri üzerinde (hizalama çizgisiyle kesişebilir)
+    const on = near.find((n) => n.d < tol * 0.8);
+    if (on) {
+      const onI = { id: on.e.id, t: on.t };
+      for (const g of close.length ? G : []) {
+        let xs: Vec2[] = [];
+        const B = add2(g.o, g.d);
+        if (on.t === "line") {
+          const l = on.e as SLine;
+          const x = lineLine(P(sk, l.p1), P(sk, l.p2), g.o, B);
+          if (x && x.ta >= 0 && x.ta <= 1) xs = [x.p];
+        } else {
+          const c = P(sk, (on.e as SCircle).c);
+          xs = lineCircle(g.o, B, c, (on.e as SCircle).r).map((x) => x.p);
+          if (on.t === "arc") {
+            const ag = arcAngles(sk, on.e as SArc);
+            xs = xs.filter((q) => inArc(ang(c, q), ag.s, ag.e));
           }
         }
-        return { p: q, on: { id: e.id, t }, hv, label: "Üzerinde" + (hv ? (hv === "h" ? " · Yatay" : " · Dikey") : "") };
+        const x = xs.filter((q) => gDist(g, q) < 1e-6).sort((a, b) => d2(a, p) - d2(b, p))[0];
+        if (x && d2(x, p) < tol) return pack(x, [g], { on: onI, glyph: REL_GLYPH.onLine, label: "Üzerinde" });
       }
+      return { p: on.q, on: onI, glyph: REL_GLYPH.onLine, label: "Üzerinde" };
     }
-    let q: Vec2 = [this.snapGrid(p[0]), this.snapGrid(p[1])];
-    let hv: "h" | "v" | undefined;
-    if (from) {
-      if (Math.abs(p[1] - from[1]) < tol * 0.7) {
-        q = [q[0], from[1]];
-        hv = "h";
-      } else if (Math.abs(p[0] - from[0]) < tol * 0.7) {
-        q = [from[0], q[1]];
-        hv = "v";
+    // 6) iki hizalama çizgisinin kesişimi
+    for (let i = 0; i < close.length; i++)
+      for (let j = i + 1; j < close.length; j++) {
+        const a = close[i], b = close[j];
+        if (Math.abs(a.d[0] * b.d[1] - a.d[1] * b.d[0]) < 1e-6) continue;
+        const x = lineLine(a.o, add2(a.o, a.d), b.o, add2(b.o, b.d));
+        if (x && d2(x.p, p) < tol && gDist(a, x.p) < 1e-6 && gDist(b, x.p) < 1e-6) return pack(x.p, a.rel || !b.rel ? [a, b] : [b, a]);
       }
+    // 7) tek hizalama çizgisi
+    if (close.length) {
+      const g = close.find((x) => x.rel) && gDist(close.find((x) => x.rel)!, p) < tol * 0.7 ? close.find((x) => x.rel)! : close[0];
+      return pack(proj(g, p), [g]);
     }
-    // diğer noktalarla yatay/dikey hizalama (ilişki eklemeden)
-    if (!hv) {
-      for (const id of [ORIGIN, ...Object.keys(sk.pts)]) {
-        if (exclude.has(id)) continue;
-        const o = P(sk, id);
-        if (Math.abs(p[0] - o[0]) < tol * 0.5) q = [o[0], q[1]];
-        if (Math.abs(p[1] - o[1]) < tol * 0.5) q = [q[0], o[1]];
-      }
+    // 8) serbest (ızgara yakalama isteğe bağlı)
+    return { p: this.opts.gridSnap ? [this.snapGrid(p[0]), this.snapGrid(p[1])] : p };
+  }
+
+  /**
+   * SolidWorks çizgi→yay otomatik geçişi: zincirde imleci son uç noktaya geri getirip
+   * çıkınca yay moduna geçilir. Teğet yönünde çıkılırsa teğet yay, dik yönde çıkılırsa normal yay.
+   */
+  private autoArc(p: Vec2) {
+    const st = this.st;
+    if (this.tool !== "line" || !st.last || !st.lastEnt || !st.lastPos || this.noInfer || !getEnt(this.data, st.lastEnt)) return;
+    const dpx = d2(p, st.lastPos) / this.wpp();
+    if (dpx > 25) {
+      if (st.backIn) {
+        // uç noktadan çıkış: yönü belirle
+        const t = this.tangentAt(st.lastEnt, st.last);
+        const v = norm2(sub2(p, st.lastPos));
+        st.backIn = false;
+        st.away = false;
+        if (st.arc) {
+          st.arc = false;
+          st.arcDir = st.arcNormal = undefined;
+        } else {
+          st.arc = true;
+          if (Math.abs(dot2(v, t)) >= 0.6) {
+            st.arcDir = mul2(t, Math.sign(dot2(v, t)) || 1);
+            st.arcNormal = undefined;
+          } else {
+            const n = perp(t);
+            st.arcDir = mul2(n, Math.sign(dot2(v, n)) || 1);
+            st.arcNormal = true;
+          }
+        }
+        this.render();
+      } else st.away = true;
+    } else if (dpx < 5 && st.away) st.backIn = true;
+  }
+
+  /** İmleç bir noktanın üzerinde ~0.3 s bekleyince o nokta "uyanır" */
+  private trackWake(p: Vec2) {
+    const h = this.hitTest(p, this.tolPx, { ents: false });
+    if (!h) return void (this.wakeHover = null);
+    const now = performance.now();
+    if (!this.wakeHover || this.wakeHover.id !== h.id) this.wakeHover = { id: h.id, t: now };
+    else if (now - this.wakeHover.t > 250 && !this.wake.includes(h.id)) {
+      this.wake.unshift(h.id);
+      this.wake.length = Math.min(this.wake.length, 4);
     }
-    return { p: q, hv, label: hv === "h" ? "Yatay" : hv === "v" ? "Dikey" : undefined };
   }
 
   /** Çıkarımdan nokta oluştur (veya var olanı kullan) */
@@ -508,6 +701,7 @@ export class SketchEditor implements InputHandler {
     if (inf.ptId) return inf.ptId;
     const id = addPt(this.data, inf.p);
     if (inf.on) addRel(this.data, inf.on.t === "line" ? "onLine" : "onCircle", [id, inf.on.id]);
+    if (inf.on2) addRel(this.data, inf.on2.t === "line" ? "onLine" : "onCircle", [id, inf.on2.id]);
     if (inf.mid) addRel(this.data, "midpoint", [id, inf.mid]);
     return id;
   }
@@ -518,17 +712,21 @@ export class SketchEditor implements InputHandler {
     if (!p) return;
     this.tolPx = e.pointerType === "touch" ? 20 : e.pointerType === "pen" ? 12 : 10;
     this.press = { x: e.clientX, y: e.clientY, local: p, hit: this.hitTest(p), moved: false };
+    this.mods = { add: e.ctrlKey || e.shiftKey || e.metaKey, mouse: e.pointerType === "mouse" };
+    this.noInfer = e.ctrlKey && this.tool !== "select";
   };
   move = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p || !this.press) return;
     if (!this.press.moved && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 7) {
       this.press.moved = true;
-      if (this.tool === "select") this.beginDrag(this.press.local, this.press.hit);
+      if (this.tool === "select" && (!this.press.hit || this.press.hit.id === ORIGIN) && e.pointerType !== "touch") this.startBox(this.press.x, this.press.y);
+      else if (this.tool === "select") this.beginDrag(this.press.local, this.press.hit);
       else if (this.dragCreates()) this.click(this.press.local, e);
     }
     if (this.press.moved) {
-      if (this.tool === "select") this.dragTo(p);
+      if (this.boxSel) this.updateBox(e.clientX, e.clientY);
+      else if (this.tool === "select") this.dragTo(p);
       else this.preview(p, e);
     }
   };
@@ -536,6 +734,7 @@ export class SketchEditor implements InputHandler {
     const p = this.local(e);
     const d = this.press;
     this.press = null;
+    if (this.boxSel) return this.endBox();
     if (!p || !d) return;
     if (this.tool === "select" && d.moved) return this.endDrag();
     if (d.moved && !this.dragCreates()) return;
@@ -586,11 +785,15 @@ export class SketchEditor implements InputHandler {
       return;
     }
     const from = this.st.lastPos ?? this.st.aPos ?? null;
-    const inf = this.infer(p, t === "line" || t === "centerline" ? from : null);
+    this.noInfer = !!(e as any).ctrlKey;
+    this.autoArc(p);
+    if (!this.noInfer) this.trackWake(p);
+    const lineLike = t === "line" || t === "centerline" || ((t === "slot" || t === "cslot" || t === "rect3" || t === "para") && !this.st.bPos);
+    const inf = this.infer(p, lineLike ? from : null);
     this.st.inf = inf;
     this.render();
     const text = this.liveText(inf.p);
-    if (inf.label || text) this.showBadge(e.clientX, e.clientY, [inf.label, text].filter(Boolean).join("  "));
+    if (inf.glyph || inf.label || text) this.showBadge(e.clientX, e.clientY, [inf.glyph, text || inf.label].filter(Boolean).join("  "), inf.label);
     else this.hideBadge();
   }
 
@@ -619,13 +822,14 @@ export class SketchEditor implements InputHandler {
   }
 
   private badge: HTMLDivElement | null = null;
-  private showBadge(x: number, y: number, text: string) {
+  private showBadge(x: number, y: number, text: string, title?: string) {
     if (!this.badge) {
       this.badge = document.createElement("div");
       this.badge.className = "sk-badge";
       document.body.appendChild(this.badge);
     }
     this.badge.textContent = text;
+    this.badge.title = title ?? "";
     this.badge.style.display = "block";
     this.badge.style.left = x + 16 + "px";
     this.badge.style.top = y - 34 + "px";
@@ -1142,22 +1346,24 @@ export class SketchEditor implements InputHandler {
         if (st.arc && st.lastEnt && getEnt(sk, st.lastEnt)) {
           // A tuşu: zincir içinde teğet yay, sonra çizgiye geri dön (SolidWorks)
           const inf = this.infer(p);
-          const tdir = this.tangentAt(st.lastEnt, st.last);
+          const tdir = st.arcDir ?? this.tangentAt(st.lastEnt, st.last);
           const geo = this.tangentArcGeo(st.lastPos, tdir, inf.p);
           if (!geo) return;
-          const start = st.last, base = st.lastEnt;
+          const start = st.last, base = st.lastEnt, normal = !!st.arcNormal;
           let closed = false;
           this.op(() => {
             const en = this.makePoint(inf);
             const c = addPt(sk, geo.c);
             const a = geo.ccw ? addArc(sk, c, start, en) : addArc(sk, c, en, start);
             a.r = geo.r;
-            addRel(sk, "tangent", [base, a.id]);
+            if (!normal) addRel(sk, "tangent", [base, a.id]);
             st.last = en;
             st.lastEnt = a.id;
             closed = !!inf.ptId;
           });
           st.arc = false;
+          st.arcDir = st.arcNormal = undefined;
+          st.away = false;
           if (closed) this.finishChain();
           else st.lastPos = P(sk, st.last);
           return this.renderPanel();
@@ -1171,8 +1377,10 @@ export class SketchEditor implements InputHandler {
           const b = this.makePoint(inf);
           const l = addLine(sk, prev, b, cons);
           if (inf.hv) addRel(sk, inf.hv === "h" ? "horizontal" : "vertical", [l.id]);
+          else if (inf.lineRel && getEnt(sk, inf.lineRel.ref)) addRel(sk, inf.lineRel.t, [inf.lineRel.ref, l.id]);
           st.last = b;
           st.lastEnt = l.id;
+          st.away = false;
           st.count++;
           closed = !!inf.ptId;
         });
@@ -1388,6 +1596,7 @@ export class SketchEditor implements InputHandler {
           if (inf.ptId) addRel(sk, "coincident", [id, inf.ptId]);
           else {
             if (inf.on) addRel(sk, inf.on.t === "line" ? "onLine" : "onCircle", [id, inf.on.id]);
+            if (inf.on2) addRel(sk, inf.on2.t === "line" ? "onLine" : "onCircle", [id, inf.on2.id]);
             if (inf.mid) addRel(sk, "midpoint", [id, inf.mid]);
           }
           addPointEnt(sk, id);
@@ -1594,9 +1803,68 @@ export class SketchEditor implements InputHandler {
   }
 
   // ---------------- Seçim ve sürükleme ----------------
+  // ---------- pencere / kesişen seçim (SolidWorks: soldan sağa pencere, sağdan sola kesişen) ----------
+  private startBox(x: number, y: number) {
+    const el = document.createElement("div");
+    el.className = "sk-box";
+    document.body.appendChild(el);
+    this.boxSel = { x0: x, y0: y, x1: x, y1: y, el };
+  }
+  private updateBox(x: number, y: number) {
+    const b = this.boxSel!;
+    b.x1 = x;
+    b.y1 = y;
+    const cross = x < b.x0;
+    Object.assign(b.el.style, {
+      left: Math.min(b.x0, x) + "px", top: Math.min(b.y0, y) + "px",
+      width: Math.abs(x - b.x0) + "px", height: Math.abs(y - b.y0) + "px",
+    });
+    b.el.classList.toggle("cross", cross);
+  }
+  private endBox() {
+    const b = this.boxSel!;
+    this.boxSel = null;
+    b.el.remove();
+    const corners = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].map(([x, y]) => this.local({ clientX: x, clientY: y }));
+    if (corners.some((c) => !c) || Math.abs(b.x1 - b.x0) < 3 || Math.abs(b.y1 - b.y0) < 3) return;
+    const poly = corners as Vec2[];
+    const cross = b.x1 < b.x0;
+    const inside = (q: Vec2) => pointInPoly(q, poly);
+    const hitsEdge = (a: Vec2, c: Vec2) => {
+      for (let i = 0; i < 4; i++) {
+        const x = lineLine(a, c, poly[i], poly[(i + 1) % 4]);
+        if (x && x.ta >= 0 && x.ta <= 1 && x.tb >= 0 && x.tb <= 1) return true;
+      }
+      return false;
+    };
+    const sk = this.data;
+    const found: string[] = [];
+    for (const e of sk.ents) {
+      const pl = e.t === "point" ? [P(sk, e.p), P(sk, e.p)] : e.t === "text" ? [P(sk, e.p), P(sk, e.p)] : this.entPolyline(e);
+      if (!pl.length) continue;
+      const allIn = pl.every(inside);
+      const anyHit = allIn || pl.some(inside) || pl.some((q, i) => i > 0 && hitsEdge(pl[i - 1], q));
+      if (cross ? anyHit : allIn) found.push(e.id);
+    }
+    // bağımsız noktalar (pencere içinde)
+    if (!this.mods.add) this.sel.clear();
+    for (const id of found) this.sel.add(id);
+    this.render();
+    this.renderPanel();
+  }
+
   private selectClick(p: Vec2) {
     const h = this.hitTest(p);
+    // fare: SolidWorks gibi tek tık seçimi değiştirir, Ctrl/Shift ekler/çıkarır. Kalem/parmak: dokunuş ekler/çıkarır.
+    if (h && this.mods.mouse && !this.mods.add && this.tool === "select") {
+      this.sel.clear();
+      this.sel.add(h.id);
+      this.render();
+      this.renderPanel();
+      return;
+    }
     if (!h) {
+      if (this.mods.add) return;
       if (this.sel.size) {
         this.sel.clear();
         this.render();
@@ -2350,9 +2618,25 @@ export class SketchEditor implements InputHandler {
     };
     box.querySelector(".ok")!.addEventListener("click", apply);
     box.querySelector(".no")!.addEventListener("click", close);
+    // SolidWorks Değiştir kutusu: tekerlek / ↑↓ ile artım (Shift ×10, Alt ×0,1)
+    const bump = (dir: number, ev: { shiftKey: boolean; altKey: boolean }) => {
+      const v = evalNum(inp.value.trim());
+      if (v === null) return;
+      const step = ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
+      inp.value = fmtNum(Math.round((v + dir * step) * 1e6) / 1e6, 3);
+      inp.classList.remove("bad");
+    };
+    inp.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      bump(ev.deltaY < 0 ? 1 : -1, ev);
+    }, { passive: false });
     inp.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") apply();
       if (ev.key === "Escape") close();
+      if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
+        ev.preventDefault();
+        bump(ev.key === "ArrowUp" ? 1 : -1, ev);
+      }
       ev.stopPropagation();
     });
   }
@@ -2489,6 +2773,8 @@ export class SketchEditor implements InputHandler {
       pts.renderOrder = 30;
       this.group.add(pts);
     }
+    const gi = this.st.inf as Inference | undefined;
+    if (gi?.guides && this.tool !== "select") for (const g of gi.guides) this.addLines([g.a, g.b], g.rel ? 0xf59f00 : 0x339af0, 1.2, true);
     this.renderPreview();
     this.renderOpPreview();
     this.renderDims();
@@ -2506,7 +2792,7 @@ export class SketchEditor implements InputHandler {
       case "line":
       case "centerline":
         if (st.lastPos && st.arc && st.lastEnt && getEnt(this.data, st.lastEnt)) {
-          const g = this.tangentArcGeo(st.lastPos, this.tangentAt(st.lastEnt, st.last), cur);
+          const g = this.tangentArcGeo(st.lastPos, st.arcDir ?? this.tangentAt(st.lastEnt, st.last), cur);
           if (g) {
             let s0 = ang(g.c, st.lastPos), e0 = ang(g.c, cur);
             if (!g.ccw) [s0, e0] = [e0, s0];
@@ -2873,6 +3159,7 @@ export class SketchEditor implements InputHandler {
     if (!preview) this.wireDimLabel(el, d);
   }
 
+  private dimClickT = { id: "", t: 0 };
   private wireDimLabel(el: HTMLElement, d: SDim) {
     let start: { x: number; y: number; moved: boolean } | null = null;
     el.addEventListener("pointerdown", (e) => {
@@ -2896,7 +3183,20 @@ export class SketchEditor implements InputHandler {
       const moved = start.moved;
       start = null;
       if (moved) return this.host.changed();
-      if (this.tool === "select" && this.sel.size && !this.sel.has(d.id)) {
+      // fare: SolidWorks gibi tek tık seçer, çift tık Değiştir kutusunu açar
+      if (e.pointerType === "mouse" && this.tool === "select") {
+        const now = performance.now();
+        const dbl = this.dimClickT.id === d.id && now - this.dimClickT.t < 450;
+        this.dimClickT = { id: d.id, t: now };
+        if (!dbl) {
+          if (!(e.ctrlKey || e.shiftKey)) this.sel.clear();
+          this.sel.add(d.id);
+          this.render();
+          this.renderPanel();
+          return;
+        }
+      }
+      if (this.tool === "select" && this.sel.size && !this.sel.has(d.id) && e.pointerType !== "mouse") {
         this.sel.add(d.id);
         this.render();
         this.renderPanel();
@@ -3203,6 +3503,19 @@ export class SketchEditor implements InputHandler {
     });
     qd.append(qc, document.createTextNode(" Çizdikten sonra ölçü gir"));
     box.appendChild(qd);
+    const gd = h("label", "pm-check");
+    const gc = document.createElement("input");
+    gc.type = "checkbox";
+    gc.checked = this.opts.gridSnap;
+    gc.addEventListener("change", () => {
+      this.opts.gridSnap = gc.checked;
+      try {
+        localStorage.setItem("imajcad.gridSnap", gc.checked ? "1" : "0");
+      } catch {}
+    });
+    gd.append(gc, document.createTextNode(" Izgaraya yakala"));
+    box.appendChild(gd);
+    if (this.tool !== "select") box.appendChild(h("p", "pm-hint", "Ctrl basılı: otomatik ilişki/yakalama kapalı. Bir noktanın üzerinde bekleyin: mavi hizalama çizgileri çıkar."));
     if (this.dynAxis && getEnt(this.data, this.dynAxis)) {
       const b = h("button", "btn", "Dinamik aynayı kapat");
       b.addEventListener("click", () => ((this.dynAxis = null), this.renderPanel(), this.render()));

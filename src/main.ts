@@ -555,7 +555,9 @@ function partClick(e: PointerEvent) {
   }
   if (mode.k === "pm") return pmPick(hit, e);
   if (mode.k === "measure") return measurePick(hit);
-  // normal seçim
+  // normal seçim (fare: SolidWorks gibi tık seçimi değiştirir, Ctrl/Shift ekler)
+  const replace = e.pointerType === "mouse" && !(e.ctrlKey || e.shiftKey || e.metaKey);
+  if (hit && replace) clearPartSel();
   if (!hit) {
     clearPartSel();
     treeSel = null;

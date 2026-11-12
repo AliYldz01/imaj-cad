@@ -248,3 +248,5 @@ dialog.draw-dialog { width: 1100px; }
 .sw-g-down { left: 50%; bottom: 6px; transform: translateX(-50%); }
 .sw-g-left { left: 2px; top: 50%; transform: translateY(-50%); }
 .sw-g-right { right: 2px; top: 50%; transform: translateY(-50%); }
+.sk-box { position: fixed; z-index: 55; pointer-events: none; border: 1.5px solid #1c7ed6; background: rgba(28,126,214,.08); }
+.sk-box.cross { border-style: dashed; border-color: #2f9e44; background: rgba(47,158,68,.08); }

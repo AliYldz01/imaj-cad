@@ -148,7 +148,7 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 
 - **Kalem / fare:** seçim, çizim ve ölçü işlemleri. Tıkla-tıkla ve tıkla-sürükle çizim birlikte desteklenir.
 - **Parmak:** tek parmak döndürür (3D) veya kaydırır (eskiz); iki parmak kaydırır ve yakınlaştırır; parmakla dokunmak da seçim yapar.
-- **Fare:** orta tuş döndürür, sağ tuş kaydırır, tekerlek yakınlaştırır (SolidWorks'teki gibi).
+- **Fare (v0.9, SolidWorks ile aynı):** orta tuş döndürür, Ctrl+orta kaydırır, Shift+orta yakınlaştırır, Alt+orta yuvarlar, orta çift tık sığdırır; tekerlek imleçte yakınlaştırır (ileri = uzaklaş, ayardan ters çevrilebilir); sağ tık bağlam menüsü, sağ sürükle fare hareketleri.
 - **Telefon:** ağaç ve özellik paneli alttan açılan sayfa olarak gelir. **Tablet / bilgisayar:** solda sabit panel.
 
 ## v0.8 ile eklenenler
@@ -158,3 +158,14 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Eskiz | Çizdikten sonra hızlı ölçü girişi, dinamik ayna, eskiz resmi (fotoğraf + iki noktayla ölçekleme), orta nokta çizgisi, 3N merkez dikdörtgen, konik, denklem eğrisi, ayır, kademe çizgisi, koordinat ölçüsü, yay uzunluğu ölçüsü, daire kenarı ölçüsü, eş yarıçaplı, eskizi onar, blok kütüphanesi, kapalı bölge gölgesi | ✅ |
 | Katı | Birleştir (ekle/çıkar/ortak), gövde böl, gövde taşı/kopyala, gövde sil, girinti, eskiz/tablo/eğri/doldurma çoğaltma, helisel diş, esnet (bük/bur/daralt/uzat), köşe pahı, ekstrüzyon başlangıç ötelemesi, girişim kontrolü, kılavuz eğrili loft | ✅ |
 | Sac metal | Kademe, gönye flanş, köşe kapatma, saca dönüştür | ✅ |
+
+## v0.9 — Bilgisayarda SolidWorks ile aynı kullanım
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Fare | Orta tuş döndür / Ctrl kaydır / Shift yakınlaştır / Alt yuvarla, orta çift tık sığdır, SolidWorks tekerlek yönü (ayarlanabilir), sağ tık bağlam menüsü, sağ sürükle 4 yönlü fare hareketleri (eskiz: ↑ Akıllı Ölçü, → Daire, ↓ Dikdörtgen, ← Çizgi; parça: görünüm yönleri) | ✅ |
+| Klavye | Ctrl+1…8 görünümler, Boşluk görünüm penceresi, F sığdır, Z/Shift+Z, oklar 15°/Shift 90°, Alt+ok yuvarla, Ctrl+ok kaydır, Ctrl+Shift+Z önceki görünüm, S kısayol çubuğu, Enter son komut, Ctrl+B/Q yeniden oluştur, Ctrl+S/O/N, Ctrl+Z/Y, Ctrl+A/C/V, Delete, Esc, A çizgi↔yay | ✅ |
+| Çıkarım | Uç / orta / merkez / çeyrek / kesişim / üzerinde yakalama; uyandırılan noktalardan mavi hizalama çizgileri; sarı ilişki çizgileri (yatay, dikey, dik, doğrusal, teğet) ve imleç yanında ilişki simgesi; Ctrl ile çıkarımı kapatma; ızgara yakalama varsayılan kapalı | ✅ |
+| Çizim | Uç noktaya geri dönüp çıkınca çizgi→teğet/normal yay geçişi, A tuşu, tıkla-tıkla ve tıkla-sürükle | ✅ |
+| Seçim | Soldan sağa pencere, sağdan sola kesişen seçim; tık seçimi değiştirir, Ctrl/Shift ekler; ölçüde tek tık seç, çift tık Değiştir kutusu (tekerlek / ↑↓ artım, Shift ×10, Alt ×0,1) | ✅ |
+| Telefon kontrolleri | Kaleme ve parmağa özel ayrı çizim mantığı | ⬜ sıradaki |
