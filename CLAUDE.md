@@ -1,7 +1,7 @@
 # İmaj CAD — devam kılavuzu (yeni sohbet buradan başlar)
 
 Bu dosya, projeyi sıfırdan açılan bir sohbette kaldığı yerden sürdürmek için gereken her şeyi içerir.
-Ayrıntılı özellik listesi: `docs/YOL_HARITASI.md` · Kullanıcı özeti: `README.md` · **SolidWorks fark raporu ve düzeltme planı: `docs/SOLIDWORKS_FARK_RAPORU.md`** (maddeler E/F/S/W/G numaralı; düzeltildikçe ✅ işaretle).
+Ayrıntılı özellik listesi: `docs/YOL_HARITASI.md` · Kullanıcı özeti: `README.md` · **SolidWorks fark raporu ve düzeltme planı: `docs/SOLIDWORKS_FARK_RAPORU.md`** (maddeler E/F/S/W/G numaralı; düzeltildikçe ✅ işaretle) · **SolidWorks özellik başvuru listesi (seçenek seviyesinde, ✅/🟡/⬜ durumlu): `docs/SOLIDWORKS_OZELLIKLERI.md`** — yeni özellik yazarken buradaki seçenekleri esas al, bitince durumunu güncelle.
 
 ## 1. Amaç
 
