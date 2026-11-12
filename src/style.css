@@ -229,3 +229,22 @@ dialog.draw-dialog { width: 1100px; }
 .dim-prompt.quick { flex-wrap: wrap; max-width: 300px; align-items: flex-end; }
 .dim-prompt.quick label { display: flex; flex-direction: column; font-size: 11px; color: #555; gap: 2px; }
 .dim-prompt.quick input { width: 96px; font-size: 16px; }
+
+/* ---------- SolidWorks tarzı açılır menüler ---------- */
+.sw-popup { position: fixed; z-index: 60; }
+.sw-ctx { background: var(--panel, #fff); border: 1px solid #c9d1dc; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 4px; min-width: 190px; display: flex; flex-direction: column; }
+.sw-mi { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 6px 10px; text-align: left; font: inherit; font-size: 13px; border-radius: 5px; cursor: pointer; color: inherit; }
+.sw-mi:hover { background: #e7f0ff; }
+.sw-mi svg { width: 18px; height: 18px; flex: none; }
+.sw-sbar { background: var(--panel, #fff); border: 1px solid #c9d1dc; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.18); padding: 4px; display: grid; grid-template-columns: repeat(6, 36px); gap: 2px; }
+.sw-sb { width: 36px; height: 36px; display: grid; place-items: center; border: 0; background: none; border-radius: 6px; cursor: pointer; color: inherit; }
+.sw-sb:hover { background: #e7f0ff; }
+.sw-sb svg { width: 22px; height: 22px; }
+.sw-gesture { width: 220px; height: 220px; pointer-events: none; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.0) 28px, rgba(255,255,255,.75) 30px, rgba(255,255,255,.75) 108px, transparent 110px); border: 1px solid rgba(0,0,0,.08); }
+.sw-g { position: absolute; display: flex; flex-direction: column; align-items: center; font-size: 11px; padding: 4px 6px; border-radius: 6px; background: #fff; border: 1px solid #c9d1dc; min-width: 64px; }
+.sw-g svg { width: 22px; height: 22px; }
+.sw-g.on { background: #ffe9a8; border-color: #e0a800; }
+.sw-g-up { left: 50%; top: 6px; transform: translateX(-50%); }
+.sw-g-down { left: 50%; bottom: 6px; transform: translateX(-50%); }
+.sw-g-left { left: 2px; top: 50%; transform: translateY(-50%); }
+.sw-g-right { right: 2px; top: 50%; transform: translateY(-50%); }

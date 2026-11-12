@@ -1,5 +1,7 @@
-// Serbest döndürme / kaydırma / yakınlaştırma (SolidWorks benzeri, kilitlenmesiz).
-// Fare: orta tuş döndürür, sağ tuş (veya Ctrl+orta) kaydırır, tekerlek yakınlaştırır.
+// Serbest döndürme / kaydırma / yakınlaştırma — SolidWorks fare düzeni:
+// orta tuş döndürür, Ctrl+orta kaydırır, Shift+orta yakınlaştırır, Alt+orta ekran ekseninde çevirir,
+// tekerlek imlecin olduğu yere yakınlaştırır (ileri = uzaklaş, geri = yakınlaş; ters çevrilebilir),
+// orta tuşa çift tıklama ekrana sığdırır. Sağ tuş hareket kılavuzu / bağlam menüsü içindir.
 // Parmak: tek parmak döndürür (eskizde kaydırır), iki parmak kaydırır + yakınlaştırır.
 import * as THREE from "three";
 
@@ -22,8 +24,26 @@ export class NavControls extends EventTarget {
     this.dispatchEvent(new Event("change"));
   }
 
+  /** tekerlek yönünü ters çevir (SolidWorks: Seçenekler > Görünüm) */
+  reverseWheel = (() => {
+    try {
+      return localStorage.getItem("imajcad.wheelReverse") === "1";
+    } catch {
+      return false;
+    }
+  })();
+  private lastMid = 0;
+  private midMoved = false;
+
   private down(e: PointerEvent) {
-    if (e.pointerType === "mouse" && e.button === 0) return;
+    if (e.pointerType === "mouse" && e.button !== 1) return;
+    if (e.pointerType === "mouse") {
+      e.preventDefault();
+      const now = performance.now();
+      if (now - this.lastMid < 350) this.dispatchEvent(new Event("fit"));
+      this.lastMid = now;
+      this.midMoved = false;
+    }
     this.el.setPointerCapture(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
     if (this.touchCount() === 2) this.pinch = this.pinchState();
@@ -58,8 +78,13 @@ export class NavControls extends EventTarget {
       }
       return;
     }
-    if (p.button === 1 && !e.ctrlKey) this.rotate(dx, dy);
-    else this.pan(dx, dy);
+    if (Math.abs(dx) + Math.abs(dy) > 0) this.midMoved = true;
+    if (e.ctrlKey) this.pan(dx, dy);
+    else if (e.shiftKey) {
+      const r = this.el.getBoundingClientRect();
+      this.zoomAt(Math.exp(-dy * 0.01), r.left + r.width / 2, r.top + r.height / 2);
+    } else if (e.altKey) this.roll(dx * 0.4);
+    else this.rotate(dx, dy);
   }
 
   private up(e: PointerEvent) {
@@ -69,8 +94,25 @@ export class NavControls extends EventTarget {
 
   private wheel(e: WheelEvent) {
     e.preventDefault();
-    const f = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015));
+    // SolidWorks varsayılanı: tekerleği ileri (deltaY < 0) itmek uzaklaştırır
+    const sgn = this.reverseWheel ? -1 : 1;
+    const f = Math.exp(sgn * e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015));
     this.zoomAt(f, e.clientX, e.clientY);
+  }
+
+  /** Ekran ekseni (bakış yönü) etrafında çevir, derece */
+  roll(deg: number) {
+    const cam = this.camera;
+    const fwd = this.target.clone().sub(cam.position).normalize();
+    cam.up.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(fwd, (deg * Math.PI) / 180));
+    cam.lookAt(this.target);
+    cam.updateMatrixWorld();
+    this.changed();
+  }
+
+  /** Açıyla döndür (ok tuşları): yatay ve dikey, derece */
+  rotateDeg(yaw: number, pitch: number) {
+    this.rotate(-(yaw * Math.PI) / 180 / 0.008, -(pitch * Math.PI) / 180 / 0.008);
   }
 
   rotate(dx: number, dy: number) {

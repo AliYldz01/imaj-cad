@@ -210,7 +210,32 @@ export class Viewer {
     return this.viewHeight / this.camera.zoom / (this.container.clientHeight || 1);
   }
 
+  private viewHistory: { pos: THREE.Vector3; up: THREE.Vector3; target: THREE.Vector3; zoom: number }[] = [];
+  /** Önceki görünüm (Ctrl+Shift+Z) için mevcut görünümü sakla */
+  pushView() {
+    this.viewHistory.push({ pos: this.camera.position.clone(), up: this.camera.up.clone(), target: this.controls.target.clone(), zoom: this.camera.zoom });
+    if (this.viewHistory.length > 30) this.viewHistory.shift();
+  }
+  previousView() {
+    const v = this.viewHistory.pop();
+    if (!v) return;
+    this.camera.position.copy(v.pos);
+    this.camera.up.copy(v.up);
+    this.controls.target.copy(v.target);
+    this.camera.zoom = v.zoom;
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(v.target);
+    this.camera.updateMatrixWorld();
+    this.requestRender();
+  }
+  /** Ekran merkezine göre yakınlaştır / uzaklaştır */
+  zoomStep(f: number) {
+    const r = this.container.getBoundingClientRect();
+    this.controls.zoomAt(f, r.left + r.width / 2, r.top + r.height / 2);
+  }
+
   setView(dir: THREE.Vector3, up: THREE.Vector3, target?: THREE.Vector3) {
+    this.pushView();
     const t = target ?? this.controls.target.clone();
     this.controls.target.copy(t);
     this.camera.up.copy(up).normalize();
@@ -242,6 +267,7 @@ export class Viewer {
   }
 
   fit() {
+    this.pushView();
     const box = this.bbox && !this.bbox.isEmpty() ? this.bbox.clone() : new THREE.Box3(new THREE.Vector3(-60, -60, -60), new THREE.Vector3(60, 60, 60));
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length() || 100;

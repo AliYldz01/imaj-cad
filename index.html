@@ -66,13 +66,16 @@
       <button data-act="stl">STL olarak dışa aktar</button>
       <button data-act="dxf">Sac açınımı (DXF)</button>
       <button data-act="cutlist">Kesim listesi…</button>
+      <hr />
+      <button data-act="wheel">Tekerlek yakınlaştırma yönünü ters çevir</button>
+      <button data-act="keys">Klavye ve fare kısayolları…</button>
     </div>
     <input type="file" id="file-input" accept=".icad,.json,application/json" hidden />
 
     <div id="toast" hidden></div>
 
     <dialog id="help">
-      <h2>İmaj CAD — v0.8</h2>
+      <h2>İmaj CAD — v0.9</h2>
       <h3>Çalışma mantığı (SolidWorks gibi)</h3>
       <ol>
         <li><b>Eskiz</b>: Bir düzleme (Ön / Üst / Sağ) veya katının düz bir yüzüne dokunun, sonra <b>Eskiz</b>'e basın. Ya da önce Eskiz'e basıp düzlemi seçin.</li>
@@ -83,7 +86,10 @@
       </ol>
       <h3>Kalem, parmak ve fare</h3>
       <p><b>Kalem / sol tık:</b> seçer ve çizer (tıkla-tıkla veya sürükle). <b>Tek parmak:</b> modeli döndürür (eskizde kaydırır). <b>İki parmak:</b> kaydırır ve yakınlaştırır. Parmakla dokunmak da seçim yapar.<br />
-      <b>Fare:</b> orta tuş döndürür, sağ tuş kaydırır, tekerlek yakınlaştırır.</p>
+      <b>Fare (SolidWorks ile aynı):</b> orta tuş döndürür, Ctrl+orta kaydırır, Shift+orta yakınlaştırır, Alt+orta yuvarlar, orta tuşa çift tık ekrana sığdırır. Tekerlek imleçte yakınlaştırır (ileri = uzaklaş). Sağ tık bağlam menüsü, sağ tuşla sürükleme fare hareketleri (eskizde ↑ Akıllı Ölçü, → Daire, ↓ Dikdörtgen, ← Çizgi; parçada görünüm yönleri).</p>
+      <h3>Klavye (SolidWorks varsayılanları)</h3>
+      <p class="small">Ctrl+1…8 Ön/Arka/Sol/Sağ/Üst/Alt/İzometrik/Normal · Boşluk görünüm yönü · F sığdır · Z / Shift+Z uzaklaş / yakınlaş · oklar 15° döndür, Shift+oklar 90°, Alt+←/→ yuvarla, Ctrl+oklar kaydır · Ctrl+Shift+Z önceki görünüm · S kısayol çubuğu · Enter son komutu tekrarla · A çizgi↔teğet yay · Ctrl+B / Ctrl+Q yeniden oluştur · Ctrl+S kaydet · Ctrl+O aç · Ctrl+N yeni · Ctrl+Z / Ctrl+Y geri / ileri · Ctrl+A tümünü seç · Ctrl+C / Ctrl+V kopyala / yapıştır · Delete sil · Esc iptal.<br />
+      Not: Tarayıcı sekmesinde Ctrl+1…8 ve Ctrl+N tarayıcıya ayrılmıştır; uygulamayı “Yükle / Ana ekrana ekle” ile kurarsanız tüm kısayollar çalışır.</p>
       <h3>Lisanslar</h3>
       <p class="small">Bu uygulama <b>Open CASCADE Technology</b> yazılımının sağladığı olanakları kullanır (GNU LGPL 2.1, Open CASCADE istisnası ile; LGPL kapsamındaki haklarınız saklıdır). Eskiz çözücüsü <b>FreeCAD PlaneGCS</b>'tir (GNU LGPL). Her ikisi de ayrı, değiştirilebilir WebAssembly dosyaları olarak yüklenir. Kaynaklar: <a href="https://dev.opencascade.org" target="_blank" rel="noopener">dev.opencascade.org</a>, <a href="https://github.com/Salusoft89/planegcs" target="_blank" rel="noopener">planegcs</a>.<br />
       Ayrıca <b>replicad</b> (MIT) ve <b>three.js</b> (MIT) kullanılmaktadır.</p>

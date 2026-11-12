@@ -3428,6 +3428,9 @@ function commands(): Cmd[] {
   ];
 }
 
+/** Enter ile tekrarlanacak son komut (SolidWorks: Enter = son komutu tekrarla) */
+let lastCmd: (() => void) | null = null;
+
 function renderCommands() {
   const box = $("#cmds");
   box.innerHTML = "";
@@ -3441,6 +3444,7 @@ function renderCommands() {
     b.appendChild(h("span", "lbl", c.label));
     b.title = c.label;
     b.addEventListener("click", () => {
+      lastCmd = c.run;
       c.run();
       renderCommands();
     });
@@ -3571,7 +3575,16 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
   b.addEventListener("click", async () => {
     $("#file-menu").hidden = true;
     const act = b.dataset.act;
-    if (mode.k === "sketch") exitSketch(true);
+    if (act === "wheel") {
+      const v = !viewer.controls.reverseWheel;
+      viewer.controls.reverseWheel = v;
+      try {
+        localStorage.setItem("imajcad.wheelReverse", v ? "1" : "0");
+      } catch {}
+      return toast(v ? "Tekerlek: ileri = yakınlaş" : "Tekerlek: ileri = uzaklaş (SolidWorks varsayılanı)");
+    }
+    if (act === "keys") return ($("#help") as HTMLDialogElement).showModal();
+    if (mode.k === "sketch" && act !== "save") exitSketch(true);
     if (mode.k === "pm") cancelFeature();
     if (act === "new") {
       if (doc.features.length && !confirm("Yeni parça açılsın mı? (Geri al ile dönebilirsiniz)")) return;
@@ -3641,42 +3654,285 @@ async function download(blob: Blob, name: string) {
 // =====================================================================
 // Klavye
 // =====================================================================
+// =====================================================================
+// SolidWorks klavye kısayolları
+// =====================================================================
+let mouseXY: [number, number] = [innerWidth / 2, innerHeight / 2];
+window.addEventListener("pointermove", (e) => (mouseXY = [e.clientX, e.clientY]), { passive: true });
+const fileAct = (act: string) => ($(`#file-menu button[data-act='${act}']`) as HTMLButtonElement | null)?.click();
+function normalTo() {
+  if (mode.k === "sketch") return viewer.viewNormal(mode.editor.frame);
+  const r = planeRefFromSelection();
+  const fr = r && resolveFrame(r, doc.features);
+  if (fr) viewer.viewNormal(fr);
+  else toast("Normal görünüm için bir düzlem veya düz yüz seçin");
+}
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if (document.querySelector("dialog[open]")) return;
   const k = e.key.toLowerCase();
-  if ((e.ctrlKey || e.metaKey) && k === "z") {
-    e.preventDefault();
-    e.shiftKey ? redo() : undo();
-  } else if ((e.ctrlKey || e.metaKey) && k === "y") {
-    e.preventDefault();
-    redo();
-  } else if (e.key === "Escape") {
+  const ctrl = e.ctrlKey || e.metaKey;
+  const done = () => e.preventDefault();
+  // görünüm yönleri: Ctrl+1..8
+  if (ctrl && !e.shiftKey && /^[1-8]$/.test(e.key)) {
+    done();
+    const v = ["front", "back", "left", "right", "top", "bottom", "iso"] as const;
+    if (e.key === "8") normalTo();
+    else viewer.viewStd(v[+e.key - 1]);
+    return;
+  }
+  if (ctrl && e.shiftKey && k === "z") return done(), viewer.previousView();
+  if (ctrl && k === "z") return done(), undo();
+  if (ctrl && k === "y") return done(), redo();
+  if (ctrl && k === "s") return done(), fileAct("save");
+  if (ctrl && k === "o") return done(), fileAct("open");
+  if (ctrl && k === "n") return done(), fileAct("new");
+  if (ctrl && (k === "b" || k === "q")) return done(), rebuild();
+  if (ctrl && k === "r") return done(), viewer.requestRender();
+  if (ctrl && k === "a" && mode.k === "sketch") return done(), mode.editor.selectAll();
+  if (ctrl && k === "c" && mode.k === "sketch") return done(), mode.editor.copySel();
+  if (ctrl && k === "v" && mode.k === "sketch") return done(), mode.editor.paste();
+  if (ctrl && k.startsWith("arrow")) {
+    done();
+    const st = 60;
+    const d = { arrowleft: [-st, 0], arrowright: [st, 0], arrowup: [0, -st], arrowdown: [0, st] }[k as "arrowleft"]!;
+    viewer.pushView();
+    return viewer.controls.pan(d[0], d[1]);
+  }
+  if (e.altKey && (k === "arrowleft" || k === "arrowright")) return done(), viewer.pushView(), viewer.controls.roll(k === "arrowleft" ? 15 : -15);
+  if (k.startsWith("arrow")) {
+    done();
+    const a = e.shiftKey ? 90 : 15;
+    const d = { arrowleft: [-a, 0], arrowright: [a, 0], arrowup: [0, -a], arrowdown: [0, a] }[k as "arrowleft"]!;
+    viewer.pushView();
+    return viewer.controls.rotateDeg(d[0], d[1]);
+  }
+  if (ctrl || e.altKey) return;
+  if (e.key === " ") return done(), openOrientation();
+  if (k === "f") return done(), fitAll();
+  if (k === "z") return done(), viewer.zoomStep(e.shiftKey ? 1.25 : 0.8);
+  if (k === "s" && !e.shiftKey) return done(), openShortcutBar();
+  if (k === "a" && mode.k === "sketch") return done(), mode.editor.toggleLineArc();
+  if (e.key === "Escape") {
+    closePopups();
     if (mode.k === "sketch") {
-      if (mode.editor.tool !== "select") mode.editor.setTool("select");
+      if (mode.editor.isDrawing()) mode.editor.finishChain();
+      else if (mode.editor.tool !== "select") mode.editor.setTool("select");
       else mode.editor.sel.clear(), mode.editor.render(), mode.editor.renderPanel();
       renderCommands();
     } else if (mode.k === "pickSketchPlane") cancelPick();
     else if (mode.k === "pm") cancelFeature();
-    else if (mode.k === "measure" || mode.k === "section") endAux(), renderCommands();
+    else if (mode.k === "measure" || mode.k === "section" || mode.k === "flat") endAux(), renderCommands();
     else {
       clearPartSel();
       treeSel = null;
       renderTree();
       refreshHighlight();
     }
-  } else if (e.key === "Delete" || e.key === "Backspace") {
+  } else if (e.key === "Delete") {
     if (mode.k === "sketch") mode.editor.deleteSelection();
     else if (mode.k === "part") deleteSelectedPart();
-  } else if (e.key === "Enter" && mode.k === "sketch") mode.editor.finishChain();
-  else if (mode.k === "sketch" && !e.ctrlKey && !e.metaKey) {
-    const map: Record<string, SkTool> = { l: "line", r: "rect", c: "circle", d: "dim", s: "select", t: "trim", a: "tarc", p: "point" };
-    if (map[k]) {
-      mode.editor.setTool(map[k]);
+  } else if (e.key === "Enter") {
+    if (mode.k === "pm") return pmOk();
+    if (lastCmd) {
+      done();
+      lastCmd();
       renderCommands();
     }
   }
 });
+
+// ---------- Fare hareketleri (sağ sürükle) ve bağlam menüsü (sağ tık) ----------
+type GItem = { label: string; icon: string; run: () => void };
+function gestureItems(): Partial<Record<"up" | "down" | "left" | "right", GItem>> {
+  if (mode.k === "sketch")
+    return {
+      up: { label: "Akıllı Ölçü", icon: "dim", run: () => beginSketchCommand("dim") },
+      right: { label: "Daire", icon: "circle", run: () => beginSketchCommand("circle") },
+      down: { label: "Dikdörtgen", icon: "rect", run: () => beginSketchCommand("rect") },
+      left: { label: "Çizgi", icon: "line", run: () => beginSketchCommand("line") },
+    };
+  return {
+    up: { label: "Üstten", icon: "top", run: () => viewer.viewStd("top") },
+    right: { label: "Sağdan", icon: "right", run: () => viewer.viewStd("right") },
+    down: { label: "Alttan", icon: "top", run: () => viewer.viewStd("bottom") },
+    left: { label: "Soldan", icon: "right", run: () => viewer.viewStd("left") },
+  };
+}
+function closePopups() {
+  document.querySelectorAll(".sw-popup").forEach((x) => x.remove());
+}
+function popupAt(x: number, y: number, cls: string) {
+  closePopups();
+  const box = h("div", "sw-popup " + cls);
+  document.body.appendChild(box);
+  box.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+  requestAnimationFrame(() => {
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, x)) + "px";
+    box.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, y)) + "px";
+  });
+  return box;
+}
+window.addEventListener("pointerdown", (e) => {
+  if (!(e.target as HTMLElement).closest?.(".sw-popup")) closePopups();
+});
+function menuItem(box: HTMLElement, label: string, run: () => void, icon?: string) {
+  const b = h("button", "sw-mi");
+  if (icon && ICONS[icon]) b.innerHTML = ICONS[icon];
+  b.appendChild(h("span", "", label));
+  b.addEventListener("click", () => {
+    closePopups();
+    lastCmd = run;
+    run();
+    renderCommands();
+  });
+  box.appendChild(b);
+}
+function openContextMenu(x: number, y: number) {
+  const box = popupAt(x, y, "sw-ctx");
+  if (mode.k === "sketch") {
+    const ed = mode.editor;
+    menuItem(box, "Seç", () => ed.setTool("select"), "select");
+    if (ed.isDrawing()) menuItem(box, "Zinciri bitir", () => ed.finishChain());
+    if (ed.sel.size) {
+      menuItem(box, "Yapı geometrisi", () => ed.toggleConstruction(), "centerline");
+      menuItem(box, "Sil", () => ed.deleteSelection(), "del");
+    }
+    menuItem(box, "Akıllı Ölçü", () => ed.setTool("dim"), "dim");
+    menuItem(box, "Normal görünüm (Ctrl+8)", () => viewer.viewNormal(ed.frame), "normal");
+    menuItem(box, "Ekrana sığdır (F)", () => fitAll(), "fit");
+    menuItem(box, "Eskizden çık", () => exitSketch(true), "exitSketch");
+  } else if (mode.k === "pm") {
+    menuItem(box, "Tamam (✓)", () => pmOk());
+    menuItem(box, "İptal (✕)", () => pmCancel());
+  } else {
+    if (planeRefFromSelection()) {
+      menuItem(box, "Eskiz", () => beginSketchCommand(), "sketch");
+      menuItem(box, "Normal görünüm (Ctrl+8)", () => normalTo(), "normal");
+    }
+    if (treeSel && getFeat(treeSel)) {
+      menuItem(box, "Özelliği düzenle", () => editFeature(treeSel!));
+    }
+    menuItem(box, "Ekstrüzyon", () => newFeature("extrude"), "extrude");
+    menuItem(box, "Ekstrüzyon kesme", () => newFeature("cutExtrude"), "cutExtrude");
+    menuItem(box, "Ekrana sığdır (F)", () => fitAll(), "fit");
+    menuItem(box, "İzometrik (Ctrl+7)", () => viewer.viewStd("iso"), "iso");
+    menuItem(box, "Önceki görünüm (Ctrl+Shift+Z)", () => viewer.previousView());
+  }
+}
+/** S: imlecin yanında kısayol çubuğu */
+function openShortcutBar() {
+  const box = popupAt(mouseXY[0] - 120, mouseXY[1] - 30, "sw-sbar");
+  const items: [string, string, () => void][] =
+    mode.k === "sketch"
+      ? [
+          ["Çizgi", "line", () => beginSketchCommand("line")],
+          ["Dikdörtgen", "rect", () => beginSketchCommand("rect")],
+          ["Daire", "circle", () => beginSketchCommand("circle")],
+          ["Merkez Yay", "carc", () => beginSketchCommand("carc")],
+          ["Teğet Yay", "tarc", () => beginSketchCommand("tarc")],
+          ["Kanal", "slot", () => beginSketchCommand("slot")],
+          ["Nokta", "point", () => beginSketchCommand("point")],
+          ["Akıllı Ölçü", "dim", () => beginSketchCommand("dim")],
+          ["Kırp", "trim", () => beginSketchCommand("trim")],
+          ["Ötele", "offset", () => beginSketchCommand("offset")],
+          ["Aynala", "mirror", () => beginSketchCommand("mirror")],
+          ["Eskiz Radyüsü", "fillet", () => beginSketchCommand("fillet")],
+        ]
+      : [
+          ["Eskiz", "sketch", () => beginSketchCommand()],
+          ["Ekstrüzyon", "extrude", () => newFeature("extrude")],
+          ["Ekst. Kesme", "cutExtrude", () => newFeature("cutExtrude")],
+          ["Döndürme", "revolve", () => newFeature("revolve")],
+          ["Radyüs", "fillet", () => newFeature("fillet")],
+          ["Pah", "chamfer", () => newFeature("chamfer")],
+          ["Delik Sihirb.", "hole", () => newFeature("hole")],
+          ["Kabuk", "shell", () => newFeature("shell")],
+          ["Ayna", "mirror", () => newFeature("mirror")],
+          ["Ref. Düzlem", "plane", () => newFeature("plane")],
+        ];
+  for (const [l, ic, run] of items) {
+    const b = h("button", "sw-sb");
+    b.innerHTML = ICONS[ic] ?? "";
+    b.title = l;
+    b.addEventListener("click", () => {
+      closePopups();
+      lastCmd = run;
+      run();
+      renderCommands();
+    });
+    box.appendChild(b);
+  }
+}
+/** Space: görünüm yönü penceresi */
+function openOrientation() {
+  const box = popupAt(mouseXY[0] - 90, mouseXY[1] - 60, "sw-ctx");
+  const v: [string, () => void][] = [
+    ["Önden (Ctrl+1)", () => viewer.viewStd("front")],
+    ["Arkadan (Ctrl+2)", () => viewer.viewStd("back")],
+    ["Soldan (Ctrl+3)", () => viewer.viewStd("left")],
+    ["Sağdan (Ctrl+4)", () => viewer.viewStd("right")],
+    ["Üstten (Ctrl+5)", () => viewer.viewStd("top")],
+    ["Alttan (Ctrl+6)", () => viewer.viewStd("bottom")],
+    ["İzometrik (Ctrl+7)", () => viewer.viewStd("iso")],
+    ["Normal (Ctrl+8)", () => normalTo()],
+  ];
+  for (const [l, run] of v) menuItem(box, l, run);
+}
+// sağ tuş: kısa tık = bağlam menüsü, sürükleme = fare hareketi kılavuzu
+{
+  const el = viewer.renderer.domElement;
+  let g: { x: number; y: number; guide: HTMLElement | null; dir: string | null } | null = null;
+  const dirOf = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 2) return;
+    closePopups();
+    g = { x: e.clientX, y: e.clientY, guide: null, dir: null };
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!g.guide && Math.hypot(dx, dy) > 12) {
+      const items = gestureItems();
+      const box = h("div", "sw-popup sw-gesture");
+      box.style.left = g.x - 110 + "px";
+      box.style.top = g.y - 110 + "px";
+      for (const d of ["up", "right", "down", "left"] as const) {
+        const it = items[d];
+        if (!it) continue;
+        const b = h("div", "sw-g sw-g-" + d);
+        b.innerHTML = ICONS[it.icon] ?? "";
+        b.appendChild(h("span", "", it.label));
+        b.dataset.dir = d;
+        box.appendChild(b);
+      }
+      document.body.appendChild(box);
+      g.guide = box;
+    }
+    if (g.guide) {
+      g.dir = Math.hypot(dx, dy) > 30 ? dirOf(dx, dy) : null;
+      g.guide.querySelectorAll(".sw-g").forEach((x) => x.classList.toggle("on", (x as HTMLElement).dataset.dir === g!.dir));
+    }
+  });
+  el.addEventListener("pointerup", (e) => {
+    if (!g || e.button !== 2) return;
+    const st = g;
+    g = null;
+    st.guide?.remove();
+    if (st.guide) {
+      const it = st.dir ? gestureItems()[st.dir as "up"] : null;
+      if (it) {
+        lastCmd = it.run;
+        it.run();
+        renderCommands();
+      }
+    } else openContextMenu(e.clientX, e.clientY);
+  });
+}
+viewer.controls.addEventListener("fit", () => fitAll());
 
 // =====================================================================
 // Başlangıç

@@ -304,6 +304,62 @@ export class SketchEditor implements InputHandler {
     this.renderPanel();
   }
 
+  /** Zincir / yarım çizim var mı (Esc davranışı için) */
+  isDrawing() {
+    return Object.keys(this.st).some((k) => k !== "inf" && this.st[k] != null);
+  }
+  /** A tuşu: çizgi zincirinde çizgi ↔ teğet yay */
+  toggleLineArc() {
+    if (this.tool === "line" && this.st.last && this.st.lastEnt) {
+      this.st.arc = !this.st.arc;
+      this.host.toast(this.st.arc ? "Yay modu (A: çizgiye dön)" : "Çizgi modu");
+      this.render();
+    } else if (this.tool === "line") this.host.toast("Yaya geçmek için önce bir çizgi çizin");
+  }
+  /** Ctrl+A */
+  selectAll() {
+    this.sel.clear();
+    for (const e of this.data.ents) this.sel.add(e.id);
+    this.render();
+    this.renderPanel();
+  }
+  private clip: SketchData | null = null;
+  /** Ctrl+C: seçili varlıkları panoya kopyala */
+  copySel() {
+    const ids = new Set([...this.sel].filter((id) => getEnt(this.data, id)));
+    if (!ids.size) return this.host.toast("Kopyalanacak öğe seçin");
+    const ents = this.data.ents.filter((e) => ids.has(e.id)).map((e) => JSON.parse(JSON.stringify(e)));
+    const pts: SketchData["pts"] = {};
+    const walk = (o: any) => {
+      for (const v of Object.values(o)) if (typeof v === "string" && this.data.pts[v]) pts[v] = { ...this.data.pts[v] };
+    };
+    ents.forEach(walk);
+    this.clip = { ...JSON.parse(JSON.stringify(this.data)), ents, pts, rels: [], dims: [] };
+    this.host.toast(`${ents.length} öğe kopyalandı`);
+  }
+  /** Ctrl+V: panodakileri imleç konumuna yapıştır */
+  paste() {
+    if (!this.clip) return this.host.toast("Pano boş");
+    const cl = this.clip;
+    const xs = Object.values(cl.pts);
+    if (!xs.length) return;
+    const cx = xs.reduce((a, q) => a + q.x, 0) / xs.length, cy = xs.reduce((a, q) => a + q.y, 0) / xs.length;
+    const at = this.cursor ?? [cx + 10, cy + 10];
+    this.op(() => {
+      const map = new Map<string, string>();
+      for (const [id, q] of Object.entries(cl.pts)) map.set(id, addPt(this.data, [q.x - cx + at[0], q.y - cy + at[1]]));
+      this.sel.clear();
+      for (const e0 of cl.ents) {
+        const e = JSON.parse(JSON.stringify(e0));
+        for (const k of Object.keys(e)) if (typeof e[k] === "string" && map.has(e[k])) e[k] = map.get(e[k]);
+        for (const k of Object.keys(e)) if (Array.isArray(e[k]) && e[k].every((x: any) => typeof x === "string")) e[k] = e[k].map((x: string) => map.get(x) ?? x);
+        e.id = nid(this.data, e.id.replace(/\d+$/, ""));
+        this.data.ents.push(e);
+        this.sel.add(e.id);
+      }
+    }, "Yapıştırılamadı");
+  }
+
   /** Zinciri / yarım kalan çizimi bitir */
   finishChain() {
     const had = Object.keys(this.st).length > 0;
@@ -1083,6 +1139,30 @@ export class SketchEditor implements InputHandler {
           return;
         }
         if (dbl) return this.finishChain();
+        if (st.arc && st.lastEnt && getEnt(sk, st.lastEnt)) {
+          // A tuşu: zincir içinde teğet yay, sonra çizgiye geri dön (SolidWorks)
+          const inf = this.infer(p);
+          const tdir = this.tangentAt(st.lastEnt, st.last);
+          const geo = this.tangentArcGeo(st.lastPos, tdir, inf.p);
+          if (!geo) return;
+          const start = st.last, base = st.lastEnt;
+          let closed = false;
+          this.op(() => {
+            const en = this.makePoint(inf);
+            const c = addPt(sk, geo.c);
+            const a = geo.ccw ? addArc(sk, c, start, en) : addArc(sk, c, en, start);
+            a.r = geo.r;
+            addRel(sk, "tangent", [base, a.id]);
+            st.last = en;
+            st.lastEnt = a.id;
+            closed = !!inf.ptId;
+          });
+          st.arc = false;
+          if (closed) this.finishChain();
+          else st.lastPos = P(sk, st.last);
+          return this.renderPanel();
+        }
+        st.arc = false;
         const inf = this.infer(p, st.lastPos);
         if (d2(inf.p, st.lastPos) < 1e-9) return;
         const prev = st.last;
@@ -1092,6 +1172,7 @@ export class SketchEditor implements InputHandler {
           const l = addLine(sk, prev, b, cons);
           if (inf.hv) addRel(sk, inf.hv === "h" ? "horizontal" : "vertical", [l.id]);
           st.last = b;
+          st.lastEnt = l.id;
           st.count++;
           closed = !!inf.ptId;
         });
@@ -2424,7 +2505,17 @@ export class SketchEditor implements InputHandler {
     switch (this.tool) {
       case "line":
       case "centerline":
-        if (st.lastPos) this.addLines([st.lastPos, cur], pc, 2, this.tool === "centerline");
+        if (st.lastPos && st.arc && st.lastEnt && getEnt(this.data, st.lastEnt)) {
+          const g = this.tangentArcGeo(st.lastPos, this.tangentAt(st.lastEnt, st.last), cur);
+          if (g) {
+            let s0 = ang(g.c, st.lastPos), e0 = ang(g.c, cur);
+            if (!g.ccw) [s0, e0] = [e0, s0];
+            const span = normAng(e0 - s0);
+            const pts: Vec2[] = [];
+            for (let i = 0; i <= 48; i++) pts.push([g.c[0] + g.r * Math.cos(s0 + (span * i) / 48), g.c[1] + g.r * Math.sin(s0 + (span * i) / 48)]);
+            this.addLines(pts, pc);
+          }
+        } else if (st.lastPos) this.addLines([st.lastPos, cur], pc, 2, this.tool === "centerline");
         break;
       case "rect":
         if (st.aPos) {
