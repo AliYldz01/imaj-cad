@@ -14,7 +14,8 @@ import type {
 } from "./doc/types";
 import { lastSheetBase, sheetParamsBefore, bendAllowance } from "./sheet/sheet";
 import { flatToDxf } from "./sheet/dxf";
-import { PROFILES, ALIGN_NAMES, placedProfile, type ProfileStd } from "./weld/profiles";
+import { PROFILES, ALIGN_NAMES, placedProfile, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
+import { extractLoops } from "./sketch/profile";
 import { holeDefaults, MATERIALS, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
 import { ICONS } from "./ui/icons";
@@ -252,7 +253,7 @@ async function rebuild() {
   if (!isSketch) setStatus("busy", "Hesaplanıyor…");
   try {
     const { feats, draftId } = viewFeatures();
-    const { kfeats, errors } = compile(feats);
+    const { kfeats, errors } = compile(feats, doc.profiles ?? {});
     const t0 = performance.now();
     const res = await kernel.build(kfeats);
     // yüz üzerindeki eskizler: yüz taşındıysa eskiz düzlemini güncelle
@@ -1337,27 +1338,93 @@ function renderFeaturePM(kind: string) {
     }
     case "member": {
       const std = d.std as ProfileStd;
-      const sizes = Object.keys(PROFILES[std].sizes);
-      if (!sizes.includes(d.size)) d.size = sizes[0];
+      const lib = loadLibrary();
+      const docP = doc.profiles ?? {};
+      const closedSk = sketches.filter((x) => extractClosed(x) && !d.segs.some((sg: any) => sg.sk === x.id));
+      let sizeOpts: { v: string; t: string }[];
+      if (d.std === "sketch") sizeOpts = closedSk.map((x) => ({ v: x.id, t: x.name }));
+      else if (d.std === "custom") {
+        const ids = new Set([...Object.keys(docP), ...Object.keys(lib)]);
+        sizeOpts = [...ids].map((k) => ({ v: k, t: (docP[k] ?? lib[k]).name + (docP[k] ? "" : " (kütüphane)") }));
+      } else sizeOpts = Object.keys(PROFILES[std].sizes).map((z) => ({ v: z, t: z }));
+      if (sizeOpts.length && !sizeOpts.some((o) => o.v === d.size)) d.size = sizeOpts[0].v;
+      // kütüphaneden seçilen profil belgeye gömülür
+      const embed = () => {
+        if (d.std === "custom" && d.size && !docP[d.size] && lib[d.size]) {
+          doc.profiles = { ...docP, [d.size]: { name: lib[d.size].name, loops: lib[d.size].loops } };
+        }
+      };
+      embed();
       let info = "";
       try {
-        const pr = placedProfile(std, d.size, d.align, d.mirror, d.rot);
+        let custom: any;
+        if (d.std === "sketch") custom = extractLoops((getFeat(d.size) as SketchFeature).data).loops;
+        else if (d.std === "custom") custom = (doc.profiles ?? {})[d.size]?.loops;
+        const pr = placedProfile(std, d.size, d.align, d.mirror, d.rot, custom);
         const rho = MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85;
         info = `Kesit alanı ${fmtNum(pr.area / 100, 2)} cm² · ≈ ${fmtNum((pr.area * rho) / 1000, 2)} kg/m`;
       } catch {}
-      body.appendChild(
-        group(
-          "Profil",
-          selectField("Standart", (Object.keys(PROFILES) as ProfileStd[]).map((k) => ({ v: k, t: `${PROFILES[k].label}` })), d.std, (v) => {
-            d.std = v;
-            d.size = Object.keys(PROFILES[v as ProfileStd].sizes)[0];
-            renderFeaturePM(kind);
-            upd();
-          }),
-          selectField("Ölçü", sizes.map((z) => ({ v: z, t: z })), d.size, (v) => ((d.size = v), renderFeaturePM(kind), upd())),
-          h("p", "pm-hint", `${PROFILES[std].std} · ${info}`),
-        ),
+      const stdOpts = [...(Object.keys(PROFILES) as ProfileStd[]).map((k) => ({ v: k as string, t: PROFILES[k].label })), { v: "custom", t: "Özel profil (kütüphane)" }, { v: "sketch", t: "Eskizden profil (bu belgede)" }];
+      const gp = group(
+        "Profil",
+        selectField("Standart", stdOpts, d.std, (v) => {
+          d.std = v;
+          d.size = "";
+          renderFeaturePM(kind);
+          upd();
+        }),
+        sizeOpts.length
+          ? selectField(d.std === "sketch" ? "Profil eskizi" : "Ölçü", sizeOpts, d.size, (v) => ((d.size = v), embed(), renderFeaturePM(kind), upd()))
+          : h("p", "pm-hint", d.std === "sketch" ? "Belgede kapalı bir profil eskizi yok. Profilin kesitini kapalı bir eskiz olarak çizin; eskizin orijini delme noktası olur." : "Kütüphanede profil yok. Aşağıdan bir eskizi kütüphaneye ekleyin."),
+        h("p", "pm-hint", `${PROFILES[std]?.std ?? (d.std === "sketch" ? "Eskiz değişince eleman güncellenir" : "Özel profil")} · ${info}`),
       );
+      if (d.std === "custom" || d.std === "sketch") {
+        if (closedSk.length)
+          gp.appendChild(
+            button("Bir eskizi kütüphaneye ekle…", () => {
+              const sk = d.std === "sketch" ? (getFeat(d.size) as SketchFeature) : closedSk[closedSk.length - 1];
+              const nm = prompt("Profil adı (ör. Özel kutu 45x25x2):", sk?.name ?? "Özel profil");
+              if (!nm || !sk) return;
+              const { loops, error } = extractLoops(sk.data);
+              if (error || !loops.length) return toast("Eskizde kapalı kontur yok", true);
+              const pid = "p" + Date.now().toString(36);
+              const l2 = loadLibrary();
+              l2[pid] = { name: nm, loops };
+              saveLibrary(l2);
+              doc.profiles = { ...(doc.profiles ?? {}), [pid]: { name: nm, loops } };
+              d.std = "custom";
+              d.size = pid;
+              toast(`"${nm}" kütüphaneye eklendi`);
+              renderFeaturePM(kind);
+              upd();
+            }, "btn"),
+          );
+        const io = h("div", "pm-row");
+        io.append(
+          button("Kütüphaneyi dışa aktar", () => download(new Blob([JSON.stringify(loadLibrary(), null, 1)], { type: "application/json" }), "imajcad_profiller.json"), "btn"),
+          button("İçe aktar…", () => {
+            const inp = h("input") as HTMLInputElement;
+            inp.type = "file";
+            inp.accept = ".json,application/json";
+            inp.onchange = async () => {
+              const file = inp.files?.[0];
+              if (!file) return;
+              try {
+                const data = JSON.parse(await file.text());
+                const l2 = { ...loadLibrary(), ...data };
+                saveLibrary(l2);
+                toast(`${Object.keys(data).length} profil içe aktarıldı`);
+                renderFeaturePM(kind);
+              } catch {
+                toast("Profil dosyası okunamadı", true);
+              }
+            };
+            inp.click();
+          }, "btn"),
+        );
+        gp.appendChild(io);
+      }
+      body.appendChild(gp);
       body.appendChild(
         group(
           "Konum",

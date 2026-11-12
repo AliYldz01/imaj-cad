@@ -488,6 +488,8 @@ export interface PartDoc {
   vars?: Record<string, string>;
   /** özellik alanlarına bağlı denklemler: "özellikId.alan" -> ifade */
   eqs?: Record<string, string>;
+  /** belgeye gömülü özel profiller (kimlik -> ad + konturlar) */
+  profiles?: Record<string, { name: string; loops: Loop[] }>;
 }
 
 // ---------------- Çekirdeğe giden çözülmüş tanımlar ----------------

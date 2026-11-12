@@ -216,8 +216,8 @@ const mapLoop = (l: Loop, f: (p: Vec2) => Vec2): Loop => {
 };
 
 /** Hizalanmış, aynalanmış ve döndürülmüş profil: (0,0) eleman ekseni üzerindedir */
-export function placedProfile(std: ProfileStd, size: string, align: Align, mirror: boolean, rotDeg: number): { loops: Loop[]; area: number; R: number } {
-  let loops = rawProfile(std, size);
+export function placedProfile(std: ProfileStd, size: string, align: Align, mirror: boolean, rotDeg: number, custom?: Loop[]): { loops: Loop[]; area: number; R: number } {
+  let loops = custom ?? rawProfile(std, size);
   const pts = loops.flatMap(sampleLoop);
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
@@ -245,6 +245,22 @@ export function placedProfile(std: ProfileStd, size: string, align: Align, mirro
   );
   const R = Math.max(...loops.flatMap(sampleLoop).map((p) => Math.hypot(p[0], p[1])));
   return { loops, area: sp.area, R };
+}
+
+/** Özel profil (eskizden): ad ve konturlar; konturlar eskiz koordinatlarında, orijin = delme noktası */
+export interface CustomProfile { name: string; loops: Loop[]; std?: string }
+const LIB_KEY = "imajcad.profiles";
+export function loadLibrary(): Record<string, CustomProfile> {
+  try {
+    return JSON.parse(localStorage.getItem(LIB_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+export function saveLibrary(lib: Record<string, CustomProfile>) {
+  try {
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib));
+  } catch {}
 }
 
 export const profileName = (std: ProfileStd, size: string) =>

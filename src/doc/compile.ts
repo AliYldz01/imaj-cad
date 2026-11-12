@@ -1,5 +1,5 @@
 // Belge özelliklerini çekirdeğin anlayacağı çözülmüş tanımlara çevirir.
-import type { Feature, Frame, KFeature, KPlane, PlaneRef, SketchFeature, Vec3 } from "./types";
+import type { Feature, Frame, KFeature, KPlane, Loop, PlaneRef, SketchFeature, Vec3 } from "./types";
 import { AXES, STD_FRAMES, offsetFrame } from "./math";
 import { extractLoops, extractPath, extractChains, pointPos, thinRegion } from "../sketch/profile";
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
@@ -22,7 +22,7 @@ function kplane(ref: PlaneRef, feats: Feature[], sketchId?: string): KPlane | nu
   return ref.k === "face" && ref.face ? { frame, face: ref.face, sketchId } : { frame, sketchId };
 }
 
-export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<string, string> } {
+export function compile(feats: Feature[], profiles: Record<string, { name: string; loops: Loop[] }> = {}): { kfeats: KFeature[]; errors: Map<string, string> } {
   const kfeats: KFeature[] = [];
   const errors = new Map<string, string>();
   const sketchOf = (id: string) => feats.find((f) => f.id === id && f.type === "sketch") as SketchFeature | undefined;
@@ -150,9 +150,22 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
         }
         case "member": {
           const std = f.std as ProfileStd;
-          if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
           if (!f.segs.length) throw new Error("İskelet eskizinden en az bir segment seçin");
-          const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot);
+          let custom: Loop[] | undefined, cname = "";
+          if (f.std === "sketch") {
+            const ps = sketchOf(f.size);
+            if (!ps) throw new Error("Profil eskizi bulunamadı");
+            const { loops, error } = extractLoops(ps.data);
+            if (error || !loops.length) throw new Error(`${ps.name}: profil için kapalı kontur gerekir`);
+            custom = loops;
+            cname = ps.name;
+          } else if (f.std === "custom") {
+            const cp = profiles[f.size];
+            if (!cp) throw new Error("Özel profil belgede bulunamadı");
+            custom = cp.loops;
+            cname = cp.name;
+          } else if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
+          const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot, custom);
           const items: MemberItem[] = [];
           // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
           const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];
@@ -192,7 +205,7 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
             throw new Error("Yapı elemanı yalnızca çizgi ve yay segmentleri boyunca oluşturulabilir");
           });
           for (const g of s3) items.push(...sketch3dItems(g.lines, g.f.r));
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap });
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap });
           break;
         }
         case "trim": {
@@ -359,6 +372,6 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
       ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId) ||
-      (f.type === "member" && f.segs.some((s) => s.sk === sketchId)),
+      (f.type === "member" && (f.segs.some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))),
   );
 }
