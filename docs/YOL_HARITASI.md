@@ -227,3 +227,12 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Referans düzlem | Açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel | ✅ |
 | Ağaç | Sürükle / ▲▼ sırala, F2, ebeveyn-çocuk | ✅ |
 | Seçim | Kutu seçim (parça), diğerini seç, bağlam mini çubuğu | ✅ |
+
+## v0.14 — Paket B (kısmi)
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Süpürme | Dairesel profil (boru), profil yönelimi | ✅ |
+| Çoğaltma / kabuk / radyüs | Örnek atla, dışa kabuk, çoklu yarıçap | ✅ |
+| Görünüm | Görüntü stilleri, saydam, Instant3D derinlik oku | ✅ |
+| Eskiz | Birleştir ilişkisi, hızlı yakalama filtresi, güç kırpma, çift yönlü öteleme | ✅ |

@@ -197,6 +197,8 @@ export interface FilletFeature extends FeatBase {
   /** sabit / değişken (başlangıç r, bitiş r2) / tam yuvarlak (seçili orta yüz) */
   kind?: "const" | "var" | "full";
   r2?: number;
+  /** çoklu yarıçap: kenar başına yarıçap (edges ile aynı sırada) */
+  radii?: number[];
 }
 export interface ChamferFeature extends FeatBase {
   type: "chamfer";
@@ -217,6 +219,12 @@ export interface SweepFeature extends FeatBase {
   /** yol eskizi (açık veya kapalı zincir) */
   path: string;
   cut: boolean;
+  /** dairesel profil çapı (>0 ise profil eskizi gerekmez — boru/çubuk) */
+  circ?: number;
+  /** dairesel profilde iç çap (boru) */
+  circIn?: number;
+  /** profil yönelimi: yolu izle (varsayılan) / normali sabit tut */
+  orient?: "follow" | "normal";
 }
 export interface LoftFeature extends FeatBase {
   type: "loft";
@@ -292,11 +300,13 @@ export interface DraftFeature extends FeatBase {
   faces: FaceRef[];
   rev: boolean;
 }
-export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[] }
+export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[]; /** dışa kabuk */ out?: boolean }
 
 export type AxisName = "x" | "y" | "z";
 export interface LPatternFeature extends FeatBase {
   type: "lpattern";
+  /** atlanacak örnekler: "i,j" (1'den; ör. "2,1") */
+  skip?: string[];
   feats: string[];
   axis: AxisName;
   rev: boolean;
@@ -311,6 +321,8 @@ export interface LPatternFeature extends FeatBase {
 }
 export interface CPatternFeature extends FeatBase {
   type: "cpattern";
+  /** atlanacak örnek numaraları (1'den) */
+  skip?: string[];
   feats: string[];
   axis: AxisName;
   /** referans eksen özelliği (varsa axis yerine kullanılır) */
@@ -595,20 +607,20 @@ export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 export type KFeature =
   | { id: string; type: "extrude"; fromFace?: FaceRef | null; fromVtx?: Vec3 | null; vtx?: Vec3 | null; bodyRef?: FaceRef | null; dirVec?: Vec3 | null; flipCut?: boolean; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
   | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
-  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full"; r2?: number }
+  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full"; r2?: number; radii?: number[] }
   | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da"; d2?: number; angle?: number; flip?: boolean }
   | { id: string; type: "rib"; pl: KPlane; chain: Seg[]; normal: boolean; flip: boolean; t: number; side: "mid" | "one" | "rev" }
   | { id: string; type: "dome"; face: FaceRef; h: number }
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string }
-  | { id: string; type: "sweep"; cut: boolean; pl: KPlane; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean } }
+  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal" }
   | { id: string; type: "loft"; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][] }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
-  | { id: string; type: "shell"; t: number; faces: FaceRef[] }
-  | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[] }
-  | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number }
+  | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean }
+  | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[]; skip?: string[] }
+  | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number; skip?: string[] }
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame }
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
   | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }

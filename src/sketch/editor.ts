@@ -647,6 +647,22 @@ export class SketchEditor implements InputHandler {
   private noInfer = false;
   /** "Uyandırılmış" noktalar: imleç üzerinde bekletilen noktalardan hizalama çizgileri */
   private wake: Vec2[] = [];
+  /** Hızlı yakalama filtresi: kapalı yakalama türleri */
+  snapOff = new Set<string>(
+    (() => {
+      try {
+        return JSON.parse(localStorage.getItem("imajcad.snapOff") || "[]");
+      } catch {
+        return [];
+      }
+    })(),
+  );
+  toggleSnap(k: string) {
+    this.snapOff.has(k) ? this.snapOff.delete(k) : this.snapOff.add(k);
+    try {
+      localStorage.setItem("imajcad.snapOff", JSON.stringify([...this.snapOff]));
+    } catch {}
+  }
   private wakeHover: { id: string; t: number } | null = null;
 
   private curveKind(e: SEnt | undefined): "line" | "circle" | "arc" | null {
@@ -687,13 +703,14 @@ export class SketchEditor implements InputHandler {
     const tol = this.tolPx * wpp;
     const sk = this.data;
     // 1) nokta
-    const h = this.hitTest(p, this.tolPx, { ents: false, exclude });
+    const on = (k: string) => !this.snapOff.has(k);
+    const h = on("end") ? this.hitTest(p, this.tolPx, { ents: false, exclude }) : null;
     if (h) return { p: h.q, ptId: h.id, glyph: REL_GLYPH.coincident, label: h.id === ORIGIN ? "Orijin" : "Çakışık" };
     // model kenarlarının köşe / orta / merkez noktaları (sabit noktaya bağlanır)
-    for (const r of this.modelPts)
+    for (const r of on("model") ? this.modelPts : [])
       if (d2(r.p, p) < tol) return { p: r.p, fixAt: r.p, glyph: r.k === "m" ? REL_GLYPH.midpoint : REL_GLYPH.coincident, label: r.k === "v" ? "Model köşesi" : r.k === "m" ? "Model kenar ortası" : "Model merkezi" };
     // 2) orta noktalar (çizgi: ilişki eklenir, yay: yalnız konum)
-    for (const e of sk.ents) {
+    for (const e of on("mid") ? sk.ents : []) {
       if (exclude.has(e.id)) continue;
       if (e.t === "line") {
         const m = mul2(add2(P(sk, e.p1), P(sk, e.p2)), 0.5);
@@ -705,7 +722,7 @@ export class SketchEditor implements InputHandler {
       }
     }
     // dikdörtgen merkezi
-    for (const r of this.rectCenters())
+    for (const r of on("center") ? this.rectCenters() : [])
       if (!exclude.has(r.a) && d2(r.c, p) < tol * 0.8) return { p: r.c, rectC: [r.a, r.b], glyph: "⊕", label: "Dikdörtgen merkezi" };
     // yakındaki eğriler
     const near: { e: SEnt; t: "line" | "circle" | "arc"; q: Vec2; d: number }[] = [];
@@ -718,13 +735,14 @@ export class SketchEditor implements InputHandler {
     }
     near.sort((x, y) => x.d - y.d);
     // 3) kesişim
+    if (on("isect"))
     for (let i = 0; i < near.length; i++)
       for (let j = i + 1; j < near.length; j++)
         for (const x of this.pairX(near[i].e, near[j].e))
           if (d2(x, p) < tol)
             return { p: x, on: { id: near[i].e.id, t: near[i].t }, on2: { id: near[j].e.id, t: near[j].t }, glyph: "✕", label: "Kesişim" };
     // 4) çeyrek noktalar
-    for (const n of near) {
+    for (const n of on("quad") ? near : []) {
       if (n.t === "line") continue;
       const c = P(sk, (n.e as SCircle).c), r = (n.e as SCircle).r;
       for (let k = 0; k < 4; k++) {
@@ -739,9 +757,11 @@ export class SketchEditor implements InputHandler {
     // hizalama çizgileri
     type G = { o: Vec2; d: Vec2; rel: boolean; ray: boolean; hv?: "h" | "v"; lineRel?: Inference["lineRel"]; label: string; glyph: string };
     const G: G[] = [];
-    if (from) {
+    if (from && on("hv")) {
       G.push({ o: from, d: [1, 0], rel: true, ray: false, hv: "h", label: "Yatay", glyph: REL_GLYPH.horizontal });
       G.push({ o: from, d: [0, 1], rel: true, ray: false, hv: "v", label: "Dikey", glyph: REL_GLYPH.vertical });
+    }
+    if (from && on("perp")) {
       const st = this.st;
       const prev = st.lastEnt && st.last && st.lastPos && d2(st.lastPos, from) < 1e-9 ? getEnt(sk, st.lastEnt) : null;
       if (prev && (prev.t === "line" || prev.t === "arc")) {
@@ -755,7 +775,7 @@ export class SketchEditor implements InputHandler {
         } else G.push({ o: from, d: t, rel: true, ray: true, lineRel: { t: "tangent", ref: prev.id }, label: "Teğet", glyph: REL_GLYPH.tangent });
       }
     }
-    for (const o of this.wake) {
+    for (const o of on("guide") ? this.wake : []) {
       if (from && d2(o, from) < 1e-9) continue;
       G.push({ o, d: [1, 0], rel: false, ray: false, label: "", glyph: "" });
       G.push({ o, d: [0, 1], rel: false, ray: false, label: "", glyph: "" });
@@ -785,8 +805,9 @@ export class SketchEditor implements InputHandler {
       };
     };
     // 5) eğri üzerinde (hizalama çizgisiyle kesişebilir)
-    const on = near.find((n) => n.d < tol * 0.8);
-    if (on) {
+    const onE = on("on") ? near.find((n) => n.d < tol * 0.8) : undefined;
+    if (onE) {
+      const on = onE;
       const onI = { id: on.e.id, t: on.t };
       for (const g of close.length ? G : []) {
         let xs: Vec2[] = [];
@@ -1022,10 +1043,12 @@ export class SketchEditor implements InputHandler {
     this.mods = { add: e.ctrlKey || e.shiftKey || e.metaKey, mouse: e.pointerType === "mouse" };
     this.noInfer = e.ctrlKey && this.tool !== "select";
     this.lift = this.liftMode(e);
+    this.trimmedIds.clear();
     if (this.lift) this.preview(p, e);
   };
   /** kaldırınca yerleştir: kalem/parmakla çizim araçlarında */
   private lift = false;
+  private trimmedIds = new Set<string>();
   private liftMode(e: { pointerType: string }) {
     return e.pointerType !== "mouse" && prefs.placeOnLift && this.tool !== "select" && this.tool !== "dim";
   }
@@ -1046,6 +1069,18 @@ export class SketchEditor implements InputHandler {
     if (this.lift) {
       this.press.moved = true;
       return this.preview(p, e);
+    }
+    // SolidWorks güç kırpma: basılı sürükleyerek üzerinden geçilen parçaları kırp
+    if (this.tool === "trim" && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 7) {
+      this.press.moved = true;
+      const h = this.hitTest(p, this.tolPx * 0.7, { pts: false });
+      const key = h ? h.id + ":" + Math.round(p[0]) + "," + Math.round(p[1]) : "";
+      if (h && !this.trimmedIds.has(h.id)) {
+        this.trimmedIds.add(h.id);
+        this.click(p, e);
+      }
+      void key;
+      return;
     }
     if (!this.press.moved && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 7) {
       this.press.moved = true;
@@ -2297,6 +2332,18 @@ export class SketchEditor implements InputHandler {
   addRelations(opt: { build: () => { t: RelType; refs: string[]; fx?: number; fy?: number }[] }) {
     const ok = this.op(() => {
       for (const r of opt.build()) {
+        if ((r as any).merge) {
+          // SolidWorks "Birleştir": ikinci noktayı birinciye kaynaştır
+          const [a, b] = r.refs;
+          const pa = P(this.data, a);
+          this.data.pts[b] && Object.assign(this.data.pts[a] ?? {}, { x: pa[0], y: pa[1] });
+          replacePoint(this.data, b, a);
+          this.data.rels = this.data.rels.filter((x) => !(x.refs.includes(a) && x.refs.includes(b)));
+          for (const x of this.data.rels) x.refs = x.refs.map((id) => (id === b ? a : id));
+          for (const x of this.data.dims) x.refs = x.refs.map((id) => (id === b ? a : id));
+          delete this.data.pts[b];
+          continue;
+        }
         const exists = this.data.rels.some((x) => x.t === r.t && x.refs.join() === r.refs.join());
         if (!exists) addRel(this.data, r.t, r.refs, r.fx !== undefined ? { fx: r.fx, fy: r.fy } : {});
       }
@@ -2637,8 +2684,17 @@ export class SketchEditor implements InputHandler {
     const ents = [...this.sel].map((id) => sk.ents.find((e) => e.id === id)).filter(Boolean) as SEnt[];
     const o = this.opts;
     switch (this.tool) {
-      case "offset":
-        return offsetEnts(sk, ents, o.offD, o.offRev);
+      case "offset": {
+        // SolidWorks: çift yön, taban geometriyi yapı geometrisine çevir
+        const err = offsetEnts(sk, ents, o.offD, o.offRev);
+        if (err) return err;
+        if ((o as any).offBoth) {
+          const e2 = offsetEnts(sk, ents.map((e) => sk.ents.find((x) => x.id === e.id)!).filter(Boolean), o.offD, !o.offRev);
+          if (e2) return e2;
+        }
+        if ((o as any).offBaseCons) for (const e of ents) if (e.t !== "point" && e.t !== "text") (e as any).cons = true;
+        return null;
+      }
       case "mirror": {
         const lines = ents.filter((e) => e.t === "line") as SLine[];
         const axis = lines.find((l) => l.cons) ?? lines[lines.length - 1];
@@ -3988,6 +4044,8 @@ export class SketchEditor implements InputHandler {
       case "offset":
         num("Mesafe", "offD");
         chk("Yönü ters çevir", "offRev");
+        chk("Çift yön", "offBoth" as any);
+        chk("Tabanı yapı geometrisi yap", "offBaseCons" as any);
         break;
       case "mirror":
         box.appendChild(h("p", "pm-hint", "Eksen: seçimdeki merkez çizgisi (yoksa son seçilen çizgi)."));

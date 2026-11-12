@@ -259,14 +259,14 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           break;
         }
         case "sweep": {
-          const { pl, loops } = profileOf(f.sketch);
+          const { pl, loops } = f.circ && f.circ > 0 ? { pl: null, loops: [] } : profileOf(f.sketch);
           const ps = sketchOf(f.path);
           if (!ps) throw new Error("Yol eskizini seçin");
           const ppl = kplane(ps.plane, feats, ps.id);
           if (!ppl) throw new Error("Yol eskizinin düzlemi bulunamadı");
           const path = extractPath(ps.data);
           if (path.error) throw new Error(`${ps.name}: ${path.error}`);
-          kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed } });
+          kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient });
           break;
         }
         case "loft": {
@@ -519,26 +519,26 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           break;
         }
         case "fillet":
-          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, r2: f.r2 });
+          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, r2: f.r2, radii: f.radii });
           break;
         case "chamfer":
           kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, angle: f.angle, flip: f.flip });
           break;
         case "shell":
-          kfeats.push({ id: f.id, type: "shell", t: f.t, faces: f.faces });
+          kfeats.push({ id: f.id, type: "shell", t: f.t, faces: f.faces, out: f.out });
           break;
         case "lpattern": {
           const v = (a: "x" | "y" | "z", rev: boolean): Vec3 => AXES[a].map((c) => (rev ? -c : c)) as Vec3;
           const dirs = [{ v: v(f.axis, f.rev), count: f.count, spacing: f.spacing }];
           if (f.dir2) dirs.push({ v: v(f.axis2, f.rev2), count: f.count2, spacing: f.spacing2 });
-          kfeats.push({ id: f.id, type: "lpattern", feats: f.feats, dirs });
+          kfeats.push({ id: f.id, type: "lpattern", feats: f.feats, dirs, skip: f.skip });
           break;
         }
         case "cpattern": {
           const step = f.equal ? (Math.abs(f.angle - 360) < 1e-6 ? 360 / f.count : f.angle / Math.max(1, f.count - 1)) : f.angle;
           const ra = f.refAxis ? feats.find((x) => x.id === f.refAxis) : null;
-          if (ra && ra.type === "axis") kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: ra.d, origin: ra.p, count: f.count, angle: step });
-          else kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: AXES[f.axis], count: f.count, angle: step });
+          if (ra && ra.type === "axis") kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: ra.d, origin: ra.p, count: f.count, angle: step, skip: f.skip });
+          else kfeats.push({ id: f.id, type: "cpattern", feats: f.feats, axis: AXES[f.axis], count: f.count, angle: step, skip: f.skip });
           break;
         }
         case "mirror": {

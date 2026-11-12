@@ -15,16 +15,16 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 | E3 | Ö | Değiştir kutusu eksik | **⟳ yeniden oluştur** (kutu açıkken model güncellenir), **± yönü ters çevir**, "çizimler için işaretle", denklem (=) ✅, tekerlek artımı ✅ | ✅ v0.13 |
 | E4 | Ö | Eskiz radyüs/pahında köşe ölçüsü kayboluyor | **Sanal sivri köşe** korunur; ölçülü köşeyi koru seçeneği; eşit ölçüler | ⬜ |
 | E5 | Ö | Yay ölçüsünde koşul yok | Daire/yay ölçüsünde **merkez / min / maks** (Shift ile veya ölçü özelliğinden) | 🟡 |
-| E6 | Ö | Eksik ilişkiler | E6.1 **eş yarıçaplı (coradial)** · E6.2 **noktaları birleştir (merge)** · E6.3 **delme (pierce)** · E6.4 **eşit eğri uzunluğu** · E6.5 **iki nokta arası yatay/dikey** · E6.6 eşit eğrilik (spline) · E6.7 eşit kanallar · E6.8 sabit kanal | ⬜ |
-| E7 | Ö | **Hızlı yakalama filtresi** yok | Sağ tık menüsü + çubuk: yalnız uç / orta / merkez / çeyrek / kesişim / teğet / dik / paralel / yatay-dikey / ızgara / açı (15°) | ⬜ |
+| E6 | Ö | Eksik ilişkiler | E6.1 **eş yarıçaplı (coradial)** · E6.2 **noktaları birleştir (merge)** · E6.3 **delme (pierce)** · E6.4 **eşit eğri uzunluğu** · E6.5 **iki nokta arası yatay/dikey** · E6.6 eşit eğrilik (spline) · E6.7 eşit kanallar · E6.8 sabit kanal | 🟡 v0.14: eş yarıçaplı, birleştir, nokta yatay/dikey; delme/eşit eğri uzunluğu yok |
+| E7 | Ö | **Hızlı yakalama filtresi** yok | Sağ tık menüsü + çubuk: yalnız uç / orta / merkez / çeyrek / kesişim / teğet / dik / paralel / yatay-dikey / ızgara / açı (15°) | ✅ v0.14 |
 | E8 | Ö | Taşı/Kopyala tek komut, **Esnet** yok | E8.1 ayrı **Taşı**, **Kopyala**, **Döndür**, **Ölçekle** (nokta→nokta veya X/Y) · E8.2 **Varlıkları esnet** | 🟡 |
 | E9 | Ö | Spline kontrolü zayıf | Teğet ve eğrilik **tutamakları**, **eğrilik tarağı**, kontrol çokgeni, basitleştir, stil (B-spline / tanımlı) | ⬜ |
 | E10 | Ö | Dönüştürmede **silüet** ve **döngü/iç döngü seç** yok | Silindir silüet kenarı; yüz seçince dış döngü, "iç döngüleri seç" | 🟡 |
 | E11 | İ | Metin kısıtlı | Yazı tipi/kalınlık seçimi, eğri üzerinde metin, aralık | 🟡 |
 | E12 | İ | Bloklar kısıtlı | Blok düzenleme modu, blok içi ilişkiler, blok hareketi | 🟡 |
 | E13 | İ | **SketchXpert** yok | Aşırı tanımda çakışan ilişkileri listeleyip "çözüm öner"; İlişkileri göster/sil ✅ | 🟡 |
-| E14 | Ö | Kırpmada **güç kırpma** (fareyle üzerinden sürükleyerek) ve köşe/içte/dışta kırp yok | Kırp seçenekleri: güç, köşe, içte, dışta, en yakına ✅ | 🟡 |
-| E15 | Ö | Öteleme seçenekleri | **Çift yön**, **uçları kapat** (yay/çizgi), taban/öteleme yapı geometrisi yap, zincir seç | 🟡 |
+| E14 | Ö | Kırpmada **güç kırpma** (fareyle üzerinden sürükleyerek) ve köşe/içte/dışta kırp yok | Kırp seçenekleri: güç, köşe, içte, dışta, en yakına ✅ | ✅ v0.14 güç kırpma |
+| E15 | Ö | Öteleme seçenekleri | **Çift yön**, **uçları kapat** (yay/çizgi), taban/öteleme yapı geometrisi yap, zincir seç | 🟡 v0.14: çift yön, taban yapı geometrisi; uçları kapat yok |
 | E16 | Ö | Eskiz çoğaltmada **örnek atla** ve aralık ölçüsü göster yok | Örneğe tıklayarak atla | 🟡 |
 | E17 | Ö | **Kanal ölçü tipi** (merkez-merkez / toplam boy) yok | Kanal PM'inde seçim | ⬜ |
 | E18 | İ | **Zincir ölçü**, ölçüyü sürükleyerek çap↔yarıçap yok | Ekle | ⬜ |
@@ -37,15 +37,15 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 |---|---|---|---|---|
 | F1 | K | **Referans düzlem** yalnız öteleme | 3 referanslı düzlem: F1.1 çakışık · F1.2 paralel (nokta/köşeden) · F1.3 dik (eğriye/kenara noktada) · F1.4 **açılı** (kenar+yüz, adet) · F1.5 öteleme (adet) ✅ · F1.6 **orta düzlem** · F1.7 **teğet** (silindire) · F1.8 **3 noktadan** · F1.9 **ekrana paralel** | 🟡 v0.13: teğet hariç hepsi |
 | F2 | K | Ekstrüzyon seçenekleri eksik | F2.1 **Başlangıç**: yüzey/yüz/düzlem, köşe (öteleme ✅) · F2.2 bitiş **köşeye kadar** · F2.3 **gövdeye kadar** · F2.4 yüzeyden ötele: **yüzeyi taşı** · F2.5 **ekstrüzyon yönü** (kenar/eksen) · F2.6 **ince özellik** (tek yön / orta / iki yön farklı kalınlık, köşeleri otomatik yuvarla, **uçları kapat**) — açık eskizde zorunlu · F2.7 **kesme tarafını çevir** · F2.8 özellik kapsamı (çok gövde) · F2.9 tümünü geç–iki yön | ✅ v0.13 (özellik kapsamı hariç) |
-| F3 | K | Süpürme yalnız profil+yol | F3.1 **dairesel profil** (yalnız çap) · F3.2 **katı profil** (takım gövdesiyle kesme) · F3.3 **profil yönelimi**: yolu izle / normali sabit tut · F3.4 **burulma**: yok / en az / 1. kılavuz / 1.-2. kılavuz / **açı** (derece-radyan-tur) · F3.5 **kılavuz eğriler** · F3.6 **iki yönlü** · F3.7 başlangıç/bitiş teğetliği · F3.8 ince özellik · F3.9 düzgün yüzleri birleştir | ⬜ |
+| F3 | K | Süpürme yalnız profil+yol | F3.1 **dairesel profil** (yalnız çap) · F3.2 **katı profil** (takım gövdesiyle kesme) · F3.3 **profil yönelimi**: yolu izle / normali sabit tut · F3.4 **burulma**: yok / en az / 1. kılavuz / 1.-2. kılavuz / **açı** (derece-radyan-tur) · F3.5 **kılavuz eğriler** · F3.6 **iki yönlü** · F3.7 başlangıç/bitiş teğetliği · F3.8 ince özellik · F3.9 düzgün yüzleri birleştir | 🟡 v0.14: dairesel profil (iç çaplı boru), yönelim; burulma/kılavuz/iki yön yok |
 | F4 | Ö | Loft seçenekleri | F4.1 **başlangıç/bitiş kısıtı** (yok / yön vektörü / profile normal / komşu yüzlere teğet) · F4.2 **bağlayıcılar** · F4.3 **kapalı loft** · F4.4 ince özellik · F4.5 kılavuz etki türü (kılavuz ✅, merkez çizgisi ✅) | 🟡 |
-| F5 | Ö | Radyüs türleri | F5.1 **değişken boyut** (kontrol noktaları, düz/yumuşak geçiş) · F5.2 **tam yuvarlak** · F5.3 **yüz radyüsü** (tutma çizgisi, sabit genişlik) · F5.4 **çoklu yarıçap** (kenar başına) · F5.5 **yuvarlak köşeler** · F5.6 **setback** · F5.7 profil: **konik rho**, eğrilik sürekli · F5.8 **teğet yayılımı** aç/kapat · F5.9 özellikleri koru · asimetrik ✅ | 🟡 |
-| F6 | Ö | Çoğaltma | F6.1 **örnekleri atla** (örneğe dokun) · F6.2 **kadar** (aralık yerine referansa kadar) · F6.3 **eskizi değiştir (vary)** · F6.4 **değişken çoğaltma** · F6.5 gövde / yüz çoğaltma ayrımı · F6.6 geometri çoğaltma | 🟡 |
-| F7 | Ö | Kabuk | F7.1 **dışa kabuk** · F7.2 **yüz başına farklı kalınlık** | 🟡 |
+| F5 | Ö | Radyüs türleri | F5.1 **değişken boyut** (kontrol noktaları, düz/yumuşak geçiş) · F5.2 **tam yuvarlak** · F5.3 **yüz radyüsü** (tutma çizgisi, sabit genişlik) · F5.4 **çoklu yarıçap** (kenar başına) · F5.5 **yuvarlak köşeler** · F5.6 **setback** · F5.7 profil: **konik rho**, eğrilik sürekli · F5.8 **teğet yayılımı** aç/kapat · F5.9 özellikleri koru · asimetrik ✅ | 🟡 v0.14: çoklu yarıçap; değişken (2 değer), tam yuvarlak var; setback/konik yok |
+| F6 | Ö | Çoğaltma | F6.1 **örnekleri atla** (örneğe dokun) · F6.2 **kadar** (aralık yerine referansa kadar) · F6.3 **eskizi değiştir (vary)** · F6.4 **değişken çoğaltma** · F6.5 gövde / yüz çoğaltma ayrımı · F6.6 geometri çoğaltma | 🟡 v0.14: örnek atla |
+| F7 | Ö | Kabuk | F7.1 **dışa kabuk** · F7.2 **yüz başına farklı kalınlık** | 🟡 v0.14: dışa kabuk; yüz başına kalınlık yok |
 | F8 | Ö | Koniklik | F8.1 **ayırma çizgisi** · F8.2 **basamaklı** · F8.3 DraftXpert (analiz) | 🟡 |
 | F9 | Ö | Ağaç işlemleri | F9.1 **bastır / bastırmayı kaldır** · F9.2 **sürükleyerek sırala** · F9.3 **klasör** · F9.4 **F2 ile ad değiştir** · F9.5 **ebeveyn/çocuk** göster · F9.6 geri alma çubuğunu sürükleme (rollback ✅) | 🟡 v0.13: sürükle/▲▼ sırala, F2, ebeveyn-çocuk; klasör yok |
-| F10 | Ö | **Instant3D** yok | Seçili özellikte yeşil ok tutamağı ile derinlik sürükleme, cetvel; sağ tıkla bitiş koşulu değiştirme | ⬜ |
-| F11 | Ö | Görüntü stilleri | **Kenarlı gölgeli, gölgeli, gizli çizgi kaldır, gizli çizgi görünür, tel kafes**, perspektif, gövde gizle/göster, saydamlık | ⬜ |
+| F10 | Ö | **Instant3D** yok | Seçili özellikte yeşil ok tutamağı ile derinlik sürükleme, cetvel; sağ tıkla bitiş koşulu değiştirme | ✅ v0.14 |
+| F11 | Ö | Görüntü stilleri | **Kenarlı gölgeli, gölgeli, gizli çizgi kaldır, gizli çizgi görünür, tel kafes**, perspektif, gövde gizle/göster, saydamlık | ✅ v0.14 (perspektif yok) |
 | F12 | Ö | Doğrudan düzenleme | **Yüz taşı**, **yüz sil** (onar/doldur), **yüz değiştir** — içe aktarılan STEP için | ⬜ |
 | F13 | Ö | Yüzey modelleme | Ekstrüzyon/döndürme/süpürme/loft yüzeyi, düzlemsel yüzey, **dikiş**, **kalınlaştır**, **yüzeyle kes**, öteleme/dolgu/sınır yüzeyi, kırp/uzat | ⬜ |
 | F14 | İ | Konfigürasyon / tasarım tablosu | Ölçü varyantları, özellik bastırma varyantları | ⬜ |

@@ -307,3 +307,7 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .fs-btn { font-size: 20px; }
 #tree li.drop { box-shadow: inset 0 2px 0 var(--primary, #1c7ed6); }
 .minibar { display: flex; gap: 2px; padding: 3px; background: rgba(255,255,255,.96); border: 1px solid #c9d1dc; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.i3d { position: absolute; z-index: 7; width: 0; height: 0; }
+.i3d[hidden] { display: none; }
+.i3d .i3d-ar { position: absolute; left: -16px; top: -34px; width: 32px; height: 34px; display: grid; place-items: center; font-size: 26px; color: #2f9e44; cursor: grab; transform-origin: 16px 34px; text-shadow: 0 0 3px #fff; touch-action: none; }
+.i3d .i3d-v { position: absolute; left: 14px; top: -12px; font-size: 12px; background: rgba(255,255,255,.9); border: 1px solid #2f9e44; border-radius: 4px; padding: 0 4px; white-space: nowrap; pointer-events: none; }

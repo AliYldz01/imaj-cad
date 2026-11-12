@@ -881,10 +881,11 @@ function newFeature(kind: string) {
       break;
     case "sweep": {
       const free = doc.features.filter((f) => f.type === "sketch" && !consumerOf(f.id)) as SketchFeature[];
-      if (free.length < 2) return toast("Süpürme için iki eskiz gerekir: kapalı profil ve yol", true);
+      if (!free.length) return toast("Süpürme için bir yol eskizi gerekir", true);
       const pathSk = free.find((f) => !extractClosed(f)) ?? free[free.length - 1];
-      const prof = free.find((f) => f !== pathSk && extractClosed(f)) ?? free.find((f) => f !== pathSk)!;
-      draft = { id, type: "sweep", name: "", sketch: prof.id, path: pathSk.id, cut: false };
+      const prof = free.find((f) => f !== pathSk && extractClosed(f)) ?? free.find((f) => f !== pathSk);
+      // tek eskiz (yalnız yol) varsa SolidWorks gibi dairesel profil ile başla
+      draft = { id, type: "sweep", name: "", sketch: prof?.id ?? "", path: pathSk.id, cut: false, ...(prof ? {} : { circ: 20 }) };
       break;
     }
     case "loft": {
@@ -1414,6 +1415,12 @@ function renderFeaturePM(kind: string) {
         ),
       );
       if (isF && d.kind === "var") body.appendChild(numField("Bitiş yarıçapı", d.r2 ?? d.r, (v) => (d.r2 = v), { min: 0.001, unit: "mm", key: `${d.id}.r2` }));
+      if (isF && (d.kind ?? "const") === "const" && d.edges.length > 1) {
+        const multi = !!d.radii;
+        const gm = group("Çoklu yarıçap", checkField("Kenar başına farklı yarıçap", multi, (v) => ((d.radii = v ? d.edges.map(() => d.r) : undefined), renderFeaturePM(kind))));
+        if (multi) d.edges.forEach((_: any, i: number) => gm.appendChild(numField(`Kenar ${i + 1}`, d.radii[i] ?? d.r, (v) => ((d.radii[i] = v), schedulePreview()), { min: 0.001, unit: "mm" })));
+        body.appendChild(gm);
+      }
       if (!isF && d.kind === "dd") body.appendChild(numField("İkinci mesafe", d.d2 ?? d.d, (v) => (d.d2 = v), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
       if (!isF && d.kind === "da") body.appendChild(numField("Açı", d.angle ?? 45, (v) => (d.angle = v), { min: 0.1, unit: "°", key: `${d.id}.angle` }));
       if (!isF && d.kind && d.kind !== "equal") body.appendChild(checkField("Yönü ters çevir", !!d.flip, (v) => (d.flip = v)));
@@ -1426,7 +1433,7 @@ function renderFeaturePM(kind: string) {
       break;
     }
     case "shell": {
-      body.appendChild(group("Parametreler", numField("Kalınlık", d.t, (v) => (d.t = v), { min: 0.001, unit: "mm", key: `${d.id}.t` })));
+      body.appendChild(group("Parametreler", numField("Kalınlık", d.t, (v) => (d.t = v), { min: 0.001, unit: "mm", key: `${d.id}.t` }), checkField("Dışa kabuk (kalınlık dışa eklenir)", !!d.out, (v) => (d.out = v))));
       const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Kaldırılacak yüzlere dokunun");
       const g = group("Kaldırılacak yüzler", picks);
       if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
@@ -1453,6 +1460,17 @@ function renderFeaturePM(kind: string) {
         );
       body.appendChild(g2);
       body.appendChild(featChecks("Çoğaltılacak özellikler"));
+      body.appendChild(group("Örnekleri atla", (() => {
+        const inp = h("input") as HTMLInputElement;
+        inp.value = (d.skip ?? []).join("; ");
+        inp.placeholder = "ör. 2,1; 3,2";
+        inp.addEventListener("change", () => {
+          d.skip = inp.value.split(/[;\s]+/).map((x) => x.trim()).filter(Boolean);
+          if (!d.skip.length) d.skip = undefined;
+          upd();
+        });
+        return inp;
+      })(), h("p", "pm-hint", "Biçim: yön1,yön2 (ör. 3,1 = 1. yönde 3. örnek). Tek yönde yalnız sayı yazılabilir.")));
       break;
     }
     case "cpattern": {
@@ -1466,6 +1484,17 @@ function renderFeaturePM(kind: string) {
         ),
       );
       body.appendChild(featChecks("Çoğaltılacak özellikler"));
+      body.appendChild(group("Örnekleri atla", (() => {
+        const inp = h("input") as HTMLInputElement;
+        inp.value = (d.skip ?? []).join("; ");
+        inp.placeholder = "ör. 3; 5";
+        inp.addEventListener("change", () => {
+          d.skip = inp.value.split(/[;\s]+/).map((x) => x.trim()).filter(Boolean);
+          if (!d.skip.length) d.skip = undefined;
+          upd();
+        });
+        return inp;
+      })(), h("p", "pm-hint", "Atlanacak örnek numaraları (1 = orijinal).")));
       break;
     }
     case "mirror": {
@@ -1477,14 +1506,23 @@ function renderFeaturePM(kind: string) {
     }
     case "sweep": {
       const opts = sketches.map((s) => ({ v: s.id, t: s.name }));
-      body.appendChild(
-        group(
-          "Profil ve yol",
-          selectField("Profil (kapalı eskiz)", opts, d.sketch, (v) => ((d.sketch = v), upd())),
-          selectField("Yol (açık veya kapalı zincir)", opts, d.path, (v) => ((d.path = v), upd())),
-          h("p", "pm-hint", "Profil eskizi, yolun başlangıç noktasında yola dik bir düzlemde olmalıdır."),
-        ),
+      const circ = (d.circ ?? 0) > 0;
+      const gp = group(
+        "Profil ve yol",
+        segField([{ v: "sketch", t: "Eskiz profili" }, { v: "circ", t: "Dairesel profil" }], circ ? "circ" : "sketch", (v) => {
+          d.circ = v === "circ" ? d.circ || 20 : undefined;
+          renderFeaturePM(kind);
+          upd();
+        }),
       );
+      if (circ) {
+        gp.appendChild(numField("Çap", d.circ!, (v) => ((d.circ = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.circ` }));
+        gp.appendChild(numField("İç çap (0 = dolu çubuk)", d.circIn ?? 0, (v) => ((d.circIn = v || undefined), upd()), { min: 0, unit: "mm" }));
+      } else gp.appendChild(selectField("Profil (kapalı eskiz)", opts, d.sketch, (v) => ((d.sketch = v), upd())));
+      gp.appendChild(selectField("Yol (açık veya kapalı zincir)", opts, d.path, (v) => ((d.path = v), upd())));
+      gp.appendChild(selectField("Profil yönelimi", [{ v: "follow", t: "Yolu izle" }, { v: "normal", t: "Normali sabit tut" }], d.orient ?? "follow", (v) => ((d.orient = v as any), upd())));
+      if (!circ) gp.appendChild(h("p", "pm-hint", "Profil eskizi, yolun başlangıç noktasında yola dik bir düzlemde olmalıdır."));
+      body.appendChild(gp);
       body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), upd())));
       break;
     }
@@ -3916,6 +3954,19 @@ function renderViewbar() {
   btn("right", "Sağdan", () => viewer.viewStd("right"));
   btn("iso", "İzometrik", () => viewer.viewStd("iso"));
   btn("fit", "Ekrana sığdır", () => fitAll());
+  btn("iso", "Görüntü stili (kenarlı gölgeli, gölgeli, gizli çizgi, tel kafes, saydam)", () => {
+    const r = bar.getBoundingClientRect();
+    const box = popupAt(r.left - 200, r.top + 40, "sw-ctx");
+    const st: [string, typeof viewer.displayStyle][] = [
+      ["Kenarlı gölgeli", "shadedEdges"],
+      ["Gölgeli", "shaded"],
+      ["Gizli çizgileri kaldır", "hlr"],
+      ["Gizli çizgiler görünür", "hlv"],
+      ["Tel kafes", "wire"],
+    ];
+    for (const [l, v] of st) menuItem(box, (viewer.displayStyle === v ? "● " : "○ ") + l, () => viewer.setStyle(v));
+    menuItem(box, (viewer.transparent ? "☑ " : "☐ ") + "Saydam", () => ((viewer.transparent = !viewer.transparent), viewer.applyStyle()));
+  });
   btn("planes", "Düzlemleri göster/gizle", () => {
     planesOn = !planesOn;
     updatePlanes();
@@ -4179,6 +4230,7 @@ function openContextMenu(x: number, y: number) {
       menuItem(box, "Sil", () => ed.deleteSelection(), "del");
     }
     menuItem(box, "Akıllı Ölçü", () => ed.setTool("dim"), "dim");
+    menuItem(box, "Hızlı yakalama…", () => setTimeout(() => openSnapMenu(x, y)));
     menuItem(box, "Normal görünüm (Ctrl+8)", () => viewer.viewNormal(ed.frame), "normal");
     menuItem(box, "Ekrana sığdır (F)", () => fitAll(), "fit");
     menuItem(box, "Eskizden çık", () => exitSketch(true), "exitSketch");
@@ -4200,6 +4252,28 @@ function openContextMenu(x: number, y: number) {
     menuItem(box, "İzometrik (Ctrl+7)", () => viewer.viewStd("iso"), "iso");
     menuItem(box, "Önceki görünüm (Ctrl+Shift+Z)", () => viewer.previousView());
   }
+}
+/** SolidWorks Hızlı Yakalama (Quick Snaps) filtresi */
+function openSnapMenu(x: number, y: number) {
+  if (mode.k !== "sketch") return;
+  const ed = mode.editor;
+  const box = popupAt(x, y, "sw-ctx");
+  const kinds: [string, string][] = [
+    ["end", "Uç nokta / köşe"], ["mid", "Orta nokta"], ["center", "Merkez (dikdörtgen)"], ["quad", "Çeyrek nokta"], ["isect", "Kesişim"],
+    ["on", "Eğri üzerinde"], ["hv", "Yatay / dikey"], ["perp", "Dik / doğrusal / teğet"], ["guide", "Hizalama (uyandırma)"], ["model", "Model noktaları"],
+  ];
+  const render = () => {
+    box.innerHTML = "";
+    for (const [k, l] of kinds) {
+      const b = h("button", "sw-mi", (ed.snapOff.has(k) ? "☐ " : "☑ ") + l);
+      b.addEventListener("click", () => (ed.toggleSnap(k), render()));
+      box.appendChild(b);
+    }
+    const all = h("button", "sw-mi", "Tümünü aç");
+    all.addEventListener("click", () => (ed.snapOff.clear(), ed.toggleSnap("_"), ed.toggleSnap("_"), render()));
+    box.appendChild(all);
+  };
+  render();
 }
 /** S: imlecin yanında kısayol çubuğu */
 function openShortcutBar() {
@@ -4485,6 +4559,76 @@ setInterval(() => {
   if (fsOk || isTouchDevice()) $("#globals").prepend(fsBtn);
 }
 addEventListener("resize", () => renderCommands());
+
+// ---------- Instant3D: seçili ekstrüzyonun derinliğini modelde okla sürükle ----------
+{
+  const hd = h("div", "i3d");
+  hd.innerHTML = "<span class='i3d-ar'>⬆</span><span class='i3d-v'></span>";
+  hd.hidden = true;
+  $("#view").appendChild(hd);
+  let st: { f: ExtrudeFeature; base: Vec3; dir: Vec3; d0: number; x: number; y: number; px: number } | null = null;
+  const target = () => {
+    if (mode.k !== "part" || !treeSel) return null;
+    const f = getFeat(treeSel);
+    if (!f || f.type !== "extrude" || (f.end !== "blind" && f.end !== "mid") || f.dirVec) return null;
+    const sk = getFeat(f.sketch) as SketchFeature | undefined;
+    const fr0 = sk && resolveFrame(sk.plane, doc.features);
+    if (!sk || !fr0) return null;
+    const ids = Object.keys(sk.data.pts);
+    if (!ids.length) return null;
+    const c = ids.reduce((a, id) => [a[0] + sk.data.pts[id].x / ids.length, a[1] + sk.data.pts[id].y / ids.length], [0, 0]) as [number, number];
+    const sgn = (f.rev ? -1 : 1) * (f.cut ? -1 : 1);
+    const dir = fr0.n.map((v) => v * sgn) as Vec3;
+    const base = toWorld(fr0, c).map((v, i) => v + fr0.n[i] * (f.startOff ?? 0)) as Vec3;
+    return { f, base, dir };
+  };
+  const place = () => {
+    const t = st ?? (() => {
+      const g = target();
+      return g && { ...g, d0: g.f.d1 };
+    })();
+    if (!t) return void (hd.hidden = true);
+    const d = t.f.end === "mid" ? t.f.d1 / 2 : t.f.d1;
+    const tip = t.base.map((v, i) => v + t.dir[i] * d) as Vec3;
+    const s0 = viewer.toScreen(tip), s1 = viewer.toScreen(tip.map((v, i) => v + t.dir[i]) as Vec3);
+    const ang = (Math.atan2(s1[0] - s0[0], -(s1[1] - s0[1])) * 180) / Math.PI;
+    // yön ekrana dik ise (ok görünmez/sürüklenemez) tutamağı gizle; yüz seçimini engellemesin
+    if (!st && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) * viewer.worldPerPixel() < 0.25) return void (hd.hidden = true);
+    hd.hidden = false;
+    // tutamağı ucun biraz ötesine koy (yüz merkezini örtmesin)
+    const L = Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) || 1;
+    hd.style.left = s0[0] + ((s1[0] - s0[0]) / L) * 22 + "px";
+    hd.style.top = s0[1] + ((s1[1] - s0[1]) / L) * 22 + "px";
+    (hd.firstChild as HTMLElement).style.transform = `rotate(${ang}deg)`;
+    (hd.lastChild as HTMLElement).textContent = fmtNum(t.f.d1, 2);
+  };
+  viewer.onRender(place);
+  hd.addEventListener("pointerdown", (e) => {
+    const g = target();
+    if (!g) return;
+    e.stopPropagation();
+    hd.setPointerCapture(e.pointerId);
+    const s0 = viewer.toScreen(g.base), s1 = viewer.toScreen(g.base.map((v, i) => v + g.dir[i]) as Vec3);
+    st = { ...g, d0: g.f.d1, x: e.clientX, y: e.clientY, px: Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) || 1 };
+    (st as any).ux = (s1[0] - s0[0]) / st.px;
+    (st as any).uy = (s1[1] - s0[1]) / st.px;
+  });
+  hd.addEventListener("pointermove", (e) => {
+    if (!st) return;
+    const along = (e.clientX - st.x) * (st as any).ux + (e.clientY - st.y) * (st as any).uy;
+    let v = st.d0 + along / st.px;
+    v = Math.max(0.1, Math.round(v * (st.f.end === "mid" ? 1 : 1)));
+    st.f.d1 = v;
+    viewer.requestRender();
+  });
+  hd.addEventListener("pointerup", () => {
+    if (!st) return;
+    const f = st.f, v = f.d1;
+    f.d1 = st.d0;
+    st = null;
+    if (v !== f.d1) commitDoc(() => (f.d1 = v));
+  });
+}
 
 // ---------- görünüm küpü ----------
 const cubeBox = h("div", "vcube");

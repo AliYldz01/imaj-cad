@@ -5,7 +5,7 @@
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
-  setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
+  setOC, getOC, cast, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
   importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
@@ -359,13 +359,26 @@ function pathWire(segs: Seg[], closed: boolean, frame: Frame) {
 }
 
 function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
-  const pframe = resolvePlane(f.pl);
   const sframe = resolvePlane(f.path.pl);
   const spine = pathWire(f.path.segs, f.path.closed, sframe);
+  const oc = getOC();
+  const sp: any = spine;
+  const p0 = sp.startPoint, t0 = sp.tangentAt(0);
+  // SolidWorks profil yönelimi: yolu izle (Frenet) / normali sabit tut (sabit üçyüzlü)
+  const opts: any = f.orient === "normal" ? { support: new oc.gp_Ax2(new oc.gp_Pnt(p0.x, p0.y, p0.z), new oc.gp_Dir(t0.x, t0.y, t0.z)), transitionMode: "right" } : { frenet: true, transitionMode: "right" };
+  if (f.circ && f.circ > 0) {
+    // dairesel profil: yalnız çap ile boru / çubuk (profil eskizi gerekmez)
+    const ring = (d: number) => genericSweep(assembleWire([makeCircle(d / 2, [p0.x, p0.y, p0.z], [t0.x, t0.y, t0.z])]) as any, spine, opts, false);
+    let solid: Shape = ring(f.circ);
+    if (f.circIn && f.circIn > 0 && f.circIn < f.circ) solid = solid.cut(ring(f.circIn));
+    return solid;
+  }
+  if (!f.pl) throw new Error("Profil eskizi yok");
+  const pframe = resolvePlane(f.pl);
   let solid: Shape | null = null;
   for (const l of f.loops) {
     const w = (loopDrawing(l).sketchOnPlane(makePlane(pframe)) as any).wire;
-    const s = genericSweep(w, spine, { frenet: true, transitionMode: "right" }, false);
+    const s = genericSweep(w, spine, opts, false);
     if (!solid) solid = s;
     else solid = l.depth % 2 === 0 ? solid.fuse(s) : solid.cut(s);
   }
@@ -2286,7 +2299,14 @@ async function buildFeature(f: KFeature) {
       if (!(v > 0)) throw new Error("Değer sıfırdan büyük olmalı");
       if (f.type === "fillet") {
         const rad = f.kind === "var" ? ([f.r, f.r2 ?? f.r] as [number, number]) : f.r;
-        onOwner(set, "edges", (b) => b.fillet((e: any) => (set.has(e.hashCode) ? rad : null)));
+        // SolidWorks çoklu yarıçap: kenar başına farklı yarıçap
+        const per = new Map<number, number>();
+        if (f.radii?.length && f.kind !== "var")
+          f.edges.forEach((ref, i) => {
+            const rr = f.radii![i];
+            if (rr > 0) matchEdges([ref]).forEach((hh) => per.set(hh, rr));
+          });
+        onOwner(set, "edges", (b) => b.fillet((e: any) => (set.has(e.hashCode) ? per.get(e.hashCode) ?? rad : null)));
       } else {
         const kind = f.kind ?? "equal";
         onOwner(set, "edges", (b) =>
@@ -2306,7 +2326,7 @@ async function buildFeature(f: KFeature) {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       const set = matchFaces(f.faces);
       if (!set.size) throw new Error("Kaldırılacak yüz seçin");
-      onOwner(set, "faces", (b) => b.shell(Math.abs(f.t), (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode))));
+      onOwner(set, "faces", (b) => b.shell((f.out ? -1 : 1) * Math.abs(f.t), (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode))));
       return;
     }
     case "draft": {
@@ -2324,6 +2344,7 @@ async function buildFeature(f: KFeature) {
         for (let i = 0; i < Math.max(1, d1.count); i++)
           for (let j = 0; j < Math.max(1, d2.count); j++) {
             if (!i && !j) continue;
+            if (f.skip?.includes(`${i + 1},${j + 1}`) || (!j && f.skip?.includes(`${i + 1}`))) continue;
             const off = vadd(vmul(d1.v, i * d1.spacing), vmul(d2.v, j * d2.spacing));
             applyTool(it.solid.clone().translate(off), it.cut, it.merge);
           }
@@ -2332,7 +2353,7 @@ async function buildFeature(f: KFeature) {
     case "cpattern": {
       const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean; merge: boolean }[];
       if (!items.length) throw new Error("Çoğaltılacak özellik seçin");
-      for (const it of items) for (let i = 1; i < f.count; i++) applyTool(it.solid.clone().rotate(f.angle * i, f.origin ?? [0, 0, 0], f.axis), it.cut, it.merge);
+      for (const it of items) for (let i = 1; i < f.count; i++) if (!f.skip?.includes(`${i + 1}`)) applyTool(it.solid.clone().rotate(f.angle * i, f.origin ?? [0, 0, 0], f.axis), it.cut, it.merge);
       return;
     }
     case "mirror": {

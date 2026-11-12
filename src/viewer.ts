@@ -640,8 +640,41 @@ export class Viewer {
       eg.setAttribute("position", new THREE.BufferAttribute(mesh.lines, 3));
       this.edgeObj = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: COL.edge }));
       this.model.add(this.modelMesh, this.edgeObj);
+      // gizli kenarlar (gizli çizgi görünür stili için)
+      const hid = new THREE.LineSegments(eg, new THREE.LineDashedMaterial({ color: 0x9aa5b1, dashSize: 2, gapSize: 1.5, depthFunc: THREE.GreaterDepth, depthWrite: false }));
+      hid.computeLineDistances();
+      hid.name = "hidden";
+      this.model.add(hid);
       if (mesh.bbox) this.bbox = new THREE.Box3(new THREE.Vector3(...mesh.bbox.min), new THREE.Vector3(...mesh.bbox.max));
     }
+    this.applyStyle();
+    this.requestRender();
+  }
+
+  /** SolidWorks görüntü stilleri */
+  displayStyle: "shadedEdges" | "shaded" | "hlr" | "hlv" | "wire" = "shadedEdges";
+  transparent = false;
+  setStyle(st: Viewer["displayStyle"]) {
+    this.displayStyle = st;
+    this.applyStyle();
+  }
+  applyStyle() {
+    if (!this.modelMesh || !this.edgeObj) return;
+    const st = this.displayStyle;
+    const m = this.modelMesh.material as THREE.MeshStandardMaterial;
+    const hid = this.model.getObjectByName("hidden");
+    this.modelMesh.visible = st !== "wire";
+    this.edgeObj.visible = st !== "shaded";
+    if (hid) hid.visible = st === "hlv" || st === "wire";
+    if (hid && st === "wire") ((hid as THREE.LineSegments).material as THREE.LineDashedMaterial).depthFunc = THREE.AlwaysDepth;
+    else if (hid) ((hid as THREE.LineSegments).material as THREE.LineDashedMaterial).depthFunc = THREE.GreaterDepth;
+    // gizli çizgi stillerinde yüzler arka plan rengiyle (yalnız derinlik için)
+    m.color.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : COL.face);
+    m.emissive.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : 0x000000);
+    m.transparent = this.transparent && st !== "hlr" && st !== "hlv";
+    m.opacity = m.transparent ? 0.35 : 1;
+    m.depthWrite = !m.transparent;
+    m.needsUpdate = true;
     this.requestRender();
   }
 

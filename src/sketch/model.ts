@@ -365,6 +365,7 @@ export function applicableRelations(sk: SketchData, sel: string[]): RelOption[] 
   if (allPts.length === 2 && nE === 0) {
     const [a, b] = allPts;
     out.push({ t: "coincident", label: "Çakışık", build: () => [{ t: "coincident", refs: [a, b] }] });
+    if (a !== ORIGIN && b !== ORIGIN) out.push({ t: "coincident", label: "Birleştir (tek nokta)", build: () => [{ t: "coincident", refs: [a, b], merge: true } as any] });
     out.push({ t: "horizontal", label: "Yatay", build: () => [{ t: "horizontal", refs: [a, b] }] });
     out.push({ t: "vertical", label: "Dikey", build: () => [{ t: "vertical", refs: [a, b] }] });
   }
