@@ -12,7 +12,7 @@ import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
   Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData,
 } from "./doc/types";
-import { thinRegion } from "./sketch/profile";
+import { thinRegion, segPoints } from "./sketch/profile";
 import { unfold, cylinderParams } from "./sheet/unfold";
 
 type Shape = any;
@@ -336,9 +336,117 @@ function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
   return solid;
 }
 
+/** Kapalı çoklu çizgiyi eşit yay uzunluğu aralıklı M noktaya örnekler */
+function resampleClosed(pts: Vec3[], M: number): Vec3[] {
+  const P = [...pts, pts[0]];
+  const cum = [0];
+  for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + vlen(vsub(P[i], P[i - 1])));
+  const T = cum[cum.length - 1];
+  const out: Vec3[] = [];
+  let j = 1;
+  for (let k = 0; k < M; k++) {
+    const s = (T * k) / M;
+    while (j < cum.length - 1 && cum[j] < s) j++;
+    const t = (s - cum[j - 1]) / ((cum[j] - cum[j - 1]) || 1);
+    out.push(vadd(P[j - 1], vmul(vsub(P[j], P[j - 1]), t)));
+  }
+  return out;
+}
+/** Açık çoklu çizgide oransal konum */
+function pointAtFrac(pts: Vec3[], t: number): Vec3 {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + vlen(vsub(pts[i], pts[i - 1])));
+  const s = Math.max(0, Math.min(1, t)) * cum[cum.length - 1];
+  let j = 1;
+  while (j < cum.length - 1 && cum[j] < s) j++;
+  const k = (s - cum[j - 1]) / ((cum[j] - cum[j - 1]) || 1);
+  return vadd(pts[j - 1], vmul(vsub(pts[j], pts[j - 1]), k));
+}
+function loopWorldPts(l: Loop, fr: Frame): Vec3[] {
+  let p2: Vec2[];
+  if ("circle" in l) p2 = Array.from({ length: 96 }, (_, i) => [l.circle.c[0] + l.circle.r * Math.cos((i / 96) * 2 * Math.PI), l.circle.c[1] + l.circle.r * Math.sin((i / 96) * 2 * Math.PI)] as Vec2);
+  else if ("ellipse" in l) {
+    const { c, rx, ry, rot } = l.ellipse;
+    const cr = Math.cos((rot * Math.PI) / 180), sr = Math.sin((rot * Math.PI) / 180);
+    p2 = Array.from({ length: 96 }, (_, i) => {
+      const a = (i / 96) * 2 * Math.PI, x = rx * Math.cos(a), y = ry * Math.sin(a);
+      return [c[0] + x * cr - y * sr, c[1] + x * sr + y * cr] as Vec2;
+    });
+  } else p2 = l.segs.flatMap((sg) => segPoints(sg, 24).slice(0, -1));
+  return p2.map((q) => toWorld(fr, q));
+}
+
+/** Kılavuz eğrili loft: ara kesitler kılavuzlara oturacak şekilde ölçeklenir / döndürülür */
+function guidedLoft(f: Extract<KFeature, { type: "loft" }>): Shape {
+  if (f.profiles.length !== 2) throw new Error("Kılavuz eğrili loft iki profil ile çalışır");
+  const M = 72, K = 16;
+  const frA = resolvePlane(f.profiles[0].pl), frB = resolvePlane(f.profiles[1].pl);
+  let A = resampleClosed(loopWorldPts(f.profiles[0].loops[0], frA), M);
+  let B = resampleClosed(loopWorldPts(f.profiles[1].loops[0], frB), M);
+  const G = f.guides!;
+  const near = (arr: Vec3[], p: Vec3) => arr.reduce((bi, q, i) => (vlen(vsub(q, p)) < vlen(vsub(arr[bi], p)) ? i : bi), 0);
+  // kılavuzların uçları profillere değmeli; başlangıç yönü düzeltilir
+  G.forEach((g, i) => {
+    const s = g[0], e = g[g.length - 1];
+    if (vlen(vsub(A[near(A, e)], e)) + vlen(vsub(B[near(B, s)], s)) < vlen(vsub(A[near(A, s)], s)) + vlen(vsub(B[near(B, e)], e))) G[i] = [...g].reverse();
+  });
+  const ia = near(A, G[0][0]), ib = near(B, G[0][G[0].length - 1]);
+  A = [...A.slice(ia), ...A.slice(0, ia)];
+  B = [...B.slice(ib), ...B.slice(0, ib)];
+  // dolanım yönü eşleşmesi
+  const cen = (arr: Vec3[]) => vmul(arr.reduce((s, p) => vadd(s, p), [0, 0, 0] as Vec3), 1 / arr.length);
+  const nA = frA.n;
+  const turn = (arr: Vec3[]) => vdot(vcross(vsub(arr[1], cen(arr)), vsub(arr[Math.floor(arr.length / 4)], cen(arr))), nA);
+  if (Math.sign(turn(A)) !== Math.sign(turn(B))) B = [B[0], ...B.slice(1).reverse()];
+  const idx = G.map((g) => near(A, g[0]));
+  const wires: any[] = [];
+  for (let k = 0; k <= K; k++) {
+    const t = k / K;
+    const S = A.map((p, i) => vadd(vmul(p, 1 - t), vmul(B[i], t)));
+    const C = cen(S);
+    const n = vnorm(vadd(vmul(frA.n, 1 - t), vmul(frB.n, t)));
+    const u = vnorm(vsub(vsub(S[0], C), vmul(n, vdot(vsub(S[0], C), n))));
+    const v = vcross(n, u);
+    const to2 = (p: Vec3): [number, number] => [vdot(vsub(p, C), u), vdot(vsub(p, C), v)];
+    const xs = idx.map((j) => to2(S[j]));
+    const ys = G.map((g) => to2(pointAtFrac(g, t)));
+    let T: (q: [number, number]) => [number, number];
+    if (G.length === 1) {
+      const x = xs[0], y = ys[0];
+      const sc = (x[0] * y[0] + x[1] * y[1]) / ((x[0] * x[0] + x[1] * x[1]) || 1);
+      const dx = y[0] - sc * x[0], dy = y[1] - sc * x[1];
+      T = (q) => [sc * q[0] + dx, sc * q[1] + dy];
+    } else {
+      // 2B benzerlik (karmaşık sayı en küçük kareler)
+      const mx = xs.reduce((s, q) => [s[0] + q[0] / xs.length, s[1] + q[1] / xs.length], [0, 0]);
+      const my = ys.reduce((s, q) => [s[0] + q[0] / ys.length, s[1] + q[1] / ys.length], [0, 0]);
+      let re = 0, im = 0, nn = 0;
+      xs.forEach((x, i) => {
+        const a0 = x[0] - mx[0], a1 = x[1] - mx[1], b0 = ys[i][0] - my[0], b1 = ys[i][1] - my[1];
+        re += a0 * b0 + a1 * b1;
+        im += a0 * b1 - a1 * b0;
+        nn += a0 * a0 + a1 * a1;
+      });
+      const cr = re / (nn || 1), ci = im / (nn || 1);
+      T = (q) => {
+        const a0 = q[0] - mx[0], a1 = q[1] - mx[1];
+        return [cr * a0 - ci * a1 + my[0], ci * a0 + cr * a1 + my[1]];
+      };
+    }
+    const sec = S.map((p) => {
+      const w = vdot(vsub(p, C), n);
+      const q = T(to2(p));
+      return vadd(vadd(vadd(C, vmul(u, q[0])), vmul(v, q[1])), vmul(n, w));
+    });
+    wires.push(assembleWire(sec.map((p, i) => makeLine(p, sec[(i + 1) % sec.length]))));
+  }
+  return loft(wires, { ruled: false });
+}
+
 function loftTool(f: Extract<KFeature, { type: "loft" }>) {
   if (f.profiles.length < 2) throw new Error("Loft için en az iki profil eskizi seçin");
   for (const p of f.profiles) if (p.loops.length !== 1) throw new Error("Her loft profili tek bir kapalı kontur olmalı");
+  if (f.guides?.length) return guidedLoft(f);
   if (f.center) {
     // merkez çizgisi boyunca: OCCT boru kabuğu, birden çok kesit
     const oc = getOC() as any;

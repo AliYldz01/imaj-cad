@@ -212,6 +212,8 @@ export interface LoftFeature extends FeatBase {
   ruled: boolean;
   /** merkez çizgisi eskizi (isteğe bağlı) */
   center?: string;
+  /** kılavuz eğri eskizleri (isteğe bağlı) */
+  guides?: string[];
 }
 
 export type HoleType = "simple" | "cbore" | "csink" | "tap";
@@ -563,7 +565,7 @@ export type KFeature =
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean } }
-  | { id: string; type: "loft"; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean } }
+  | { id: string; type: "loft"; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][] }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[] }

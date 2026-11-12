@@ -168,7 +168,20 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             if (path.error || !cpl) throw new Error(`${cs.name}: ${path.error ?? "düzlem yok"}`);
             center = { pl: cpl, segs: path.segs, closed: path.closed };
           }
-          kfeats.push({ id: f.id, type: "loft", cut: f.cut, ruled: f.ruled, profiles, center });
+          let guides: Vec3[][] | undefined;
+          if (f.guides?.length) {
+            guides = f.guides.map((gid) => {
+              const gs = sketchOf(gid);
+              if (!gs) throw new Error("Kılavuz eğri eskizi bulunamadı");
+              const gfr = resolveFrame(gs.plane, feats);
+              const path = extractPath(gs.data);
+              if (path.error || !gfr) throw new Error(`${gs.name}: ${path.error ?? "düzlem yok"}`);
+              const pts: Vec3[] = [];
+              path.segs.forEach((sg, i) => segPoints(sg, 24).slice(i ? 1 : 0).forEach((q) => pts.push(toWorld(gfr, q))));
+              return pts;
+            });
+          }
+          kfeats.push({ id: f.id, type: "loft", cut: f.cut, ruled: f.ruled, profiles, center, guides });
           break;
         }
         case "rib": {
