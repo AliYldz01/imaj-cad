@@ -1358,6 +1358,20 @@ function sweepProfile(loops: Loop[], plane: any, spine: any): Shape {
   return solid;
 }
 
+/** profil düzleminin X ekseni: Y = n'nin yola dik bileşeni, X = Y × d (replicad Plane: yDir = d × xDir) */
+function profileX(n: Vec3, d: Vec3, legacy = false): Vec3 {
+  if (legacy) {
+    // v0.17 öncesi: profil X = −n (eski belgeler aynı görünsün)
+    let x = vmul(n, -1);
+    x = vsub(x, vmul(d, vdot(x, d)));
+    if (vlen(x) < 1e-6) x = Math.abs(d[2]) < 0.9 ? vcross(d, [0, 0, 1]) : vcross(d, [1, 0, 0]);
+    return vnorm(x);
+  }
+  let y = vsub(n, vmul(d, vdot(n, d)));
+  if (vlen(y) < 1e-6) y = Math.abs(d[1]) < 0.9 ? vsub([0, 1, 0], vmul(d, d[1])) : vsub([0, 0, 1], vmul(d, d[2]));
+  y = vnorm(y);
+  return vnorm(vcross(y, d));
+}
 function memberTool(f: Extract<KFeature, { type: "member" }>) {
   const items = f.items;
   type LI = { a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
@@ -1366,9 +1380,8 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
     const L = vlen(vsub(it.b, it.a));
     if (L < 1e-6) throw new Error("Sıfır uzunlukta segment");
     const d = vnorm(vsub(it.b, it.a));
-    let x = vmul(it.n, -1);
-    if (Math.abs(vdot(x, d)) > 0.999) x = vnorm(Math.abs(d[2]) < 0.9 ? vcross(d, [0, 0, 1]) : vcross(d, [1, 0, 0]));
-    x = vnorm(vsub(x, vmul(d, vdot(x, d))));
+    // SolidWorks: profilin dikey ekseni (Y) eskiz düzlemi normali (3B'de dünya yukarısı); yatay ekseni X = Y × yol
+    const x = profileX(it.n, d, f.ori !== 2);
     return { a: it.a, b: it.b, d, L, x };
   });
   // köşeler: tam iki çizginin buluştuğu uçlar
@@ -1464,10 +1477,8 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
     const first = items[order[0].i];
     const P0 = order[0].rev ? first.b : first.a;
     const t0 = tanAt(first, order[0].rev ? 1 : 0);
-    let x = vmul(first.n, -1);
-    x = vsub(x, vmul(t0, vdot(x, t0)));
-    if (vlen(x) < 1e-6) x = Math.abs(t0[2]) < 0.9 ? vcross(t0, [0, 0, 1]) : vcross(t0, [1, 0, 0]);
-    x = vnorm(x);
+    const fl = f.ori === 2 ? order.map((o) => items[o.i]).find((it) => it.k === "l") ?? first : first;
+    const x = profileX(fl.n, t0, f.ori !== 2);
     const edges = order.map(({ i }) => {
       const it = items[i];
       return it.k === "l" ? makeLine(it.a, it.b) : makeThreePointArc(it.a, it.m, it.b);

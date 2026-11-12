@@ -24,6 +24,7 @@ import * as THREE from "three";
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
+import { Sketch3DTool, PLANES as S3PLANES, setLineLength } from "./sketch/sketch3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -342,6 +343,7 @@ let planesOn = true;
 
 let sketchGroup: any[] = [];
 function drawSketches() {
+  if (!s3tool?.active()) s3tool?.clear();
   for (const o of sketchGroup) {
     viewer.overlay.remove(o);
     o.geometry?.dispose();
@@ -349,9 +351,12 @@ function drawSketches() {
   sketchGroup = [];
   if (mode.k === "sketch") return viewer.requestRender();
   const { feats } = viewFeatures();
+  // yapı elemanı düzenlenirken iskelet eskizleri görünür, seçili segmentler mavi
+  const memSel = mode.k === "pm" && mode.draft.type === "member" ? new Set(mode.draft.segs.map((q) => q.sk + ":" + q.ent)) : null;
+  const selSegs: number[] = [];
   for (const f of feats) {
     if (f.type !== "sketch" || f.off) continue;
-    const shown = !consumerOf(f.id) || treeSel === f.id;
+    const shown = !consumerOf(f.id) || treeSel === f.id || (!!memSel && f.data.ents.some((e) => e.t === "line" || e.t === "arc"));
     if (!shown) continue;
     const fr = resolveFrame(f.plane, doc.features);
     if (!fr) continue;
@@ -372,7 +377,7 @@ function drawSketches() {
         }
         for (let i = 0; i <= 48; i++) pts.push([c[0] + e.r * Math.cos(a0 + ((a1 - a0) * i) / 48), c[1] + e.r * Math.sin(a0 + ((a1 - a0) * i) / 48)]);
       }
-      const arr = e.cons ? cons : segs;
+      const arr = e.cons ? cons : memSel?.has(f.id + ":" + e.id) ? selSegs : segs;
       for (let i = 0; i < pts.length - 1; i++) arr.push(...toWorld(fr, pts[i]), ...toWorld(fr, pts[i + 1]));
     }
     if (sk.pic) sketchGroup.push(pictureMesh(sk.pic, fr, () => viewer.requestRender()) as any);
@@ -385,12 +390,12 @@ function drawSketches() {
   if (mode.k === "pm" && mode.draft.type === "sketch3d" && !s3.includes(mode.draft)) s3.push(mode.draft);
   for (const f of s3) {
     const editing = mode.k === "pm" && mode.draft.id === f.id;
-    if (!editing && consumerOf(f.id) && treeSel !== f.id) continue;
+    if (!editing && consumerOf(f.id) && treeSel !== f.id && !memSel) continue;
     const P = (id: string) => f.xyz[f.ids.indexOf(id)];
     const segs: number[] = [], cons: number[] = [];
     for (const l of f.lines) {
       const a = P(l.a), b = P(l.b);
-      if (a && b) (l.cons ? cons : segs).push(...a, ...b);
+      if (a && b) (l.cons ? cons : memSel?.has(f.id + ":" + l.id) ? selSegs : segs).push(...a, ...b);
     }
     const col = editing || treeSel === f.id ? 0x0ca5e9 : 0x1f2a37;
     if (segs.length) sketchGroup.push(viewer.fatLines(segs, col, 2));
@@ -404,6 +409,7 @@ function drawSketches() {
       });
     }
   }
+  if (selSegs.length) sketchGroup.push(viewer.fatLines(selSegs, 0x1c7ed6, 3.5));
   sketchGroup.forEach((o) => viewer.overlay.add(o));
   viewer.requestRender();
 }
@@ -510,8 +516,25 @@ function planeLabel(r: PlaneRef) {
   return r.label ?? "Yüz";
 }
 
+// SolidWorks 3B eskiz çizgi aracı (Tab düzlem, uzay tutamacı, eksen çıkarımı)
+var s3tool: Sketch3DTool = new Sketch3DTool({
+  viewer,
+  draft: () => (mode.k === "pm" && mode.draft.type === "sketch3d" ? (mode.draft as any) : null),
+  cands: () => snapCands(),
+  surface: (x, y) => {
+    const hh = viewer.pick(x, y, { face: true });
+    return hh ? hh.point : null;
+  },
+  changed: () => {
+    renderFeaturePM("sketch3d");
+    drawSketches();
+    schedulePreview();
+  },
+  hint: (t) => hint(t),
+});
 const partInput: InputHandler = {
   hover(e) {
+    if (s3tool.active()) return s3tool.input.hover!(e);
     const want = pickWant();
     const hit = viewer.pick(e.clientX, e.clientY, want);
     viewer.renderer.domElement.style.cursor = hit ? "pointer" : "";
@@ -522,9 +545,11 @@ const partInput: InputHandler = {
     }
   },
   down(e) {
+    if (s3tool.active()) return s3tool.input.down!(e);
     partPress = { x: e.clientX, y: e.clientY, box: null };
   },
   move(e) {
+    if (s3tool.active()) return s3tool.input.move!(e);
     // SolidWorks: boş alandan sürükleme → kutu seçimi (soldan sağa pencere, sağdan sola kesişen)
     if (!partPress || mode.k !== "part") return;
     if (!partPress.box) {
@@ -538,6 +563,7 @@ const partInput: InputHandler = {
     b.classList.toggle("cross", e.clientX < x0);
   },
   up(e) {
+    if (s3tool.active()) return s3tool.input.up!(e);
     const pp = partPress;
     partPress = null;
     if (pp?.box) {
@@ -553,6 +579,7 @@ const partInput: InputHandler = {
     partClick(e);
   },
   tap(e) {
+    if (s3tool.active()) return s3tool.input.tap!(e);
     partClick(e);
   },
 };
@@ -619,6 +646,7 @@ function partClick(e: PointerEvent) {
     if (!ref) return toast("Eskiz yalnızca düzlemsel bir yüze veya düzleme çizilebilir", true);
     return startSketch(ref, mode.tool);
   }
+  if (mode.k === "pm" && mode.draft.type === "member" && memberSegPick(e.clientX, e.clientY)) return;
   if (mode.k === "pm") return pmPick(hit, e);
   if (mode.k === "measure") return measurePick(hit);
   // normal seçim (fare: SolidWorks gibi tık seçimi değiştirir, Ctrl/Shift ekler)
@@ -938,7 +966,7 @@ function newFeature(kind: string) {
           ? skel.lines.filter((l) => !l.cons).map((l) => ({ sk: skel.id, ent: l.id }))
           : (skel as SketchFeature).data.ents.filter((e) => !e.cons && (e.t === "line" || e.t === "arc")).map((e) => ({ sk: skel.id, ent: e.id }));
       const prev = [...doc.features].reverse().find((f) => f.type === "member") as any;
-      draft = { id, type: "member", name: "", segs, std: prev?.std ?? "kutu", size: prev?.size ?? "40x40x3", align: "c", mirror: false, rot: 0, corner: "miter", gap: 0 };
+      draft = { id, type: "member", name: "", segs, std: prev?.std ?? "kutu", size: prev?.size ?? "40x40x3", align: "c", mirror: false, rot: 0, corner: "miter", gap: 0, ori: 2 };
       break;
     }
     case "combine":
@@ -1857,7 +1885,16 @@ function renderFeaturePM(kind: string) {
       f3._len ??= 100;
       f3._d ??= [0, 0, 0];
       const act = f3._act ?? f3.xyz.length - 1;
-      const g1 = group("Nokta ekle");
+      // SolidWorks 3B çizgi aracı: etkin düzlem + zincir
+      const g0 = group(
+        "Çizgi (3B)",
+        segField(S3PLANES.map((p) => ({ v: p, t: p })), s3tool.planeName, (v) => ((s3tool.plane = S3PLANES.indexOf(v as any)), s3tool.cyclePlane(0))),
+        h("p", "pm-hint", "Modelde boşluğa veya köşelere tıklayarak çizin: her tık bir çizgi ekler. Tab = düzlem değiştir (XY → YZ → ZX). İmleç X/Y/Z eksenine yaklaşınca çizgi o eksene kilitlenir (renkli). Rakama basın = uzunluk. Çift tık veya Esc = zinciri bitir; var olan noktaya tıklamak zinciri kapatır."),
+      );
+      if (act >= 0) g0.appendChild(button("Zinciri bitir", () => s3tool.endChain(), "btn"));
+      if (act >= 0) g0.appendChild(button("Uzunluk gir…", () => (s3tool.askLength(), void 0), "btn"));
+      body.appendChild(g0);
+      const g1 = group("Nokta ekle (koordinatla)");
       g1.appendChild(checkField("Etkin noktaya çizgiyle bağla", f3._link, (v) => (f3._link = v)));
       g1.appendChild(numField("Uzunluk", f3._len, (v) => (f3._len = v), { min: 0.001, unit: "mm" }));
       const dirs = h("div", "dir-grid");
@@ -1865,7 +1902,7 @@ function renderFeaturePM(kind: string) {
         dirs.appendChild(
           button(t, () => {
             if (!f3.xyz.length) return toast("Önce bir başlangıç noktası ekleyin (modele dokunun veya koordinat girin)", true);
-            const p = f3.xyz[act];
+            const p = f3.xyz[act >= 0 ? act : f3.xyz.length - 1];
             s3Add(f3, [p[0] + v[0] * f3._len, p[1] + v[1] * f3._len, p[2] + v[2] * f3._len]);
           }, "btn"),
         ),
@@ -1883,7 +1920,7 @@ function renderFeaturePM(kind: string) {
       g1.appendChild(
         button("Göreli ekle (Δ)", () => {
           if (!f3.xyz.length) return toast("Önce bir başlangıç noktası ekleyin", true);
-          const p = f3.xyz[act];
+          const p = f3.xyz[act >= 0 ? act : f3.xyz.length - 1];
           s3Add(f3, [p[0] + dv[0], p[1] + dv[1], p[2] + dv[2]]);
         }, "btn"),
       );
@@ -1928,7 +1965,8 @@ function renderFeaturePM(kind: string) {
         const ia = f3.ids.indexOf(l.a), ib = f3.ids.indexOf(l.b);
         const row = h("div", "pm-row");
         row.append(
-          h("span", "", `N${ia + 1} → N${ib + 1} · ${fmtNum(dist3(f3.xyz[ia], f3.xyz[ib]), 1)} mm`),
+          h("span", "", `N${ia + 1}→N${ib + 1}${l.ax ? " ∥" + l.ax.toUpperCase() : ""}`),
+          numField("L", Math.round(dist3(f3.xyz[ia], f3.xyz[ib]) * 1000) / 1000, (v) => (setLineLength(f3, l.id, v), renderFeaturePM(kind), drawSketches(), upd()), { unit: "mm", min: 0.001 }),
           checkField("Yapı", !!l.cons, (v) => ((l.cons = v), drawSketches())),
           button("✕", () => (f3.lines.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"),
         );
@@ -1946,7 +1984,7 @@ function renderFeaturePM(kind: string) {
         );
       body.appendChild(gl);
       body.appendChild(group("Büküm", numField("Köşe yarıçapı", f3.r, (v) => ((f3.r = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${f3.id}.r` }), h("p", "pm-hint", "0'dan büyükse iki çizginin birleştiği köşeler bu yarıçapla bükülür (bükümlü boru / profil).")));
-      hint("Nokta eklemek için modele, köşelere veya düzlemlere dokunun");
+      hint(`3B eskiz · düzlem ${s3tool.planeName} · tıklayarak çizin, Tab = düzlem, çift tık = bitir`);
       break;
     }
     case "trim": {
@@ -2607,6 +2645,71 @@ async function checkInterference() {
   toast(`${pairs.length} girişim: ` + pairs.map((p) => `Gövde ${p.a + 1} ↔ ${p.b + 1} (${fmtNum(p.vol / 1000, 2)} cm³)`).join(", "), true);
 }
 
+// ---------- Yapı elemanı: segmenti grafik alanda seç (SolidWorks gibi) ----------
+/** ekranda tıklanan yere en yakın iskelet segmenti (≤ 10 px) */
+function memberSegAt(x: number, y: number): { sk: string; ent: string } | null {
+  const r = viewer.renderer.domElement.getBoundingClientRect();
+  const S = (p: Vec3) => {
+    const q = viewer.toScreen(p);
+    return [q[0] + r.left, q[1] + r.top];
+  };
+  const segDist = (a: number[], b: number[]) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)) : 0;
+    return Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
+  };
+  const did = mode.k === "pm" ? mode.draft.id : "";
+  const idx = did ? doc.features.findIndex((f) => f.id === did) : -1;
+  const before = idx >= 0 ? doc.features.slice(0, idx) : doc.features;
+  let best: { sk: string; ent: string } | null = null, bd = 10;
+  for (const f of before) {
+    if (f.off) continue;
+    if (f.type === "sketch3d") {
+      for (const l of f.lines) {
+        if (l.cons) continue;
+        const a = f.xyz[f.ids.indexOf(l.a)], b = f.xyz[f.ids.indexOf(l.b)];
+        if (!a || !b) continue;
+        const d = segDist(S(a), S(b));
+        if (d < bd) (bd = d), (best = { sk: f.id, ent: l.id });
+      }
+    } else if (f.type === "sketch") {
+      const fr = resolveFrame(f.plane, doc.features);
+      if (!fr) continue;
+      for (const e of f.data.ents) {
+        if (e.cons || (e.t !== "line" && e.t !== "arc")) continue;
+        let pts: Vec3[];
+        if (e.t === "line") pts = [toWorld(fr, pointPos(f.data, e.p1)), toWorld(fr, pointPos(f.data, e.p2))];
+        else {
+          const c = pointPos(f.data, e.c), a = pointPos(f.data, e.s), b = pointPos(f.data, e.e);
+          const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]);
+          let a1 = Math.atan2(b[1] - c[1], b[0] - c[0]);
+          if (a1 <= a0) a1 += 2 * Math.PI;
+          const rr = Math.hypot(a[0] - c[0], a[1] - c[1]);
+          pts = Array.from({ length: 17 }, (_, i) => toWorld(fr, [c[0] + rr * Math.cos(a0 + ((a1 - a0) * i) / 16), c[1] + rr * Math.sin(a0 + ((a1 - a0) * i) / 16)]));
+        }
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const d = segDist(S(pts[i]), S(pts[i + 1]));
+          if (d < bd) (bd = d), (best = { sk: f.id, ent: e.id });
+        }
+      }
+    }
+  }
+  return best;
+}
+function memberSegPick(x: number, y: number): boolean {
+  if (mode.k !== "pm" || mode.draft.type !== "member") return false;
+  const sg = memberSegAt(x, y);
+  if (!sg) return false;
+  const d = mode.draft;
+  const i = d.segs.findIndex((q) => q.sk === sg.sk && q.ent === sg.ent);
+  if (i >= 0) d.segs.splice(i, 1);
+  else d.segs.push(sg);
+  renderFeaturePM(kindOf(d));
+  drawSketches();
+  schedulePreview();
+  return true;
+}
+
 // ---------- 3B eskiz yardımcıları ----------
 function s3Add(f: any, p: Vec3) {
   const pid = `p${f.seq++}`;
@@ -2622,11 +2725,24 @@ function s3Add(f: any, p: Vec3) {
 /** Dokunulan noktayı yakın köşe / nokta / daire merkezine yakalar */
 function snapPoint(p: Vec3): Vec3 {
   const tol = viewer.worldPerPixel() * 14;
+  const cands = snapCands();
+  if (mode.k === "pm" && mode.draft.type === "sketch3d") cands.push(...mode.draft.xyz);
+  let best: Vec3 | null = null, bd = tol;
+  for (const c of cands) {
+    const d = dist3(c, p);
+    if (d < bd) [bd, best] = [d, c];
+  }
+  return best ? [...best] as Vec3 : [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10, Math.round(p[2] * 10) / 10];
+}
+/** 3B yakalama adayları: model köşeleri / kenar ortaları / daire merkezleri, diğer 3B eskiz noktaları, 2B eskiz noktaları */
+function snapCands(): Vec3[] {
   const cands: Vec3[] = [];
   const m = viewer.mesh;
   if (m) for (const e of m.edges) cands.push(e.s, e.e, ...(e.c ? [e.c] : []));
-  for (const f of doc.features) if (f.type === "sketch3d") cands.push(...f.xyz);
-  if (mode.k === "pm" && mode.draft.type === "sketch3d") cands.push(...mode.draft.xyz);
+  if (m) for (const e of m.edges) if (!e.c && e.m) cands.push(e.m);
+  const cur = mode.k === "pm" && mode.draft.type === "sketch3d" ? mode.draft.id : "";
+  for (const f of doc.features) if (f.type === "sketch3d" && f.id !== cur && !f.off) cands.push(...f.xyz);
+  cands.push([0, 0, 0]);
   for (const f of doc.features) {
     if (f.type !== "sketch") continue;
     const fr = resolveFrame(f.plane, doc.features);
@@ -2636,12 +2752,7 @@ function snapPoint(p: Vec3): Vec3 {
       for (const id of ids) cands.push(toWorld(fr, pointPos(f.data, id)));
     }
   }
-  let best: Vec3 | null = null, bd = tol;
-  for (const c of cands) {
-    const d = dist3(c, p);
-    if (d < bd) [bd, best] = [d, c];
-  }
-  return best ? [...best] as Vec3 : [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10, Math.round(p[2] * 10) / 10];
+  return cands;
 }
 
 // ---------- Kaynaklı yapı: kesim listesi ----------
@@ -5020,6 +5131,9 @@ function showCmd(title: string) {
 }
 (window as any).__app = {
   showCmd,
+  get s3() {
+    return s3tool;
+  },
   get asm() {
     return asmUI;
   },

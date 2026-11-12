@@ -461,7 +461,7 @@ export interface Sketch3DFeature extends FeatBase {
   /** nokta kimlikleri ve koordinatları (paralel diziler; denklemler xyz[i][k] ile bağlanır) */
   ids: string[];
   xyz: Vec3[];
-  lines: { id: string; a: string; b: string; cons?: boolean }[];
+  lines: { id: string; a: string; b: string; cons?: boolean; /** eksen boyunca ilişkisi (Along X/Y/Z) */ ax?: "x" | "y" | "z" }[];
   /** köşe büküm yarıçapı (0 = keskin köşe) */
   r: number;
   seq: number;
@@ -487,6 +487,8 @@ export interface MemberFeature extends FeatBase {
   gap: number;
   /** delme noktasına ek öteleme (profil koordinatlarında, mm) */
   poff?: [number, number];
+  /** profil yönü sürümü: 2 = SolidWorks (profil Y ekseni = eskiz normali / dünya yukarısı); yoksa eski (v0.17 öncesi) yön */
+  ori?: 2;
 }
 /** Kırp / uzat: hedef elemanları sınır elemanlara göre kırpar ve gerekiyorsa uzatır */
 export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean; /** sınır düz yüzler (ör. taban levhası) */ faces?: FaceRef[] }
@@ -648,7 +650,7 @@ export type KFeature =
   | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
   | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
   | { id: string; type: "vchamfer"; v: Vec3; d: number }
-  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number }
+  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2 }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }

@@ -404,8 +404,8 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             }
             throw new Error("Yapı elemanı yalnızca çizgi ve yay segmentleri boyunca oluşturulabilir");
           });
-          for (const g of s3) items.push(...sketch3dItems(g.lines, g.f.r));
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap });
+          for (const g of s3) items.push(...sketch3dItems(g.lines, g.f.r, f.ori !== 2));
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori });
           break;
         }
         case "trim": {
@@ -565,12 +565,14 @@ const v3 = {
 };
 const n3 = (a: Vec3): Vec3 => v3.mul(a, 1 / (v3.len(a) || 1));
 /** 3B çizgi için profil yönü: profil yüksekliği mümkünse dünya düşeyine (Y) yakın */
-function sketch3dNormal(d: Vec3): Vec3 {
+/** 3B eskiz çizgisinde profilin dikey ekseni: dünya yukarısı (Y) çizgiye dik izdüşümü; düşey çizgide +Z */
+function sketch3dNormal(d: Vec3, legacy = false): Vec3 {
   const up: Vec3 = Math.abs(d[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
-  return n3(v3.cross(up, d));
+  if (legacy) return n3(v3.cross(up, d));
+  return n3(v3.sub(up, v3.mul(d, v3.dot(up, d))));
 }
 /** 3B eskiz çizgileri: ikiden fazla çizginin buluşmadığı köşeler r yarıçapıyla yuvarlatılır */
-export function sketch3dItems(lines: { a: Vec3; b: Vec3; key: string }[], r: number): MemberItem[] {
+export function sketch3dItems(lines: { a: Vec3; b: Vec3; key: string }[], r: number, legacy = false): MemberItem[] {
   const L = lines.map((l) => ({ ...l }));
   const out: MemberItem[] = [];
   if (r > 1e-9) {
@@ -599,10 +601,12 @@ export function sketch3dItems(lines: { a: Vec3; b: Vec3; key: string }[], r: num
       const M = v3.sub(C, v3.mul(bis, r));
       if (A.end === 0) L[A.i].a = PA; else L[A.i].b = PA;
       if (B.end === 0) L[B.i].a = PB; else L[B.i].b = PB;
-      out.push({ k: "a", a: PA, b: PB, m: M, n: n3(v3.cross(ua, ub)), key: `${lines[A.i].key}~${lines[B.i].key}` });
+      let bn = n3(v3.cross(ua, ub));
+      if (!legacy && bn[1] < -1e-9 || (Math.abs(bn[1]) < 1e-9 && bn[2] < 0)) bn = v3.mul(bn, -1);
+      out.push({ k: "a", a: PA, b: PB, m: M, n: bn, key: `${lines[A.i].key}~${lines[B.i].key}` });
     }
   }
-  return [...L.map((l) => ({ k: "l" as const, a: l.a, b: l.b, n: sketch3dNormal(n3(v3.sub(l.b, l.a))), key: l.key })), ...out];
+  return [...L.map((l) => ({ k: "l" as const, a: l.a, b: l.b, n: sketch3dNormal(n3(v3.sub(l.b, l.a)), legacy), key: l.key })), ...out];
 }
 
 /** Bir eskizin hangi özellik(ler) tarafından kullanıldığı */

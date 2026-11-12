@@ -265,3 +265,16 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Sürüklerken çarpışma algılama (adımlı kutu testi) | ✅ |
 | Doğrusal (2 yön) / dairesel bileşen çoğaltma | ✅ |
 | Simetrik, genişlik, mekanik eşleşmeler, alt montaj, bağlam içi düzenleme | ⬜ |
+
+## v0.18 — 3B eskiz ve profil yönü (SolidWorks)
+
+| Özellik | Durum |
+|---|---|
+| 3B eskizde grafik alanda tıklayarak çizim (boşluk → etkin düzlem, yüz → yüzey noktası) | ✅ |
+| Tab ile XY / YZ / ZX, uzay tutamacı, lastik bant, canlı uzunluk | ✅ |
+| X / Y / Z eksen çıkarımı (Along X/Y/Z kaydı) | ✅ |
+| Rakamla uzunluk, çift tık / Esc zinciri bitir, noktaya tıklayınca kapat | ✅ |
+| Çizgi uzunluğu düzenleme (bağlı noktalar kayar) | ✅ |
+| Profil yönü: dikey eksen = eskiz normali / dünya yukarısı (`ori: 2`, eski belgeler korunur) | ✅ |
+| Yapı elemanında segmentleri grafik alanda seçme + vurgulama | ✅ |
+| Gruplar, Alignment, profil üzerinde delme noktası seçimi, 3B çözücü, nokta sürükleme | ⬜ |
