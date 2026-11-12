@@ -29,7 +29,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 3. Teknoloji ve mimari
 
-- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v16`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.12.2**).
+- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v17`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.12.3**).
 - **Geometri çekirdeği:** OpenCascade WASM — `replicad` (MIT) + `replicad-opencascadejs` (LGPL), **Web Worker**'da (`src/kernel.worker.ts`). Ham OCC `getOC()` ile.
 - **Eskiz çözücü:** PlaneGCS (`@salusoft89/planegcs`, LGPL) ana iş parçacığında (`src/sketch/solver.ts`).
 - **Görüntü:** three.js ortografik kamera, özel `NavControls` (`src/nav.ts`), kalın çizgiler LineSegments2.
@@ -72,6 +72,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - **v0.12 arayüz ve eskiz:** komut çubuğu **gruplara** ayrıldı (ilk grup hep görünür + grup düğmeleri; telefonda ayrı satır), **tam ekran** düğmesi (⛶) + manifest `fullscreen`, **imleç geri bildirimi** (çizim kalemi, yakalamada sarı nokta, seçilebilir öğede el), eskiz açılan **model yüzünün kenarlarına yakalama** (köşe / kenar ortası / merkez → sabit nokta), Akıllı Ölçü ve Seç ile **model kenarına tıklama** (sabit yapı çizgisine dönüşür), **uyandırma** artık çizgi orta noktaları, daire merkezleri (çevresine gelince) ve model noktalarını da kapsar (iki kenar ortasından hizalama ile kare merkezi bulunur).
 - **v0.12.1:** **dikdörtgen/paralelkenar merkezine doğrudan yakalama** (yapı köşegeni + orta nokta ilişkisi otomatik), **model kenarı üzerinde yakalama** (sabit yapı çizgisi + üzerinde ilişkisi).
 - **v0.12.2:** **Akıllı Ölçü'de tüm noktalar seçilebilir**: çizgi ortası, daire/yay çeyrekleri, yay ortası, kesişim, dikdörtgen merkezi, model köşe/kenar ortası/merkez/kenar üzeri (`virtualPt` → seçilince gerçek nokta + ilişki oluşur); Seç aracında Ctrl+tık ile de aynı noktalar seçilip ilişki verilebilir. Ortaya/çeyreğe tıklayıp boşluğa tıklanırsa çizginin/dairenin kendisi ölçülür (sanal nokta silinir).
+- **v0.12.3:** yakalama **yazısı kaldırıldı**; yakalanan yerin türü **imleç simgesiyle** gösterilir (uç kare, orta üçgen, merkez daire, çeyrek, kesişim X, üzerinde, yatay/dikey, dik, teğet, model köşesi mavi kare, orijin) — `setCursor`/`snapKind`. Kutuda yalnız canlı ölçü (L, R) kalır. Testler etiket için `editor.st.inf.label` / `editor.curKind` okur.
 
 ## 5. Sıradaki işler (öncelik sırasıyla)
 

@@ -216,3 +216,4 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Uyandırma | Çizgi ortaları, daire merkezleri, model noktaları → hizalama çizgileri (kare merkezi) | ✅ |
 | Eskiz (v0.12.1) | Dikdörtgen merkezine doğrudan yakalama, model kenarı üzerinde yakalama | ✅ |
 | Akıllı Ölçü (v0.12.2) | Çizgi ortası, çeyrek, yay ortası, kesişim, dikdörtgen merkezi, model noktaları seçilebilir; Seç + Ctrl ile ilişki | ✅ |
+| İmleç (v0.12.3) | Yakalama türüne göre SolidWorks tarzı imleç simgeleri, yazı etiketi kaldırıldı | ✅ |

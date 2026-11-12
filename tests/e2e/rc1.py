@@ -14,11 +14,11 @@ with sync_playwright() as p:
     ed = lambda js: pg.evaluate(f"(()=>{{const e=window.__app.mode.editor; const d=e.data; {js}}})()")
     ed("e.opts.quickDim=false; e.setTool('point')")
     # model kenarı üzerinde (köşe/orta dışı): (20, 20, 30)
-    xe,ye = sc("[20,20,30]"); pg.mouse.move(xe,ye+1,steps=3); print("on model badge:", pg.evaluate("document.querySelector('.sk-badge')?.title")); pg.mouse.click(xe,ye+1)
+    xe,ye = sc("[20,20,30]"); pg.mouse.move(xe,ye+1,steps=3); print("on model badge:", pg.evaluate("(()=>{const e=window.__app.mode.editor; const i=(e.tool==='dim'?e.st.vpt:e.st.inf); return (i&&i.label||'')+'|'+e.curKind})()")); pg.mouse.click(xe,ye+1)
     print("rels:", ed("return d.rels.map(r=>r.t).join(',')"), "status:", pg.inner_text("#status-text"))
     # kendi dikdörtgenimiz ve merkezi
     ed("e.setTool('rect')"); a=sc("[-40,20,-20]"); b2=sc("[0,20,10]"); pg.mouse.click(*a); pg.mouse.click(*b2)
-    ed("e.setTool('circle')"); cx,cy = sc("[-20,20,-5]"); pg.mouse.move(cx+1,cy,steps=3); print("rect center badge:", pg.evaluate("document.querySelector('.sk-badge')?.title"))
+    ed("e.setTool('circle')"); cx,cy = sc("[-20,20,-5]"); pg.mouse.move(cx+1,cy,steps=3); print("rect center badge:", pg.evaluate("(()=>{const e=window.__app.mode.editor; const i=(e.tool==='dim'?e.st.vpt:e.st.inf); return (i&&i.label||'')+'|'+e.curKind})()"))
     pg.mouse.click(cx+1,cy); pg.mouse.click(cx+40,cy)
     print("circle center:", ed("const c=d.ents.find(x=>x.t==='circle'); return [d.pts[c.c].x.toFixed(2), d.pts[c.c].y.toFixed(2)]"), "rels:", ed("return d.rels.map(r=>r.t).join(',')"))
     print("errors:", logs)

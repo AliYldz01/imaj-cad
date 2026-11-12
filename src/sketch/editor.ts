@@ -340,15 +340,50 @@ export class SketchEditor implements InputHandler {
     this.renderPanel();
   }
 
-  /** imleç: her durumda tepki (çizim / yakalama / seçilebilir öğe) */
+  /** imleç: her durumda tepki — yakalanan yerin türüne göre SolidWorks gibi simge (yazı yok) */
   private curKind = "";
-  setCursor(k: "default" | "pointer" | "draw" | "snap") {
+  setCursor(k: string) {
     if (k === this.curKind) return;
     this.curKind = k;
     const cv = this.host.viewer.renderer.domElement;
-    const svg = (dot: boolean) =>
-      `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M16 2v11M16 19v11M2 16h11M19 16h11' stroke='#111' stroke-width='1.5'/>${dot ? "<circle cx='16' cy='16' r='5' fill='#ffd43b' stroke='#e8590c' stroke-width='2'/>" : "<path d='M22 4l6 6-9 9-7 1 1-7z' fill='#fff' stroke='#1c4fd8' stroke-width='1.3'/>"}</svg>`)}") 16 16, crosshair`;
-    cv.style.cursor = k === "pointer" ? "pointer" : k === "draw" ? svg(false) : k === "snap" ? svg(true) : "default";
+    if (k === "pointer" || k === "default") return void (cv.style.cursor = k);
+    const O = "#e8590c", Y = "#ffd43b";
+    // sağ alttaki küçük simge (x:20..36, y:20..36)
+    const icons: Record<string, string> = {
+      draw: `<path d='M30 18l6 6-9 9-7 1 1-7z' fill='#fff' stroke='#1c4fd8' stroke-width='1.4'/>`,
+      end: `<rect x='22' y='22' width='11' height='11' fill='${Y}' stroke='${O}' stroke-width='2'/>`,
+      mid: `<path d='M20 34h16' stroke='#333' stroke-width='1.5'/><path d='M28 21l6 10h-12z' fill='${Y}' stroke='${O}' stroke-width='2'/>`,
+      center: `<circle cx='28' cy='28' r='7' fill='none' stroke='${O}' stroke-width='2'/><circle cx='28' cy='28' r='2.5' fill='${O}'/>`,
+      quad: `<circle cx='28' cy='28' r='7' fill='none' stroke='#333' stroke-width='1.3'/><circle cx='35' cy='28' r='3' fill='${Y}' stroke='${O}' stroke-width='1.5'/>`,
+      isect: `<path d='M21 21l14 14M35 21L21 35' stroke='${O}' stroke-width='2.5'/>`,
+      on: `<path d='M20 33l16-10' stroke='#333' stroke-width='1.5'/><circle cx='28' cy='28' r='3.5' fill='${Y}' stroke='${O}' stroke-width='1.5'/>`,
+      onc: `<path d='M21 34a10 10 0 0 1 14-12' fill='none' stroke='#333' stroke-width='1.5'/><circle cx='26' cy='26' r='3.5' fill='${Y}' stroke='${O}' stroke-width='1.5'/>`,
+      h: `<path d='M20 28h16' stroke='${O}' stroke-width='3'/>`,
+      v: `<path d='M28 20v16' stroke='${O}' stroke-width='3'/>`,
+      perp: `<path d='M21 34h15M24 34V21' stroke='${O}' stroke-width='2.5'/>`,
+      tan: `<path d='M20 34h16' stroke='#333' stroke-width='1.5'/><circle cx='28' cy='27' r='6' fill='none' stroke='${O}' stroke-width='2'/>`,
+      model: `<rect x='22' y='22' width='11' height='11' fill='#74c0fc' stroke='#1864ab' stroke-width='2'/>`,
+      origin: `<path d='M22 34V22M22 34h12' stroke='#c92a2a' stroke-width='2.5'/>`,
+    };
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><path d='M10 1v6M10 13v6M1 10h6M13 10h6' stroke='#111' stroke-width='1.6'/>${icons[k] ?? ""}</svg>`;
+    cv.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 10 10, crosshair`;
+  }
+  /** çıkarım sonucundan imleç türü */
+  private snapKind(inf: Inference | null | undefined, draw = true): string {
+    if (!inf) return draw ? "draw" : "default";
+    const L = inf.label ?? "";
+    if (inf.ptId) return inf.ptId === ORIGIN ? "origin" : "end";
+    if (inf.fixAt) return L.includes("ortası") ? "mid" : L.includes("merkez") ? "center" : "model";
+    if (inf.rectC) return "center";
+    if (inf.on2) return "isect";
+    if (inf.mid || L === "Yay ortası") return "mid";
+    if (L === "Çeyrek") return "quad";
+    if (inf.onModel !== undefined || inf.on) return inf.on && inf.on.t !== "line" ? "onc" : "on";
+    if (inf.lineRel?.t === "perpendicular") return "perp";
+    if (inf.lineRel?.t === "tangent") return "tan";
+    if (inf.lineRel?.t === "collinear") return "on";
+    if (inf.hv) return inf.hv;
+    return draw ? "draw" : "default";
   }
 
   /** Sayıyla çizim: çizgi (X,Y / uzunluk, açı), dikdörtgen (G, Y), daire (Ø) */
@@ -1071,7 +1106,7 @@ export class SketchEditor implements InputHandler {
         this.hov = h;
         this.render();
       }
-      this.setCursor(h ? (h.kind === "pt" ? "snap" : "pointer") : "default");
+      this.setCursor(h ? (h.kind === "pt" ? (h.id === ORIGIN ? "origin" : "end") : "pointer") : "default");
       return;
     }
     if (t === "convert") {
@@ -1085,9 +1120,8 @@ export class SketchEditor implements InputHandler {
       this.hov = h ?? (v ? null : this.hitTest(p));
       this.st.vpt = v;
       this.render();
-      if (v) this.showBadge(e.clientX, e.clientY, `${v.glyph ?? "•"}  ${v.label}`, v.label);
-      else this.hideBadge();
-      this.setCursor(h || v ? "snap" : this.hov ? "pointer" : "default");
+      this.hideBadge();
+      this.setCursor(h ? (h.id === ORIGIN ? "origin" : "end") : v ? this.snapKind(v, false) : this.hov ? "pointer" : "default");
       return;
     }
     const from = this.st.lastPos ?? this.st.aPos ?? null;
@@ -1096,13 +1130,14 @@ export class SketchEditor implements InputHandler {
     if (!this.noInfer) this.trackWake(p);
     const lineLike = t === "line" || t === "centerline" || ((t === "slot" || t === "cslot" || t === "rect3" || t === "para") && !this.st.bPos);
     const inf = this.infer(p, lineLike ? from : null);
-    this.setCursor(inf.label ? "snap" : "draw");
+    this.setCursor(this.snapKind(inf));
     const prevLabel = (this.st.inf as Inference | undefined)?.label;
     this.st.inf = inf;
     if (inf.label && inf.label !== prevLabel && (e as any).pointerType && (e as any).pointerType !== "mouse" && prefs.haptic) navigator.vibrate?.(6);
     this.render();
     const text = this.liveText(inf.p);
-    if (inf.glyph || inf.label || text) this.showBadge(e.clientX, e.clientY, [inf.glyph, text || inf.label].filter(Boolean).join("  "), inf.label);
+    // yakalama türü imleçte simgeyle gösterilir; kutuda yalnız canlı ölçü (uzunluk / yarıçap)
+    if (text) this.showBadge(e.clientX, e.clientY, text, inf.label);
     else this.hideBadge();
   }
 

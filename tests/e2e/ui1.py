@@ -19,8 +19,8 @@ with sync_playwright() as p:
     pg.evaluate("(()=>{const e=window.__app.mode.editor; e.opts.quickDim=false; e.setTool('line')})()")
     sc = lambda w: (lambda q: (r["x"]+q[0], r["y"]+q[1]))(pg.evaluate(f"window.__app.viewer.toScreen({w})"))
     x,y = sc("[50,20,30]"); x2,y2 = sc("[50,20,-30]")
-    pg.mouse.move(x+2,y+2, steps=4); print("badge corner:", pg.evaluate("document.querySelector('.sk-badge')?.title"), "cursor:", pg.evaluate("window.__app.viewer.renderer.domElement.style.cursor.slice(0,12)"))
-    xm,ym = sc("[50,20,0]"); pg.mouse.move(xm+1,ym+1, steps=4); print("badge mid:", pg.evaluate("document.querySelector('.sk-badge')?.title"))
+    pg.mouse.move(x+2,y+2, steps=4); print("badge corner:", pg.evaluate("(()=>{const e=window.__app.mode.editor; const i=(e.tool==='dim'?e.st.vpt:e.st.inf); return (i&&i.label||'')+'|'+e.curKind})()"), "cursor:", pg.evaluate("window.__app.viewer.renderer.domElement.style.cursor.slice(0,12)"))
+    xm,ym = sc("[50,20,0]"); pg.mouse.move(xm+1,ym+1, steps=4); print("badge mid:", pg.evaluate("(()=>{const e=window.__app.mode.editor; const i=(e.tool==='dim'?e.st.vpt:e.st.inf); return (i&&i.label||'')+'|'+e.curKind})()"))
     pg.mouse.click(x+2,y+2); pg.mouse.click(xm+1,ym+1); pg.keyboard.press("Escape")
     print("fix rels:", pg.evaluate("window.__app.mode.editor.data.rels.map(r=>r.t).join(',')"), pg.inner_text("#status-text"))
     # dim tool on model edge

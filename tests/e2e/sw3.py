@@ -16,7 +16,7 @@ with sync_playwright() as p:
     ed = lambda js: pg.evaluate(f"(()=>{{const e=window.__app.mode.editor; const d=e.data; {js}}})()")
     def mv(x,y,steps=6): pg.mouse.move(*sc(x,y), steps=steps); time.sleep(0.05)
     def ck(x,y): mv(x,y); pg.mouse.click(*sc(x,y)); time.sleep(0.1)
-    badge = lambda: pg.evaluate("(()=>{const b=document.querySelector('.sk-badge'); return b&&b.style.display!=='none'? b.title+' | '+b.textContent : ''})()")
+    badge = lambda: pg.evaluate("(()=>{const e=window.__app.mode.editor; const i=(e.tool==='dim'?e.st.vpt:e.st.inf); return (i&&i.label||'')+'|'+e.curKind})()")
     rels = lambda: ed("return d.rels.map(r=>r.t).join(',')")
     tool = lambda t: ed(f"e.setTool('{t}')")
     # 1) eğik çizgi, sonra dik çıkarım
