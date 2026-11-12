@@ -875,8 +875,13 @@ function trimTool(f: Extract<KFeature, { type: "trim" }>) {
   const map = memberBodyMap();
   const bPairs = f.bounds.map((k) => ({ k, i: map.get(k) })).filter((x): x is { k: string; i: number } => x.i !== undefined);
   const bIdx = bPairs.map((x) => x.i);
-  if (!bIdx.length) throw new Error("Sınır elemanı bulunamadı");
-  const bR = Math.max(...f.bounds.map((k) => memberReg.get(k)?.R ?? 0));
+  const planes = (f.faces ?? []).map((r) => {
+    const pf = planarFace(r);
+    if (!pf || String(pf.face.geomType) !== "PLANE") throw new Error("Sınır yüzü bulunamadı (düz bir yüz seçin)");
+    return { c: pf.c, n: pf.n };
+  });
+  if (!bIdx.length && !planes.length) throw new Error("Sınır elemanı bulunamadı");
+  const bR = Math.max(0, ...f.bounds.map((k) => memberReg.get(k)?.R ?? 0));
   for (const k of f.targets) {
     const reg = memberReg.get(k);
     const ti = map.get(k);
@@ -918,6 +923,21 @@ function trimTool(f: Extract<KFeature, { type: "trim" }>) {
           body = keepFar(body.cut(halfSpace(vadd(P, vmul(inward, off)), inward)), P, inward);
         }
       }
+    }
+    // düz yüz sınırları: elemanın yüze yakın ucu yüz düzlemine kadar uzatılır / kırpılır
+    for (const pl of planes) {
+      const da = vdot(vsub(reg.a, pl.c), pl.n), db = vdot(vsub(reg.b, pl.c), pl.n);
+      const nearA = Math.abs(da) < Math.abs(db);
+      const P = nearA ? reg.a : reg.b, other = nearA ? reg.b : reg.a;
+      const dOut = nearA ? vmul(reg.d, -1) : reg.d;
+      const cs = vdot(dOut, pl.n);
+      if (Math.abs(cs) < 0.05) continue; // eleman yüze paralel
+      const keep = Math.sign(vdot(vsub(other, pl.c), pl.n)) || 1;
+      const dist = Math.abs(nearA ? da : db);
+      const M = dist / Math.abs(cs) + 3 * reg.R + 5;
+      body = body.fuse(profile(reg.loops).sketchOnPlane(new Plane(P, reg.x, reg.d)).extrude(nearA ? -M : M));
+      body = keepFar(body.cut(halfSpace(pl.c, vmul(pl.n, keep))), P, vmul(dOut, -1));
+      touched = true;
     }
     if (!touched) throw new Error("Hedef elemanın uçları sınır elemanlara yakın değil");
     bodies[ti] = body;

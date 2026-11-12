@@ -407,6 +407,7 @@ function refreshHighlight() {
       const keys = new Set([...d.targets, ...d.bounds].map((r) => `${r.f}:${r.i}`));
       const bs = new Set(memberBodies.filter((x) => keys.has(x.key)).map((x) => x.body));
       sel.faces = m.faces.map((f, i) => (f.b !== undefined && bs.has(f.b) ? i : -1)).filter((i) => i >= 0);
+      sel.faces.push(...(d.faces ?? []).map((r) => nearestFace(r)).filter((i) => i >= 0));
     }
     if (m && (d.type === "shell" || d.type === "draft")) sel.faces = d.faces.map((r) => nearestFace(r)).filter((i) => i >= 0);
     if (m && d.type === "extrude" && d.face) sel.faces = [nearestFace(d.face)].filter((i) => i >= 0);
@@ -910,7 +911,7 @@ function commitFeature(kind: string) {
   if (draft.type === "weld" && !draft.pairs.length) return toast("Kaynak için en az bir yüz çifti seçin", true);
   delete (draft as any)._p1;
   if (draft.type === "member" && !draft.segs.length) return toast("En az bir segment seçin", true);
-  if (draft.type === "trim" && (!draft.targets.length || !draft.bounds.length)) return toast("Kırpılacak ve sınır elemanlarını seçin", true);
+  if (draft.type === "trim" && (!draft.targets.length || (!draft.bounds.length && !draft.faces?.length))) return toast("Kırpılacak elemanları ve sınırı (eleman veya düz yüz) seçin", true);
   if (draft.type === "endcap" && !draft.faces.length) return toast("Elemanın uç yüzünü seçin", true);
   if (draft.type === "gusset" && (!draft.f1 || !draft.f2)) return toast("İç köşeyi oluşturan iki yüzü seçin", true);
   delete (draft as any)._pick;
@@ -1619,6 +1620,15 @@ function renderFeaturePM(kind: string) {
       );
       body.appendChild(group(`Kırpılacak elemanlar (${d.targets.length})`, listEl(d.targets)));
       body.appendChild(group(`Sınır elemanlar (${d.bounds.length})`, listEl(d.bounds)));
+      if (d.faces?.length) {
+        const fb = h("div", "pm-feats");
+        d.faces.forEach((_: any, j: number) => {
+          const row = h("div", "pm-row");
+          row.append(h("span", "", `Sınır yüz ${j + 1}`), button("✕", () => (d.faces.splice(j, 1), renderFeaturePM(kind), refreshHighlight(), upd()), "btn danger"));
+          fb.appendChild(row);
+        });
+        body.appendChild(group(`Sınır yüzler (${d.faces.length})`, fb));
+      }
       body.appendChild(group("Kesim", checkField("Profile göre kes (koplama)", !!d.coped, (v) => ((d.coped = v), upd())), h("p", "pm-hint", "Kapalıyken düz kesilir: eleman sınırın yüzeyinde biter. Uç sınıra yetişmiyorsa eleman uzatılır.")));
       hint(d._pick === "bounds" ? "Sınır elemanlarına dokunun" : "Kırpılacak elemanlara dokunun");
       break;
@@ -2188,7 +2198,18 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else if (d.type === "trim" && hit.kind === "face" && m) {
     const b = m.faces[hit.index].b;
     const mb = memberBodies.find((x) => x.body === b);
-    if (!mb) return toast("Bir yapı elemanına dokunun", true);
+    if (!mb) {
+      const fc = m.faces[hit.index];
+      if (d._pick !== "bounds" || !fc.n) return toast(d._pick === "bounds" ? "Bir yapı elemanına veya düz bir yüze dokunun" : "Bir yapı elemanına dokunun", true);
+      d.faces = d.faces ?? [];
+      const k = d.faces.findIndex((r: FaceRef) => dist3(r.c, fc.c) < 1e-3);
+      if (k >= 0) d.faces.splice(k, 1);
+      else d.faces.push({ c: fc.c, n: fc.n });
+      schedulePreview();
+      renderFeaturePM(kind);
+      refreshHighlight();
+      return;
+    }
     const [f, i] = [mb.key.slice(0, mb.key.lastIndexOf(":")), parseInt(mb.key.slice(mb.key.lastIndexOf(":") + 1))];
     const list = d._pick === "bounds" ? d.bounds : d.targets;
     const other = d._pick === "bounds" ? d.targets : d.bounds;

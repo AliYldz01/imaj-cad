@@ -411,7 +411,7 @@ export interface MemberFeature extends FeatBase {
   gap: number;
 }
 /** Kırp / uzat: hedef elemanları sınır elemanlara göre kırpar ve gerekiyorsa uzatır */
-export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean }
+export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean; /** sınır düz yüzler (ör. taban levhası) */ faces?: FaceRef[] }
 /** Uç kapağı */
 export interface EndCapFeature extends FeatBase { type: "endcap"; faces: FaceRef[]; t: number; inset: number }
 /** Kaynak dikişi (köşe kaynağı) */
@@ -531,7 +531,7 @@ export type KFeature =
   | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
   | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
-  | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean }
+  | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }
   | { id: string; type: "gusset"; f1: FaceRef; f2: FaceRef; d1: number; d2: number; t: number; chamfer: number; offset: number }
   | { id: string; type: "sketchbend"; pl: KPlane; line: [Vec2, Vec2]; angle: number; side: boolean; flip: boolean; pos: "center" | "inside" | "outside"; r: number; t: number; k: number };

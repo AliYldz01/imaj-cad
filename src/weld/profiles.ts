@@ -32,7 +32,7 @@ export const PROFILES: Record<ProfileStd, { label: string; std: string; sizes: R
   },
   U: {
     label: "U profil (UPN)",
-    std: "DIN 1026-1 (paralel flanş yaklaşımı)",
+    std: "DIN 1026-1 (%8 eğimli flanş)",
     // h, b, tw, tf, r1
     sizes: { "UPN 50": [50, 38, 5, 7, 7], "UPN 65": [65, 42, 5.5, 7.5, 7.5], "UPN 80": [80, 45, 6, 8, 8], "UPN 100": [100, 50, 6, 8.5, 8.5], "UPN 120": [120, 55, 7, 9, 9], "UPN 140": [140, 60, 7, 10, 10], "UPN 160": [160, 65, 7.5, 10.5, 10.5], "UPN 180": [180, 70, 8, 11, 11], "UPN 200": [200, 75, 8.5, 11.5, 11.5], "UPN 220": [220, 80, 9, 12.5, 12.5], "UPN 240": [240, 85, 9.5, 13, 13] },
   },
@@ -144,9 +144,12 @@ export function rawProfile(std: ProfileStd, size: string): Loop[] {
       return [{ segs: filletPoly(pts, [0, 0, r2, r1, r2, 0]), depth: 0 }];
     }
     case "U": {
+      // UPN: flanş iç yüzü %8 eğimli; tf flanş ortasında ölçülür
       const [h, b, tw, tf, r1] = p;
       const r2 = r1 / 2;
-      const pts: Vec2[] = [[0, 0], [b, 0], [b, tf], [tw, tf], [tw, h - tf], [b, h - tf], [b, h], [0, h]];
+      const half = (b - tw) / 2;
+      const yW = tf + 0.08 * half, yT = tf - 0.08 * half;
+      const pts: Vec2[] = [[0, 0], [b, 0], [b, yT], [tw, yW], [tw, h - yW], [b, h - yT], [b, h], [0, h]];
       return [{ segs: filletPoly(pts, [0, 0, r2, r1, r1, r2, 0, 0]), depth: 0 }];
     }
     case "IPE":

@@ -210,8 +210,8 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         }
         case "trim": {
           if (!f.targets.length) throw new Error("Kırpılacak elemanları seçin");
-          if (!f.bounds.length) throw new Error("Sınır elemanlarını seçin");
-          kfeats.push({ id: f.id, type: "trim", targets: f.targets.map((r) => `${r.f}:${r.i}`), bounds: f.bounds.map((r) => `${r.f}:${r.i}`), coped: f.coped });
+          if (!f.bounds.length && !f.faces?.length) throw new Error("Sınır elemanlarını veya sınır yüzünü seçin");
+          kfeats.push({ id: f.id, type: "trim", targets: f.targets.map((r) => `${r.f}:${r.i}`), bounds: f.bounds.map((r) => `${r.f}:${r.i}`), coped: f.coped, faces: f.faces });
           break;
         }
         case "weld":
