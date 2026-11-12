@@ -354,3 +354,12 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | 3B araçlar üst çubukta | ✅ |
 | 3B seçim yanında ilişki/ölçü çubuğu | ✅ |
 | 3B hizalama çıkarımı (eksen boyunca diğer noktanın hizası) | ✅ |
+
+## v0.25 — Kırpma düzeltmeleri
+
+| Özellik | Durum |
+|---|---|
+| Teğet çizgi/daire kesişimi toleranslı (geometrik çözüm) | ✅ |
+| Çakışan kesişimlerin teklenmesi | ✅ |
+| Tek kesişimli daire silinmez | ✅ |
+| Ortadan kırpmada doğrusal + teğet ilişkisinin taşınması, bölünen yaylarda eşit | ✅ |

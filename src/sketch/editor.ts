@@ -2813,8 +2813,18 @@ export class SketchEditor implements InputHandler {
           const oldP2 = e.p2;
           e.p2 = q1;
           const nl = addLine(sk, q2, oldP2, e.cons);
-          for (const r of sk.rels.filter((r) => r.refs.includes(e.id) && (r.t === "horizontal" || r.t === "vertical")))
-            addRel(sk, r.t, [nl.id]);
+          // SolidWorks: ortadan kırpılan çizginin iki parçası doğrusal kalır
+          if (sk.rels.some((r) => r.refs.includes(e.id) && r.refs.length === 1 && (r.t === "horizontal" || r.t === "vertical")))
+            for (const r of sk.rels.filter((r) => r.refs.includes(e.id) && r.refs.length === 1 && (r.t === "horizontal" || r.t === "vertical"))) addRel(sk, r.t, [nl.id]);
+          else addRel(sk, "collinear", [e.id, nl.id]);
+          // teğet ilişkileri: kesim noktası hangi parçaya yakınsa o parçaya taşınır
+          for (const r of sk.rels.filter((r) => r.t === "tangent" && r.refs.includes(e.id))) {
+            const other = getEnt(sk, r.refs.find((x) => x !== e.id)!);
+            if (!other || (other.t !== "circle" && other.t !== "arc")) continue;
+            const cc = P(sk, other.c);
+            const near = (l: SLine) => nearestOnSeg(cc, P(sk, l.p1), P(sk, l.p2)).d;
+            if (near(nl) < near(e as SLine)) r.refs = r.refs.map((x) => (x === e.id ? nl.id : x));
+          }
         } else if (lo) e.p2 = mk(lo.p, lo.by);
         else e.p1 = mk(hi!.p, hi!.by);
       });
@@ -2824,7 +2834,8 @@ export class SketchEditor implements InputHandler {
     const c = P(sk, e.c);
     const a = ang(c, h.q);
     if (e.t === "circle") {
-      if (cuts.length < 2) return this.op(() => deleteIds(sk, [e.id]));
+      if (!cuts.length) return this.op(() => deleteIds(sk, [e.id]));
+      if (cuts.length < 2) return this.host.toast("Daireyi kırpmak için en az iki kesişim gerekir (tek teğet/kesişim var)", true);
       const rel = (x: number) => normAng(x - a);
       const sorted = [...cuts].sort((x, y) => rel(x.t) - rel(y.t));
       const next = sorted[0], prev = sorted[sorted.length - 1];
@@ -2852,6 +2863,8 @@ export class SketchEditor implements InputHandler {
         arc.e = q1;
         const na = addArc(sk, arc.c, q2, oldE, arc.cons);
         na.r = arc.r;
+        // SolidWorks: aynı daireden kalan iki yay eş yarıçaplı kalır (merkez zaten ortak)
+        addRel(sk, "equal", [arc.id, na.id]);
       } else if (lo) arc.e = mk(lo.p, lo.by);
       else arc.s = mk(hi!.p, hi!.by);
     });
@@ -2896,7 +2909,10 @@ export class SketchEditor implements InputHandler {
         for (const q of pts) if (onOther(o, q)) out.push({ p: q, t: ang(c, q), by: o.id });
       }
     }
-    return out;
+    // aynı noktadaki kesişimleri tekle (teğet noktası, üç varlığın kesiştiği nokta) — sıfır boylu parça oluşmasın
+    const uniq: typeof out = [];
+    for (const x of out) if (!uniq.some((u) => d2(u.p, x.p) < 1e-6)) uniq.push(x);
+    return uniq;
   }
 
   // ---------------- Akıllı ölçü ----------------

@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.25: Kırpma düzeltmeleri: teğet noktaları artık her zaman kesişim sayılır (çözücü hatasına dayanıklı), aynı noktadaki kesişimler teklenir, tek kesişimli daire silinmez (uyarı), ortadan kırpılan çizgi parçaları doğrusal kalır ve teğet ilişkisi doğru parçaya geçer, bölünen yaylar eş yarıçaplı kalır
 - v0.24: 2B: düz çizilen çizgiler (noktaya kapanan dahil) otomatik yatay/dikey, mavi hizalama ile konan noktaya hizalama ilişkisi → kare 2 ölçüyle tam tanımlı; 3B: üst çubukta 3B araçlar, seçince yanında ilişki/ölçü çubuğu, eksen boyunca hizalama çıkarımı (diğer noktanın hizasına yakalanır)
 - v0.23: Çizim araçları yalnız eskiz modunda (eskize Eskiz + düzlem/yüz seçimiyle girilir, araçlar dışarıda soluk); merkez dikdörtgen ötelemesi düzeldi (yapı köşegenleri ötelenmez); telefon/kalemde yakalama türü çizim noktasının yanında simgeyle gösterilir; 3B eskizde çizgi/yay üzerine yakalama ("Üzerinde" ilişkisi); üst kenarlar radyüslendikten sonra düşey kenar radyüsü (eşit/büyük yarıçapta da) çalışır
 - v0.22.1: Düzlemsel profil zincirlerinde (ör. ters U çerçeve) tüm elemanların profil yönü zincir düzlemine göre aynı; köşelerde profiller doğru buluşur

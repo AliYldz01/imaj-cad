@@ -68,31 +68,34 @@ export function lineLine(a1: Vec2, a2: Vec2, b1: Vec2, b2: Vec2): { p: Vec2; ta:
 
 /** Doğru (a+t(b-a)) - çember kesişimleri, t parametreleriyle */
 export function lineCircle(a: Vec2, b: Vec2, c: Vec2, r: number): { p: Vec2; t: number }[] {
+  // geometrik çözüm: merkezden doğruya dik ayak + yarım kiriş. Teğet (çözücüden gelen ~1e-9 hata) tek nokta verir.
   const d = sub2(b, a);
-  const f = sub2(a, c);
   const A = dot2(d, d);
-  const B = 2 * dot2(f, d);
-  const C = dot2(f, f) - r * r;
-  let disc = B * B - 4 * A * C;
-  if (disc < -1e-9 || A < 1e-18) return [];
-  disc = Math.max(0, disc);
-  const sq = Math.sqrt(disc);
-  const ts = disc < 1e-12 ? [-B / (2 * A)] : [(-B - sq) / (2 * A), (-B + sq) / (2 * A)];
-  return ts.map((t) => ({ p: [a[0] + d[0] * t, a[1] + d[1] * t] as Vec2, t }));
+  if (A < 1e-18) return [];
+  const t0 = dot2(sub2(c, a), d) / A;
+  const foot: Vec2 = [a[0] + d[0] * t0, a[1] + d[1] * t0];
+  const h = Math.hypot(foot[0] - c[0], foot[1] - c[1]);
+  const tol = 1e-6 * Math.max(1, r);
+  if (h > r + tol) return [];
+  if (Math.abs(h - r) <= tol) return [{ p: foot, t: t0 }];
+  const half = Math.sqrt(Math.max(0, r * r - h * h)) / Math.sqrt(A);
+  return [t0 - half, t0 + half].map((t) => ({ p: [a[0] + d[0] * t, a[1] + d[1] * t] as Vec2, t }));
 }
 
 export function circleCircle(c1: Vec2, r1: number, c2: Vec2, r2: number): Vec2[] {
-  const d = d2(c1, c2);
-  if (d < 1e-12 || d > r1 + r2 + 1e-9 || d < Math.abs(r1 - r2) - 1e-9) return [];
+  const d = Math.hypot(c2[0] - c1[0], c2[1] - c1[1]);
+  const tol = 1e-6 * Math.max(1, r1, r2);
+  if (d < 1e-12 || d > r1 + r2 + tol || d < Math.abs(r1 - r2) - tol) return [];
   const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
-  const h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
+  const h2 = r1 * r1 - a * a;
   const u = mul2(sub2(c2, c1), 1 / d);
   const m: Vec2 = add2(c1, mul2(u, a));
-  if (h < 1e-9) return [m];
+  // teğet çemberler: tek nokta
+  if (h2 <= (2 * tol) * Math.max(1, r1) || Math.abs(d - (r1 + r2)) <= tol || Math.abs(d - Math.abs(r1 - r2)) <= tol) return [m];
+  const h = Math.sqrt(h2);
   const pp = perp(u);
   return [add2(m, mul2(pp, h)), add2(m, mul2(pp, -h))];
 }
-
 /** Üç noktadan geçen çember */
 export function circle3(a: Vec2, b: Vec2, c: Vec2): { c: Vec2; r: number } | null {
   const bx = b[0] - a[0], by = b[1] - a[1], cx = c[0] - a[0], cy = c[1] - a[1];
