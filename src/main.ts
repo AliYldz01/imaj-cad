@@ -3958,6 +3958,26 @@ viewer.onFingerTap = (n) => {
   else if (n >= 3) redo(), toast("İleri alındı");
 };
 
+/** dokunmatikte tıklama gecikmesi olmadan anında çalışan düğme */
+function onTap(el: HTMLElement, fn: () => void) {
+  let down = -1;
+  el.addEventListener("pointerdown", (e) => {
+    down = e.pointerId;
+    e.stopPropagation();
+  });
+  el.addEventListener("pointerup", (e) => {
+    if (e.pointerId !== down) return;
+    down = -1;
+    e.preventDefault();
+    fn();
+  });
+  // klavye ile (Enter / Boşluk) veya fare dışı tıklama
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (e.detail === 0) fn();
+  });
+}
+
 /** araç listesi (S çubuğu ve dairesel menü ortak) */
 function shortcutItems(): [string, string, () => void][] {
   return mode.k === "sketch"
@@ -3998,7 +4018,7 @@ function openRadial(x: number, y: number) {
     b.appendChild(h("span", "", label));
     b.style.left = R * Math.cos(a) + "px";
     b.style.top = R * Math.sin(a) + "px";
-    b.addEventListener("click", () => {
+    onTap(b, () => {
       closePopups();
       lastCmd = run;
       run();
@@ -4007,7 +4027,7 @@ function openRadial(x: number, y: number) {
     box.appendChild(b);
   });
   const c = h("button", "sw-rb center", "✕");
-  c.addEventListener("click", () => closePopups());
+  onTap(c, () => closePopups());
   box.appendChild(c);
   box.addEventListener("pointerdown", (ev) => ev.stopPropagation());
   document.body.appendChild(box);
@@ -4027,8 +4047,7 @@ function renderActBar() {
   const b = (label: string, title: string, fn: () => void, cls = "") => {
     const x = h("button", cls, label);
     x.title = title;
-    x.addEventListener("click", (ev) => {
-      ev.stopPropagation();
+    onTap(x, () => {
       fn();
       renderActBar();
     });
