@@ -2768,7 +2768,8 @@ async function buildFeature(f: KFeature) {
       const plane = makePlane(f.frame);
       if (f.body) {
         if (!bodies.length) throw new Error("Aynalanacak katı yok");
-        bodies = bodies.flatMap((b) => solidsOf(b.fuse(b.clone().mirror(plane))));
+        if (f.only) bodies = bodies.map((b) => b.clone().mirror(plane));
+        else bodies = bodies.flatMap((b) => solidsOf(b.fuse(b.clone().mirror(plane))));
         return;
       }
       const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean; merge: boolean }[];

@@ -434,3 +434,13 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .pm-relrow > span { flex: 1 1 auto; }
 .pm-relrow .pm-field { flex: 1 1 auto; margin: 2px 0; }
 .btn.rel-x { min-height: 28px; width: 32px; padding: 0; flex: 0 0 32px; }
+
+/* montaj eşleşme paneli (SolidWorks gibi) */
+.mate-slot { cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; min-height: 30px; }
+.mate-slot.active { border-color: #4dabf7; background: #e7f5ff; box-shadow: 0 0 0 2px rgba(77,171,247,.25); }
+.mate-types { display: flex; flex-wrap: wrap; gap: 4px; }
+.s3-rb.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.s3-rb.dis { opacity: .45; }
+.mate-status.err { color: var(--danger); font-weight: 600; }
+#tree li.err { color: var(--danger); }
+.asm-matebar { display: flex; }

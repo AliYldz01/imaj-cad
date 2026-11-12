@@ -440,3 +440,16 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Özellikler arası tek elemanlı köşe: önceki eleman uzar, yeni eleman yüzünde biter; gönyeli köşede uzatma yok | ✅ |
 | "Önceki yapı elemanlarına göre kırp / uzat" seçeneği (varsayılan açık) | ✅ |
 | Özellikler arası gönye köşe seçeneği | ⬜ |
+
+## v0.32 — Montaj (SolidWorks mantığı) — ayrıntı: docs/MONTAJ_RAPORU.md
+| Özellik | Durum |
+|---|---|
+| Eşzamanlı eşleşme çözücüsü, serbestlik (Jacobian sıfır uzayı), aşırı tanım reddi | ✅ |
+| Eşleşmelere uyarak sürükleme ve döndürme, Taşı/Döndür paneli (Delta XYZ, XYZ konumu) | ✅ |
+| Eşleşme paneli: seçim kutuları, Standart/Gelişmiş/Mekanik, hizalama, canlı önizleme, düzenle | ✅ |
+| Gelişmiş: simetrik, genişlik, limit mesafe/açı, doğrusal bağlayıcı | ✅ |
+| Mekanik: menteşe, dişli, kremayer–pinyon, vida | ✅ |
+| Kenar / dairesel kenar / köşe seçimi, SmartMates (Alt+sürükle) | ✅ |
+| Bileşen aynala (kopya / ters el), saydam | ✅ |
+| Patlatma adımları + animasyon, kütle özellikleri | ✅ |
+| Alt montaj, bağlam içi düzenleme, yol/kam/yuva/üniversal mafsal, hareket etüdü | ⬜ |

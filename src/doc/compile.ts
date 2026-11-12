@@ -579,7 +579,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         case "mirror": {
           const frame = resolveFrame(f.plane, feats);
           if (!frame) throw new Error("Ayna düzlemi bulunamadı");
-          kfeats.push({ id: f.id, type: "mirror", feats: f.feats, body: f.body, frame });
+          kfeats.push({ id: f.id, type: "mirror", feats: f.feats, body: f.body, frame, ...(f.only ? { only: true } : {}) });
           break;
         }
       }

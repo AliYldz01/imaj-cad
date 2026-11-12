@@ -12,12 +12,40 @@ export interface AsmComp {
   p: Vec3;
   fixed: boolean;
   hidden?: boolean;
+  transparent?: boolean;
 }
 /** eşleşme varlığı: bileşen yerel koordinatlarında düz yüz veya silindir */
-export interface MateEnt { comp: string; kind: "plane" | "cyl"; c: Vec3; n: Vec3; r?: number; label?: string }
-export type MateType = "coincident" | "parallel" | "perpendicular" | "distance" | "angle" | "concentric" | "lock" | "tangent" | "limit";
-export interface Mate { id: string; type: MateType; a: MateEnt; b: MateEnt; v?: number; vmax?: number; flip?: boolean; off?: boolean }
-export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number }
+/** eşleşme varlığı (bileşen yerel koordinatlarında): düz yüz, silindir ekseni, doğrusal kenar, dairesel kenar, köşe noktası */
+export interface MateEnt { comp: string; kind: "plane" | "cyl" | "line" | "circle" | "point"; c: Vec3; n: Vec3; r?: number; label?: string }
+export type MateType =
+  | "coincident" | "parallel" | "perpendicular" | "distance" | "angle" | "concentric" | "lock" | "tangent"
+  | "limit" | "limitAngle" | "symmetric" | "width"
+  | "gear" | "rack" | "screw" | "coupler" | "hinge";
+export interface Mate {
+  id: string;
+  type: MateType;
+  a: MateEnt;
+  b: MateEnt;
+  /** ek seçimler: simetri düzlemi / sekme yüzleri / menteşe çakışık yüzleri */
+  c?: MateEnt;
+  d?: MateEnt;
+  v?: number;
+  vmax?: number;
+  /** hizalama: true = hizalı (aynı yön), yoksa ters hizalı; mekanik eşleşmelerde ters çevir */
+  flip?: boolean;
+  /** mesafe yönünü çevir */
+  flipD?: boolean;
+  off?: boolean;
+  /** kilit / mekanik eşleşmeler için oluşturulduğu andaki konumlar */
+  ref?: { pa: number[]; qa: number[]; pb: number[]; qb: number[] };
+  /** dönme ölçeği (mm) */
+  L?: number;
+  /** açı limiti (menteşe) */
+  lim?: boolean;
+}
+/** patlatılmış görünüm adımı (SolidWorks Patlatma adımı) */
+export interface ExplodeStep { id: string; comps: string[]; dir: Vec3; d: number }
+export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean }
 
 export const MATE_NAMES: Record<MateType, string> = {
   coincident: "Çakışık",
@@ -29,6 +57,19 @@ export const MATE_NAMES: Record<MateType, string> = {
   lock: "Kilit",
   tangent: "Teğet",
   limit: "Limit mesafe",
+  limitAngle: "Limit açı",
+  symmetric: "Simetrik",
+  width: "Genişlik",
+  gear: "Dişli",
+  rack: "Kremayer–pinyon",
+  screw: "Vida",
+  coupler: "Doğrusal bağlayıcı",
+  hinge: "Menteşe",
+};
+export const MATE_GROUPS: Record<"std" | "adv" | "mech", MateType[]> = {
+  std: ["coincident", "parallel", "perpendicular", "tangent", "concentric", "lock", "distance", "angle"],
+  adv: ["symmetric", "width", "limit", "limitAngle", "coupler"],
+  mech: ["hinge", "gear", "rack", "screw"],
 };
 
 export const newAsm = (): AsmDoc => ({ kind: "asm", name: "Montaj1", comps: [], mates: [] });
@@ -68,7 +109,7 @@ export function cylAxis(mesh: MeshData, face: number): Vec3 | null {
 }
 
 /** eşleşmenin kaldırdığı serbestlik */
-const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0 };
+const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0, limitAngle: 0, symmetric: 1, width: 1, gear: 1, rack: 1, screw: 1, coupler: 1, hinge: 5 };
 
 export function dofOf(doc: AsmDoc, id: string): number {
   const c = doc.comps.find((x) => x.id === id);
