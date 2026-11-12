@@ -32,7 +32,7 @@ export interface S3Ctx {
 export type S3Mode = "line" | "rect" | "point" | "arc" | "trim" | "extend" | "select" | "dim";
 export type S3Sel = { k: "p" | "l" | "a"; id: string };
 
-type Cand = { p: Vec3; idx: number; ax: Axis3 | null; kind: "pt" | "model" | "axis" | "plane" | "face" | "on"; lid?: string };
+type Cand = { p: Vec3; idx: number; ax: Axis3 | null; kind: "pt" | "model" | "axis" | "plane" | "face" | "on"; lid?: string; alQ?: string; alK?: 0 | 1 | 2 };
 
 export class Sketch3DTool {
   plane = 0;
@@ -49,6 +49,7 @@ export class Sketch3DTool {
   sel: S3Sel[] = [];
   private dimPick: S3Sel[] = [];
   private rectP: Vec3 | null = null;
+  private rectFix = false;
   /** 3 noktalı yay: seçilen başlangıç / bitiş */
   private arcPick: Cand[] = [];
   /** hizalama kılavuzu (mavi kesikli): hizalanan nokta → imleç */
@@ -214,17 +215,18 @@ export class Sketch3DTool {
           const glob = this.axes[best.ax].x === 1 || this.axes[best.ax].y === 1 || this.axes[best.ax].z === 1;
           if (glob) {
             const sp = this.screenOf(best.p);
-            let al: { p: Vec3; q: Vec3; d: number } | null = null;
-            for (const q of [...d.xyz, ...this.ctx.cands()]) {
+            let al: { p: Vec3; q: Vec3; d: number; id?: string } | null = null;
+            const qs: { q: Vec3; id?: string }[] = [...d.xyz.map((q, i) => ({ q, id: d.ids[i] })), ...this.ctx.cands().map((q) => ({ q }))];
+            for (const { q, id } of qs) {
               if (q === A) continue;
               const P2 = [...best.p] as Vec3;
               P2[k] = q[k];
               const s2 = this.screenOf(P2), dd = Math.hypot(s2[0] - sp[0], s2[1] - sp[1]);
-              if (dd < 7 && (!al || dd < al.d) && Math.abs(P2[k] - A[k]) > 1e-6) al = { p: P2, q, d: dd };
+              if (dd < 7 && (!al || dd < al.d) && Math.abs(P2[k] - A[k]) > 1e-6) al = { p: P2, q, d: dd, id };
             }
             if (al) {
               this.guide = [al.q, al.p];
-              return { p: round3(al.p), idx: -1, ax: best.ax, kind: "axis" };
+              return { p: round3(al.p), idx: -1, ax: best.ax, kind: "axis", ...(al.id ? { alQ: al.id, alK: k as 0 | 1 | 2 } : {}) };
             }
           }
           return { p: round3(best.p), idx: -1, ax: best.ax, kind: "axis" };
@@ -321,6 +323,10 @@ export class Sketch3DTool {
       d.xyz.push(round3(c.p));
       j = d.xyz.length - 1;
       if (c.kind === "on" && c.lid) d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "on", e: [d.ids[j], c.lid] }];
+      // SolidWorks: orijine / model köşesine yakalanan nokta sabit referansa bağlanır (çakışık → sabit)
+      if (c.kind === "model") d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "fix", e: [d.ids[j]], p: [...d.xyz[j]] as Vec3 }];
+      // mavi hizalama kılavuzu ile konan nokta: hizalandığı noktayla aynı koordinatta kalır
+      if (c.alQ && c.alK !== undefined) d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: (["eqX", "eqY", "eqZ"] as const)[c.alK], e: [c.alQ, d.ids[j]] }];
     }
     if (ai >= 0 && ai !== j) {
       const a = d.ids[ai], b = d.ids[j];
@@ -988,6 +994,7 @@ export class Sketch3DTool {
     } else if (c && this.mode === "rect") {
       if (!this.rectP) {
         this.rectP = round3(c.p);
+        this.rectFix = c.kind === "model";
         this.ctx.hint("Karşı köşeye tıklayın");
       } else this.addRect(this.rectP, c.p);
     } else if (c) this.commit(c);
@@ -1018,7 +1025,9 @@ export class Sketch3DTool {
       const ax = axisOf(d.xyz[d.ids.indexOf(a)], d.xyz[d.ids.indexOf(b)]);
       d.lines.push({ id: `l${d.seq++}`, a, b, ...(ax ? { ax } : {}) } as any);
     }
+    if (this.rectFix && !(d.cons3 ?? []).some((c) => c.t === "fix" && c.e[0] === ids[0])) d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "fix", e: [ids[0]], p: [...d.xyz[d.ids.indexOf(ids[0])]] as Vec3 }];
     this.rectP = null;
+    this.rectFix = false;
     d._act = -1;
     this.ctx.changed();
   }

@@ -3,7 +3,7 @@
 // Sönümlü en küçük kareler, kısıtlanmamış noktaları yerinde bırakır (SolidWorks gibi en az değişiklik).
 import type { Sketch3DFeature, Vec3 } from "../doc/types";
 
-export type Rel3 = "coinc" | "fix" | "par" | "perp" | "equal" | "mid" | "on" | "collin" | "parXY" | "parYZ" | "parZX" | "tan";
+export type Rel3 = "coinc" | "fix" | "par" | "perp" | "equal" | "mid" | "on" | "collin" | "parXY" | "parYZ" | "parZX" | "tan" | "eqX" | "eqY" | "eqZ";
 export const REL3_NAMES: Record<Rel3 | "alongX" | "alongY" | "alongZ", string> = {
   coinc: "Çakışık",
   fix: "Sabitle",
@@ -17,11 +17,14 @@ export const REL3_NAMES: Record<Rel3 | "alongX" | "alongY" | "alongZ", string> =
   parYZ: "YZ'ye paralel",
   parZX: "ZX'e paralel",
   tan: "Teğet",
+  eqX: "X hizalı (nokta)",
+  eqY: "Y hizalı (nokta)",
+  eqZ: "Z hizalı (nokta)",
   alongX: "X boyunca",
   alongY: "Y boyunca",
   alongZ: "Z boyunca",
 };
-export const REL3_TAG: Record<string, string> = { coinc: "◎", fix: "⚓", par: "∥", perp: "⊥", equal: "=", mid: "◁▷", on: "∈", collin: "⋯", parXY: "∥XY", parYZ: "∥YZ", parZX: "∥ZX", tan: "T", x: "X", y: "Y", z: "Z" };
+export const REL3_TAG: Record<string, string> = { coinc: "◎", fix: "⚓", par: "∥", perp: "⊥", equal: "=", mid: "◁▷", on: "∈", collin: "⋯", parXY: "∥XY", parYZ: "∥YZ", parZX: "∥ZX", tan: "T", eqX: "≡X", eqY: "≡Y", eqZ: "≡Z", x: "X", y: "Y", z: "Z" };
 
 type F = Sketch3DFeature;
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -134,6 +137,10 @@ function residuals(f: F, X: number[], fixed0: Map<number, Vec3>): number[] {
         const d = sub(B, A);
         r.push(...crs(sub(P(p), A), d).map((v) => v / (len(d) || 1)));
       }
+    } else if (c.t === "eqX" || c.t === "eqY" || c.t === "eqZ") {
+      const [a, b] = c.e.map(pt);
+      const k = c.t === "eqX" ? 0 : c.t === "eqY" ? 1 : 2;
+      if (a >= 0 && b >= 0) r.push(X[3 * a + k] - X[3 * b + k]);
     } else if (c.t === "tan") {
       const pi = sharedPt(f, c.e[0], c.e[1]);
       if (pi < 0) continue;

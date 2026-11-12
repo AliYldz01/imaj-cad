@@ -363,3 +363,11 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Çakışan kesişimlerin teklenmesi | ✅ |
 | Tek kesişimli daire silinmez | ✅ |
 | Ortadan kırpmada doğrusal + teğet ilişkisinin taşınması, bölünen yaylarda eşit | ✅ |
+
+## v0.26
+
+| Özellik | Durum |
+|---|---|
+| 3B: orijin/model köşesine yakalanan nokta sabit | ✅ |
+| 3B: hizalama ile konan noktaya nokta hizalama ilişkisi (eqX/eqY/eqZ) | ✅ |
+| 3B: orijinden kare + 2 ölçü → tam tanımlı | ✅ |
