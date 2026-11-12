@@ -377,7 +377,50 @@ export interface SketchBendFeature extends FeatBase {
   r: number;
 }
 
+// ---------------- Kaynaklı yapı ----------------
+
+/** Eleman referansı: yapı elemanı özelliği + segment sırası */
+export interface MemberRef { f: string; i: number }
+export type CornerKind = "miter" | "butt1" | "butt2" | "none";
+/** Yapı elemanı: iskelet eskiz segmentleri boyunca standart profil */
+export interface MemberFeature extends FeatBase {
+  type: "member";
+  /** seçili segmentler: eskiz kimliği + varlık kimliği */
+  segs: { sk: string; ent: string }[];
+  std: string;
+  size: string;
+  /** profil konumu (delme noktası) */
+  align: string;
+  mirror: boolean;
+  /** profil dönüş açısı (derece) */
+  rot: number;
+  corner: CornerKind;
+  /** gönye köşesinde boşluk */
+  gap: number;
+}
+/** Kırp / uzat: hedef elemanları sınır elemanlara göre kırpar ve gerekiyorsa uzatır */
+export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean }
+/** Uç kapağı */
+export interface EndCapFeature extends FeatBase { type: "endcap"; faces: FaceRef[]; t: number; inset: number }
+/** Köşe takviyesi (üçgen levha) */
+export interface GussetFeature extends FeatBase {
+  type: "gusset";
+  f1: FaceRef | null;
+  f2: FaceRef | null;
+  d1: number;
+  d2: number;
+  t: number;
+  /** iç köşe pahı (kaynak boşluğu) */
+  chamfer: number;
+  /** köşe çizgisi boyunca kaydırma */
+  offset: number;
+}
+
 export type Feature =
+  | MemberFeature
+  | TrimFeature
+  | EndCapFeature
+  | GussetFeature
   | SheetBaseFeature
   | EdgeFlangeFeature
   | HemFeature
@@ -459,7 +502,29 @@ export type KFeature =
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame }
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
   | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
+  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number }
+  | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean }
+  | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }
+  | { id: string; type: "gusset"; f1: FaceRef; f2: FaceRef; d1: number; d2: number; t: number; chamfer: number; offset: number }
   | { id: string; type: "sketchbend"; pl: KPlane; line: [Vec2, Vec2]; angle: number; side: boolean; flip: boolean; pos: "center" | "inside" | "outside"; r: number; t: number; k: number };
+
+/** Yapı elemanı segmenti (3B): çizgi veya yay; n = eskiz düzlemi normali */
+export type MemberItem = { k: "l"; a: Vec3; b: Vec3; n: Vec3; key: string } | { k: "a"; a: Vec3; b: Vec3; m: Vec3; n: Vec3; key: string };
+/** Kesim listesi satırı (gövde başına) */
+export interface CutItem {
+  body: number;
+  kind: "member" | "plate" | "part";
+  name: string;
+  /** eleman: kesim boyu; levha / parça: en büyük ölçü */
+  length: number;
+  /** uç kesim açıları (derece, 0 = dik kesim) */
+  a1: number;
+  a2: number;
+  vol: number;
+  /** sınır kutusu ölçüleri (büyükten küçüğe) */
+  dims: [number, number, number];
+  key?: string;
+}
 
 /** Açınım (düz desen) 2B öğeleri: çizgi, yay (saat yönü tersine a0→a1, derece), daire */
 export type Flat2D =
@@ -478,7 +543,7 @@ export interface FlatResult {
   error?: string;
 }
 
-export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string }
+export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string; /** gövde sırası */ b?: number }
 export interface EdgeInfo {
   m: Vec3;
   d: Vec3 | null;
@@ -529,14 +594,17 @@ export type KernelRequest =
   | { id: number; type: "export"; format: "step" | "stl" }
   | { id: number; type: "measure"; items: MeasureItem[] }
   | { id: number; type: "props" }
-  | { id: number; type: "flat"; body: number; t: number; k: number };
+  | { id: number; type: "flat"; body: number; t: number; k: number }
+  | { id: number; type: "cutlist" }
+  | { id: number; type: "exportBody"; body: number };
 
 export type KernelResponse =
   | { type: "ready" }
   | { type: "fatal"; message: string }
-  | { id: number; type: "built"; mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame> }
+  | { id: number; type: "built"; mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members?: { key: string; name: string; body: number }[] }
   | { id: number; type: "measured"; lines: string[] }
   | { id: number; type: "section"; items: SectionItem[] }
   | { id: number; type: "props"; props: MassProps | null }
   | { id: number; type: "exported"; blob: Blob | null; message?: string }
-  | ({ id: number; type: "flat" } & FlatResult);
+  | ({ id: number; type: "flat" } & FlatResult)
+  | { id: number; type: "cutlist"; items: CutItem[] };

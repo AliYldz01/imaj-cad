@@ -6,11 +6,11 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
-  Seg, SectionItem, TextItem, Vec2, Vec3,
+  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem,
 } from "./doc/types";
 import { thinRegion } from "./sketch/profile";
 import { unfold } from "./sheet/unfold";
@@ -408,7 +408,7 @@ function domeTool(f: Extract<KFeature, { type: "dome" }>) {
   const pf = planarFace(f.face);
   if (!pf || !vlen(pf.n)) throw new Error("Kubbe için düz bir yüz seçin");
   const face = pf.face;
-  const w0 = face.outerWire();
+  const w0 = face.clone().outerWire();
   const c = pf.c;
   const secs = [30, 60].map((deg) => {
     const t = (deg * Math.PI) / 180;
@@ -505,6 +505,380 @@ function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number }
     }
   if (!best) throw new Error("Seçili yüzde paralel iki kenar bulunamadı");
   return { edges: new Set([best.a.hashCode, best.b.hashCode]), r: (best.d / 2) * 0.995 };
+}
+
+// ---------- Kaynaklı yapı ----------
+
+interface MemberReg {
+  key: string;
+  name: string;
+  a: Vec3;
+  b: Vec3;
+  /** çizgi yönü (yay için başlangıç teğeti) */
+  d: Vec3;
+  x: Vec3;
+  loops: Loop[];
+  R: number;
+  arc: boolean;
+  len: number;
+  m?: Vec3;
+}
+let memberReg = new Map<string, MemberReg>();
+
+/** P'den geçen, n'ye dik düzlemin n'nin tersi tarafını kaplayan büyük kutu (bu tarafı siler) */
+function halfSpace(P: Vec3, n: Vec3): Shape {
+  const big = bodySize();
+  const u = vnorm(Math.abs(n[2]) < 0.9 ? vcross(n, [0, 0, 1]) : vcross(n, [1, 0, 0]));
+  return boxIn(P, n, u, vcross(n, u), -big, 0, -big, big, -big, big);
+}
+
+const centroid = (s: Shape): Vec3 => {
+  try {
+    return measureShapeVolumeProperties(s).centerOfMass as Vec3;
+  } catch {
+    const bb = s.boundingBox.bounds;
+    return vmul(vadd(bb[0], bb[1]), 0.5);
+  }
+};
+
+/** Parçalardan dir yönünde V'den en uzaktakini tut */
+function keepFar(shape: Shape, V: Vec3, dir: Vec3): Shape {
+  const pieces = solidsOf(shape).filter((p) => volOf(p) > 1e-6);
+  if (!pieces.length) throw new Error("Kırpma sonucunda eleman kalmadı");
+  let best = pieces[0], bd = -Infinity;
+  for (const p of pieces) {
+    const d = vdot(vsub(centroid(p), V), dir);
+    if (d > bd) [bd, best] = [d, p];
+  }
+  return best;
+}
+
+/** Profilin 3B kesit noktalarının dir yönündeki en büyük izdüşümü (eleman ekseninden) */
+function profileSupport(loops: Loop[], x: Vec3, d: Vec3, dir: Vec3): number {
+  const y = vcross(d, x);
+  let m = -Infinity;
+  for (const l of loops) {
+    const pts: Vec2[] =
+      "circle" in l
+        ? Array.from({ length: 36 }, (_, i) => [l.circle.c[0] + l.circle.r * Math.cos((i / 36) * 2 * Math.PI), l.circle.c[1] + l.circle.r * Math.sin((i / 36) * 2 * Math.PI)] as Vec2)
+        : "segs" in l
+          ? l.segs.flatMap((s) => (s.t === "a" ? [s.a, s.m] : [s.a]))
+          : [];
+    for (const p of pts) m = Math.max(m, vdot(vadd(vmul(x, p[0]), vmul(y, p[1])), dir));
+  }
+  return Math.max(0, m);
+}
+
+function sweepProfile(loops: Loop[], plane: any, spine: any): Shape {
+  let solid: Shape | null = null;
+  for (const l of loops) {
+    const w = (loopDrawing(l).sketchOnPlane(plane) as any).wire;
+    const s = genericSweep(w, spine, { frenet: true, transitionMode: "right" }, false);
+    if (!solid) solid = s;
+    else solid = l.depth % 2 === 0 ? solid.fuse(s) : solid.cut(s);
+  }
+  return solid;
+}
+
+function memberTool(f: Extract<KFeature, { type: "member" }>) {
+  const items = f.items;
+  type LI = { a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
+  const lines: (LI | null)[] = items.map((it) => {
+    if (it.k !== "l") return null;
+    const L = vlen(vsub(it.b, it.a));
+    if (L < 1e-6) throw new Error("Sıfır uzunlukta segment");
+    const d = vnorm(vsub(it.b, it.a));
+    let x = vmul(it.n, -1);
+    if (Math.abs(vdot(x, d)) > 0.999) x = vnorm(Math.abs(d[2]) < 0.9 ? vcross(d, [0, 0, 1]) : vcross(d, [1, 0, 0]));
+    x = vnorm(vsub(x, vmul(d, vdot(x, d))));
+    return { a: it.a, b: it.b, d, L, x };
+  });
+  // köşeler: tam iki çizginin buluştuğu uçlar
+  const ext = items.map(() => [0, 0]);
+  const kk = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+  const joints = new Map<string, { i: number; end: 0 | 1 }[]>();
+  items.forEach((it, i) => {
+    if (it.k !== "l") return;
+    ([it.a, it.b] as Vec3[]).forEach((p, e) => {
+      const k = kk(p);
+      if (!joints.has(k)) joints.set(k, []);
+      joints.get(k)!.push({ i, end: e as 0 | 1 });
+    });
+  });
+  type Tr = { V: Vec3; A: { i: number; end: 0 | 1 }; B: { i: number; end: 0 | 1 }; da: Vec3; db: Vec3 };
+  const treat: Tr[] = [];
+  if (f.corner !== "none")
+    for (const list of joints.values()) {
+      if (list.length !== 2) continue;
+      const [A, B] = list;
+      const la = lines[A.i]!, lb = lines[B.i]!;
+      const V = A.end === 0 ? la.a : la.b;
+      const da = A.end === 0 ? la.d : vmul(la.d, -1);
+      const db = B.end === 0 ? lb.d : vmul(lb.d, -1);
+      const cos = vdot(da, db);
+      if (cos < -0.9999) continue; // düz devam
+      const th = Math.acos(Math.max(-1, Math.min(1, cos)));
+      const M = f.R * (1 + 1 / Math.tan(Math.max(th, 0.35) / 2)) + f.gap + 1;
+      ext[A.i][A.end] = M;
+      ext[B.i][B.end] = M;
+      treat.push({ V, A, B, da, db });
+    }
+  const solids: Shape[] = items.map((it, i) => {
+    const li = lines[i];
+    if (li) {
+      const o = vsub(li.a, vmul(li.d, ext[i][0]));
+      memberReg.set(it.key, { key: it.key, name: f.name, a: li.a, b: li.b, d: li.d, x: li.x, loops: f.loops, R: f.R, arc: false, len: li.L });
+      return profile(f.loops).sketchOnPlane(new Plane(o, li.x, li.d)).extrude(li.L + ext[i][0] + ext[i][1]);
+    }
+    const ia = it as Extract<MemberItem, { k: "a" }>;
+    const c = circle3d(ia.a, ia.m, ia.b);
+    if (!c) throw new Error("Yay segmenti geçersiz");
+    let t = vnorm(vcross(c.ax, vsub(ia.a, c.c)));
+    if (vdot(t, vsub(ia.m, ia.a)) < 0) t = vmul(t, -1);
+    let x = vmul(ia.n, -1);
+    x = vnorm(vsub(x, vmul(t, vdot(x, t))));
+    const spine = assembleWire([makeThreePointArc(ia.a, ia.m, ia.b)]);
+    const ang = 2 * Math.asin(Math.min(1, vlen(vsub(ia.b, ia.a)) / (2 * c.r)));
+    const big = vdot(vsub(ia.m, vmul(vadd(ia.a, ia.b), 0.5)), vsub(c.c, vmul(vadd(ia.a, ia.b), 0.5))) < 0 ? false : true;
+    const len = c.r * (big ? 2 * Math.PI - ang : ang);
+    memberReg.set(it.key, { key: it.key, name: f.name, a: ia.a, b: ia.b, d: t, x, loops: f.loops, R: f.R, arc: true, len, m: ia.m });
+    return sweepProfile(f.loops, new Plane(ia.a, x, t), spine);
+  });
+  for (const tr of treat) {
+    const { V, A, B, da, db } = tr;
+    if (f.corner === "miter") {
+      const nA = vnorm(vsub(da, db));
+      solids[A.i] = solids[A.i].cut(halfSpace(vadd(V, vmul(nA, f.gap / 2)), nA));
+      solids[B.i] = solids[B.i].cut(halfSpace(vsub(V, vmul(nA, f.gap / 2)), vmul(nA, -1)));
+    } else {
+      const [R, T] = f.corner === "butt1" ? [A, B] : [B, A];
+      const dR = R === A ? da : db, dT = R === A ? db : da;
+      const lt = lines[T.i]!, lr = lines[R.i]!;
+      const sT = profileSupport(f.loops, lt.x, lt.d, vmul(dR, -1));
+      const sR = profileSupport(f.loops, lr.x, lr.d, dT);
+      solids[R.i] = solids[R.i].cut(halfSpace(vsub(V, vmul(dR, sT)), dR));
+      // düz kesim: kesilen eleman, sürekli elemanın yüzeyinde biter
+      solids[T.i] = keepFar(solids[T.i].cut(halfSpace(vadd(V, vmul(dT, sR + f.gap)), dT)), V, dT);
+    }
+  }
+  for (const s of solids) applyTool(s, false, false);
+}
+
+const segDist = (p: Vec3, a: Vec3, b: Vec3) => {
+  const ab = vsub(b, a);
+  const t = Math.max(0, Math.min(1, vdot(vsub(p, a), ab) / (vdot(ab, ab) || 1)));
+  return vlen(vsub(p, vadd(a, vmul(ab, t))));
+};
+
+/** Kayıtlı elemanları güncel gövdelerle eşleştirir: anahtar -> gövde sırası */
+function memberBodyMap(): Map<string, number> {
+  const cs = bodies.map((b) => centroid(b));
+  const used = new Set<number>();
+  const out = new Map<string, number>();
+  for (const reg of memberReg.values()) {
+    let best = -1, bd = Infinity;
+    cs.forEach((c, i) => {
+      if (used.has(i)) return;
+      const d = reg.arc ? Math.min(segDist(c, reg.a, reg.m!), segDist(c, reg.m!, reg.b)) : segDist(c, reg.a, reg.b);
+      if (d < bd) [bd, best] = [d, i];
+    });
+    const tol = reg.arc ? reg.R * 1.5 + reg.len * 0.2 : reg.R * 1.2 + 1;
+    if (best >= 0 && bd < tol) {
+      out.set(reg.key, best);
+      used.add(best);
+    }
+  }
+  return out;
+}
+
+function trimTool(f: Extract<KFeature, { type: "trim" }>) {
+  const map = memberBodyMap();
+  const bPairs = f.bounds.map((k) => ({ k, i: map.get(k) })).filter((x): x is { k: string; i: number } => x.i !== undefined);
+  const bIdx = bPairs.map((x) => x.i);
+  if (!bIdx.length) throw new Error("Sınır elemanı bulunamadı");
+  const bR = Math.max(...f.bounds.map((k) => memberReg.get(k)?.R ?? 0));
+  for (const k of f.targets) {
+    const reg = memberReg.get(k);
+    const ti = map.get(k);
+    if (!reg || ti === undefined) throw new Error("Kırpılacak eleman bulunamadı");
+    if (bIdx.includes(ti)) continue;
+    if (reg.arc) throw new Error("Yay elemanlar kırpılamıyor");
+    let body = bodies[ti];
+    let touched = false;
+    for (const end of [0, 1] as const) {
+      const P = end === 0 ? reg.a : reg.b;
+      const dOut = end === 0 ? vmul(reg.d, -1) : reg.d;
+      const v = makeVertex(P);
+      const near = bPairs
+        .map(({ k: bk, i }) => {
+          const bs = bodies[i];
+          try {
+            return { bs, k: bk, dist: measureDistanceBetween(v, bs) };
+          } catch {
+            return { bs, k: bk, dist: Infinity };
+          }
+        })
+        .filter((x) => x.dist < 3 * (reg.R + bR) && vdot(vsub(centroid(x.bs), P), dOut) > -(reg.R + bR));
+      if (!near.length) continue;
+      touched = true;
+      const M = 4 * bR + 2 * reg.R + Math.max(...near.map((x) => x.dist)) + 5;
+      const extPiece = profile(reg.loops).sketchOnPlane(new Plane(P, reg.x, reg.d)).extrude(end === 1 ? M : -M);
+      body = body.fuse(extPiece);
+      for (const { bs, k: bk } of near) {
+        const br = memberReg.get(bk);
+        if (f.coped || !br || br.arc) body = keepFar(body.cut(bs), P, vmul(dOut, -1));
+        else {
+          // düz kesim: sınır elemanın eksenine izdüşümden profil yüzeyine kadar
+          const ab = vsub(br.b, br.a);
+          const tq = vdot(vsub(P, br.a), ab) / (vdot(ab, ab) || 1);
+          const Q = vadd(br.a, vmul(ab, tq));
+          const inward = vmul(dOut, -1);
+          const sB = profileSupport(br.loops, br.x, br.d, inward);
+          const off = vdot(vsub(Q, P), inward) + sB;
+          body = keepFar(body.cut(halfSpace(vadd(P, vmul(inward, off)), inward)), P, inward);
+        }
+      }
+    }
+    if (!touched) throw new Error("Hedef elemanın uçları sınır elemanlara yakın değil");
+    bodies[ti] = body;
+  }
+}
+
+function endCapTool(f: Extract<KFeature, { type: "endcap" }>) {
+  for (const ref of f.faces) {
+    const pf = planarFace(ref);
+    if (!pf || String(pf.face.geomType) !== "PLANE") throw new Error("Uç kapağı için elemanın düz uç yüzünü seçin");
+    // outerWire() kaynağı siler: her seferinde yüzün kopyasını kullan
+    const ow = () => pf.face.clone().outerWire();
+    const area0 = measureArea(makeFace(ow()));
+    let capFace = makeFace(ow());
+    if (f.inset > 0) {
+      capFace = makeFace(ow().offset2D(-f.inset));
+      if (measureArea(capFace) > area0) capFace = makeFace(ow().offset2D(f.inset));
+    }
+    const cap = basicFaceExtrusion(capFace, new Vector(vmul(pf.n, f.t)));
+    applyTool(cap, false, false);
+  }
+}
+
+function gussetTool(f: Extract<KFeature, { type: "gusset" }>) {
+  const p1 = planarFace(f.f1), p2 = planarFace(f.f2);
+  if (!p1 || !p2 || String(p1.face.geomType) !== "PLANE" || String(p2.face.geomType) !== "PLANE") throw new Error("Köşe takviyesi için iki düz yüz seçin");
+  const n1 = p1.n, n2 = p2.n;
+  const Lr = vcross(n1, n2);
+  if (vlen(Lr) < 1e-6) throw new Error("Seçili yüzler paralel");
+  const L = vnorm(Lr);
+  const d1 = vdot(p1.c, n1), d2 = vdot(p2.c, n2);
+  const s = (vdot(p1.c, L) + vdot(p2.c, L)) / 2 + f.offset;
+  const det = vdot(n1, vcross(n2, L));
+  const C = vmul(vadd(vadd(vmul(vcross(n2, L), d1), vmul(vcross(L, n1), d2)), vmul(vcross(n1, n2), s)), 1 / det);
+  let u1 = vnorm(vcross(L, n1));
+  if (vdot(vsub(p1.c, C), u1) < 0) u1 = vmul(u1, -1);
+  let u2 = vnorm(vcross(L, n2));
+  if (vdot(vsub(p2.c, C), u2) < 0) u2 = vmul(u2, -1);
+  if (vdot(u1, n2) < 1e-6 || vdot(u2, n1) < 1e-6) throw new Error("Seçili yüzler bir iç köşe oluşturmuyor");
+  const y = vcross(L, u1);
+  const P1: Vec2 = [f.d1, 0];
+  const P2: Vec2 = [vdot(u2, u1) * f.d2, vdot(u2, y) * f.d2];
+  const c = Math.max(0, f.chamfer);
+  let pen: any;
+  if (c > 1e-6) {
+    const k = c / f.d2;
+    pen = draw([c, 0]).lineTo(P1).lineTo(P2).lineTo([P2[0] * k, P2[1] * k]);
+  } else pen = draw([0, 0]).lineTo(P1).lineTo(P2);
+  const plate = pen.close().sketchOnPlane(new Plane(vsub(C, vmul(L, f.t / 2)), u1, L)).extrude(f.t);
+  applyTool(plate, false, false);
+}
+
+function cutList(id: number) {
+  const items: CutItem[] = [];
+  try {
+    const map = memberBodyMap();
+    const inv = new Map<number, string>();
+    map.forEach((b, k) => inv.set(b, k));
+    bodies.forEach((b, i) => {
+      const vol = volOf(b);
+      const bb = b.boundingBox.bounds as [Vec3, Vec3];
+      const key = inv.get(i);
+      const faces = b.faces as any[];
+      if (key) {
+        const reg = memberReg.get(key)!;
+        if (reg.arc) {
+          items.push({ body: i, kind: "member", name: reg.name + " (bükümlü)", length: reg.len, a1: 0, a2: 0, vol, dims: [0, 0, 0], key });
+          return;
+        }
+        let lo = Infinity, hi = -Infinity;
+        for (const e of b.edges as any[])
+          for (const q of [0, 0.5, 1]) {
+            const t = vdot(vsub(tup(e.pointAt(q)), reg.a), reg.d);
+            lo = Math.min(lo, t);
+            hi = Math.max(hi, t);
+          }
+        let a1 = 0, a2 = 0;
+        for (const fc of faces) {
+          if (String(fc.geomType) !== "PLANE") continue;
+          const c = tup(fc.center);
+          const n = vnorm(tup(fc.normalAt(c)));
+          const k = Math.abs(vdot(n, reg.d));
+          if (k < 0.01) continue;
+          const ang = (Math.acos(Math.min(1, k)) * 180) / Math.PI;
+          const t = vdot(vsub(c, reg.a), reg.d);
+          if (t - lo < (hi - lo) / 2) a1 = Math.max(a1, ang);
+          else a2 = Math.max(a2, ang);
+        }
+        items.push({ body: i, kind: "member", name: reg.name, length: hi - lo, a1, a2, vol, dims: [0, 0, 0], key });
+        return;
+      }
+      // levha / parça
+      let big: any = null, ba = 0;
+      for (const fc of faces) {
+        if (String(fc.geomType) !== "PLANE") continue;
+        const ar = measureArea(fc);
+        if (ar > ba) [ba, big] = [ar, fc];
+      }
+      if (big) {
+        const t = vol / ba;
+        const c = tup(big.center);
+        const n = vnorm(tup(big.normalAt(c)));
+        let ux: Vec3 | null = null, lm = 0;
+        for (const e of big.edges as any[]) {
+          if (String(e.geomType) !== "LINE") continue;
+          const dv = vsub(tup(e.endPoint), tup(e.startPoint));
+          if (vlen(dv) > lm) [lm, ux] = [vlen(dv), vnorm(dv)];
+        }
+        if (!ux) ux = vnorm(Math.abs(n[2]) < 0.9 ? vcross(n, [0, 0, 1]) : vcross(n, [1, 0, 0]));
+        const uy = vcross(n, ux);
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const e of b.edges as any[])
+          for (const q of [0, 0.25, 0.5, 0.75, 1]) {
+            const p = vsub(tup(e.pointAt(q)), c);
+            x0 = Math.min(x0, vdot(p, ux)); x1 = Math.max(x1, vdot(p, ux));
+            y0 = Math.min(y0, vdot(p, uy)); y1 = Math.max(y1, vdot(p, uy));
+          }
+        const w = x1 - x0, h = y1 - y0;
+        if (t > 0 && t < 0.25 * Math.min(w, h) + 1e-9) {
+          const dims = [w, h, t].sort((p, q) => q - p) as [number, number, number];
+          items.push({ body: i, kind: "plate", name: `Levha t=${Math.round(t * 100) / 100}`, length: dims[0], a1: 0, a2: 0, vol, dims });
+          return;
+        }
+      }
+      const dims = [bb[1][0] - bb[0][0], bb[1][1] - bb[0][1], bb[1][2] - bb[0][2]].sort((p, q) => q - p) as [number, number, number];
+      items.push({ body: i, kind: "part", name: "Parça", length: dims[0], a1: 0, a2: 0, vol, dims });
+    });
+  } catch (e) {
+    console.warn(e);
+  }
+  post({ id, type: "cutlist", items });
+}
+
+function exportBody(id: number, i: number) {
+  const b = bodies[i];
+  if (!b) return post({ id, type: "exported", blob: null, message: "Gövde bulunamadı" });
+  try {
+    post({ id, type: "exported", blob: b.blobSTEP() });
+  } catch (e) {
+    post({ id, type: "exported", blob: null, message: errMsg(e) });
+  }
 }
 
 // ---------- Sac metal ----------
@@ -697,6 +1071,18 @@ function flatPattern(id: number, bodyIdx: number, t: number, k: number) {
 
 async function buildFeature(f: KFeature) {
   switch (f.type) {
+    case "member":
+      memberTool(f);
+      return;
+    case "trim":
+      trimTool(f);
+      return;
+    case "endcap":
+      endCapTool(f);
+      return;
+    case "gusset":
+      gussetTool(f);
+      return;
     case "sheetbase": {
       const solid = sheetBaseTool(f);
       tools.set(f.id, { solid, cut: false, merge: f.merge !== false });
@@ -908,6 +1294,7 @@ async function build(id: number, features: KFeature[]) {
   bodies = [];
   frames = {};
   tools.clear();
+  memberReg = new Map();
   for (const f of features) {
     try {
       await buildFeature(f);
@@ -920,7 +1307,17 @@ async function build(id: number, features: KFeature[]) {
   try {
     const mesh = toMesh(a);
     freeAll(a);
-    post({ id, type: "built", mesh, errors, frames }, [
+    // yüz -> gövde sırası
+    const counts = bodies.map((b) => (b.faces as any[]).length);
+    if (counts.reduce((x, y) => x + y, 0) === mesh.faces.length) {
+      let k = 0;
+      counts.forEach((c, bi) => {
+        for (let j = 0; j < c; j++) mesh.faces[k++].b = bi;
+      });
+    }
+    let members: { key: string; name: string; body: number }[] = [];
+    if (memberReg.size) members = [...memberBodyMap()].map(([key, body]) => ({ key, name: memberReg.get(key)!.name, body }));
+    post({ id, type: "built", mesh, errors, frames, members }, [
       mesh.vertices.buffer,
       mesh.normals.buffer,
       mesh.triangles.buffer,
@@ -1068,6 +1465,8 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "props") props(req.id);
     else if (req.type === "section") section(req.id, req.frame);
     else if (req.type === "flat") flatPattern(req.id, req.body, req.t, req.k);
+    else if (req.type === "cutlist") cutList(req.id);
+    else if (req.type === "exportBody") exportBody(req.id, req.body);
    } catch (e) {
     // Hata kuyruğu kilitlemesin; isteği yanıtsız bırakma
     const t = req.type === "build" ? "built" : req.type === "export" ? "exported" : req.type === "measure" ? "measured" : req.type;

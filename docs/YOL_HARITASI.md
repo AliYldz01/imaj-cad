@@ -138,8 +138,9 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 |---|---|---|
 | Sac metal (v0.5) | Taban flanş (kapalı/açık profil), kenar flanş (açı, uzunluk referansı, konum, kısaltma, köşe gönyesi, büküm boşaltma), kenet (açık/kapalı), çizgiden büküm, K faktörü, düzleştir, büküm tablosu, DXF | ✅ |
 | Sac metal — sonraki | Gönye flanş, kademe (jog), köşe kapatma, kalıptan sac'a dönüştür, büküm tablosu dosyası | ⬜ |
-| Kaynaklı yapı / profil **(sıradaki)** | İskelet eskiz, profil kütüphanesi, köşe işlemleri, kesim listesi | ⬜ |
-| Montaj | Bileşen ekleme, çakışık/eş merkezli/mesafe eşleşmeleri, patlatma | ⬜ |
+| Kaynaklı yapı / profil (v0.6) | İskelet eskizden yapı elemanı, EN profil kütüphanesi (kutu, boru, L, UPN, IPE, HEA, HEB, lama, dolu çubuk), delme noktası / döndürme / aynalama, gönye ve alın köşe işlemleri, kırp/uzat (düz veya profile göre), uç kapağı, köşe takviyesi, bükümlü boru, kesim listesi (gruplama, boy, açı, ağırlık, CSV, tekil STEP) | ✅ |
+| Kaynaklı — sonraki | 3B eskiz, kaynak dikişi, özel profil kütüphanesi, eleman başına imalat resmi | ⬜ |
+| Montaj **(sıradaki)** | Bileşen ekleme, çakışık/eş merkezli/mesafe eşleşmeleri, patlatma | ⬜ |
 | Teknik resim | Görünüşler, kesit, ölçülendirme, antet, PDF | ⬜ |
 | Saha özellikleri | Fotoğraf ekleme, Bluetooth kumpas | ⬜ |
 

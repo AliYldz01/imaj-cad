@@ -1,7 +1,7 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, CutItem } from "./doc/types";
 
-export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame> };
+export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members: { key: string; name: string; body: number }[] };
 
 export class Kernel {
   private worker: Worker;
@@ -42,12 +42,23 @@ export class Kernel {
     await this.ready;
     const fontUrl = new URL("fonts/DejaVuSans.ttf", document.baseURI).href;
     const r = await this.request<BuildResult>({ type: "build", features, fontUrl } as any);
-    return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {} };
+    return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {}, members: r.members ?? [] };
   }
 
   async export(format: "step" | "stl"): Promise<{ blob: Blob | null; message?: string }> {
     await this.ready;
     return this.request({ type: "export", format } as any);
+  }
+
+  async cutList(): Promise<CutItem[]> {
+    await this.ready;
+    const r = await this.request<{ items: CutItem[] }>({ type: "cutlist" } as any);
+    return r.items;
+  }
+
+  async exportBody(body: number): Promise<{ blob: Blob | null; message?: string }> {
+    await this.ready;
+    return this.request({ type: "exportBody", body } as any);
   }
 
   async flat(body: number, t: number, k: number): Promise<FlatResult> {

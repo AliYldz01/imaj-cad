@@ -18,6 +18,7 @@
         <button data-tab="features" class="active">Özellikler</button>
         <button data-tab="sketch">Eskiz</button>
         <button data-tab="sheet">Sac Metal</button>
+        <button data-tab="weld">Kaynaklı</button>
         <button data-tab="evaluate">Değerlendir</button>
       </div>
       <div id="cmds"></div>
@@ -64,13 +65,14 @@
       <button data-act="step">STEP olarak dışa aktar</button>
       <button data-act="stl">STL olarak dışa aktar</button>
       <button data-act="dxf">Sac açınımı (DXF)</button>
+      <button data-act="cutlist">Kesim listesi…</button>
     </div>
     <input type="file" id="file-input" accept=".icad,.json,application/json" hidden />
 
     <div id="toast" hidden></div>
 
     <dialog id="help">
-      <h2>İmaj CAD — v0.5</h2>
+      <h2>İmaj CAD — v0.6</h2>
       <h3>Çalışma mantığı (SolidWorks gibi)</h3>
       <ol>
         <li><b>Eskiz</b>: Bir düzleme (Ön / Üst / Sağ) veya katının düz bir yüzüne dokunun, sonra <b>Eskiz</b>'e basın. Ya da önce Eskiz'e basıp düzlemi seçin.</li>

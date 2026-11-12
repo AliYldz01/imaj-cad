@@ -3,6 +3,9 @@ import type { Feature, Frame, KFeature, KPlane, PlaneRef, SketchFeature, Vec3 } 
 import { AXES, STD_FRAMES, offsetFrame } from "./math";
 import { extractLoops, extractPath, extractChains, pointPos, thinRegion } from "../sketch/profile";
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
+import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } from "../weld/profiles";
+import type { MemberItem } from "./types";
+import { toWorld } from "./math";
 
 export function resolveFrame(ref: PlaneRef, feats: Feature[]): Frame | null {
   if (ref.k === "std") return STD_FRAMES[ref.n];
@@ -143,6 +146,51 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
           }
           break;
         }
+        case "member": {
+          const std = f.std as ProfileStd;
+          if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
+          if (!f.segs.length) throw new Error("İskelet eskizinden en az bir segment seçin");
+          const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot);
+          const items: MemberItem[] = f.segs.map((sg, i) => {
+            const sk = sketchOf(sg.sk);
+            if (!sk) throw new Error("İskelet eskizi bulunamadı");
+            const fr = resolveFrame(sk.plane, feats);
+            if (!fr) throw new Error("Eskiz düzlemi bulunamadı");
+            const e = sk.data.ents.find((x) => x.id === sg.ent);
+            if (!e) throw new Error(`${sk.name}: seçili segment silinmiş`);
+            const key = `${f.id}:${i}`;
+            const W = (p: [number, number]) => toWorld(fr, p);
+            if (e.t === "line") return { k: "l", a: W(pointPos(sk.data, e.p1)), b: W(pointPos(sk.data, e.p2)), n: fr.n, key };
+            if (e.t === "arc") {
+              const c = pointPos(sk.data, e.c), a = pointPos(sk.data, e.s), b = pointPos(sk.data, e.e);
+              const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]);
+              let a1 = Math.atan2(b[1] - c[1], b[0] - c[0]);
+              if (a1 <= a0) a1 += 2 * Math.PI;
+              const r = Math.hypot(a[0] - c[0], a[1] - c[1]);
+              const am = (a0 + a1) / 2;
+              return { k: "a", a: W(a), b: W(b), m: W([c[0] + r * Math.cos(am), c[1] + r * Math.sin(am)]), n: fr.n, key };
+            }
+            throw new Error("Yapı elemanı yalnızca çizgi ve yay segmentleri boyunca oluşturulabilir");
+          });
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap });
+          break;
+        }
+        case "trim": {
+          if (!f.targets.length) throw new Error("Kırpılacak elemanları seçin");
+          if (!f.bounds.length) throw new Error("Sınır elemanlarını seçin");
+          kfeats.push({ id: f.id, type: "trim", targets: f.targets.map((r) => `${r.f}:${r.i}`), bounds: f.bounds.map((r) => `${r.f}:${r.i}`), coped: f.coped });
+          break;
+        }
+        case "endcap":
+          if (!f.faces.length) throw new Error("Elemanın uç yüzünü seçin");
+          if (!(f.t > 0)) throw new Error("Kalınlık sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "endcap", faces: f.faces, t: f.t, inset: f.inset });
+          break;
+        case "gusset":
+          if (!f.f1 || !f.f2) throw new Error("Birbirine dik iki düz yüz seçin");
+          if (!(f.t > 0 && f.d1 > 0 && f.d2 > 0)) throw new Error("Ölçüler sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "gusset", f1: f.f1, f2: f.f2, d1: f.d1, d2: f.d2, t: f.t, chamfer: f.chamfer, offset: f.offset });
+          break;
         case "sketchbend": {
           const sp = sheetParamsBefore(feats, f.id);
           if (!sp) throw new Error("Önce bir taban flanş oluşturun");
@@ -234,6 +282,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
     (f) =>
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
-      ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId),
+      ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId) ||
+      (f.type === "member" && f.segs.some((s) => s.sk === sketchId)),
   );
 }
