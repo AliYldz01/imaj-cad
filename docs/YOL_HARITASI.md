@@ -177,5 +177,18 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Kalem profilleri | Otomatik algılama; aktif kalem (havada imleç + yan tuş), aktif kalem (imleçsiz), basit kapasitif kalem, yalnız parmak, fare — Dosya › Kalem ve dokunmatik ayarları | ✅ |
 | Çizim | Dokun–ayarla–kaldırınca yerleştir, büyüteç (2–4×, yakalama etiketiyle), parmakla çizimde imleç kayması, ayarlanabilir yakalama yarıçapı, yakalamada titreşim | ✅ |
 | Hareketler | Avuç reddi, kalem yan tuşu = sağ tuş (menü / fare hareketleri), uzun basma bağlam menüsü, iki parmak geri al / üç parmak ileri al, iki parmakla çevirerek yuvarlama, çizerken ikinci parmak gelince gezinmeye geçiş | ✅ |
+| Görünüm küpü | Tüm cihazlarda (bilgisayar dahil): yüz = dik görünüm, kenar = 45°, köşe = izometrik; sürükleyerek döndürme; eski Önden/Üstten/Sağdan/İzometrik düğmelerinin yerini aldı | ✅ |
 | Ekran | Sağ kenarda ekran çubuğu (✓ ✕ A Ctrl ↶ ↷ ☰ ⤢), dairesel araç menüsü, görünüm küpü (dokun / sürükle), çizerken alt paneli küçültme, ölçü kutusunda − / + düğmeleri, solak düzeni | ✅ |
 | Montaj | Bileşen ekleme, eşleşmeler, patlatma | ⬜ sıradaki |
+
+## ⏳ Bekleyen: gerçek kalemle saha testi (unutma!)
+
+Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız tarayıcı taklidiyle test edildi. Kalem gelince şunlar denenecek ve ayarlar buna göre verilecek:
+
+- [ ] Otomatik algılama hangi profili seçiyor? (Dosya › Kalem ve dokunmatik ayarları › "Algılanan")
+- [ ] Havada imleç (hover) önizlemesi çalışıyor mu?
+- [ ] Yan tuş: kısa basınca bağlam menüsü, basılı sürükleyince fare hareketleri
+- [ ] Avuç reddi: kalemle çizerken avuç modeli döndürüyor mu?
+- [ ] Kaldırınca yerleştir + büyüteç hassasiyeti, yakalama yarıçapı varsayılanı
+- [ ] Uzun basma süresi (600 ms) ve titreşim uygun mu?
+- [ ] Sonuca göre varsayılan ayarları güncelle

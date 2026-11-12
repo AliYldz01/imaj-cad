@@ -4088,18 +4088,35 @@ const cubeBox = h("div", "vcube");
 const cube = h("div", "cube");
 cubeBox.appendChild(cube);
 $("#view").appendChild(cubeBox);
-const faces: [string, string, string][] = [
-  ["front", "Ön", "rotateY(0deg)"],
-  ["back", "Arka", "rotateY(180deg)"],
-  ["right", "Sağ", "rotateY(90deg)"],
-  ["left", "Sol", "rotateY(-90deg)"],
-  ["top", "Üst", "rotateX(90deg)"],
-  ["bottom", "Alt", "rotateX(-90deg)"],
+// her yüz 3×3 bölge: orta = yüz görünümü, kenar = iki yüz arası (45°), köşe = izometrik
+type V3 = [number, number, number];
+const cubeFaces: { v: string; label: string; tr: string; n: V3; up: V3; right: V3 }[] = [
+  { v: "front", label: "Ön", tr: "rotateY(0deg)", n: [0, 0, 1], up: [0, 1, 0], right: [1, 0, 0] },
+  { v: "back", label: "Arka", tr: "rotateY(180deg)", n: [0, 0, -1], up: [0, 1, 0], right: [-1, 0, 0] },
+  { v: "right", label: "Sağ", tr: "rotateY(90deg)", n: [1, 0, 0], up: [0, 1, 0], right: [0, 0, -1] },
+  { v: "left", label: "Sol", tr: "rotateY(-90deg)", n: [-1, 0, 0], up: [0, 1, 0], right: [0, 0, 1] },
+  { v: "top", label: "Üst", tr: "rotateX(90deg)", n: [0, 1, 0], up: [0, 0, -1], right: [1, 0, 0] },
+  { v: "bottom", label: "Alt", tr: "rotateX(-90deg)", n: [0, -1, 0], up: [0, 0, 1], right: [1, 0, 0] },
 ];
-for (const [v, label, tr] of faces) {
-  const f = h("div", "face", label);
-  f.style.transform = `${tr} translateZ(27px)`;
-  f.addEventListener("click", () => viewer.viewStd(v as any));
+const CUBE = 35; // yarı kenar (px)
+for (const F of cubeFaces) {
+  const f = h("div", "face");
+  f.style.transform = `${F.tr} translateZ(${CUBE}px)`;
+  for (let row = 0; row < 3; row++)
+    for (let col = 0; col < 3; col++) {
+      const kind = row === 1 && col === 1 ? "c" : row === 1 || col === 1 ? "e" : "k";
+      const cell = h("div", "cell " + kind, kind === "c" ? F.label : "");
+      const i = col - 1, j = 1 - row;
+      const dir = new THREE.Vector3(...F.n).add(new THREE.Vector3(...F.right).multiplyScalar(i)).add(new THREE.Vector3(...F.up).multiplyScalar(j));
+      cell.title = kind === "c" ? F.label : kind === "e" ? "Kenardan (45°)" : "İzometrik köşe";
+      cell.addEventListener("click", () => {
+        if (kind === "c") return viewer.viewStd(F.v as any);
+        const d = dir.clone().normalize();
+        const up = Math.abs(d.y) > 0.99 ? new THREE.Vector3(...F.up) : new THREE.Vector3(0, 1, 0);
+        viewer.setView(d, up);
+      });
+      f.appendChild(cell);
+    }
   cube.appendChild(f);
 }
 const isoB = h("button", "iso", "İzo");
@@ -4110,12 +4127,13 @@ cubeBox.appendChild(isoB);
   let d: { x: number; y: number; moved: boolean } | null = null;
   cube.addEventListener("pointerdown", (e) => {
     d = { x: e.clientX, y: e.clientY, moved: false };
-    cube.setPointerCapture(e.pointerId);
   });
   cube.addEventListener("pointermove", (e) => {
-    if (!d) return;
+    if (!d || !(e.buttons & 1 || e.pointerType === "touch")) return;
     const dx = e.clientX - d.x, dy = e.clientY - d.y;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    // sürükleme başlayınca yakala (tıklamalar hücreye ulaşsın diye önceden değil)
+    if (!d.moved) try { cube.setPointerCapture(e.pointerId); } catch {}
     d.moved = true;
     viewer.controls.rotate(dx * 2, dy * 2);
     d.x = e.clientX;
@@ -4127,7 +4145,7 @@ cubeBox.appendChild(isoB);
   }, true);
 }
 function cubeOn() {
-  return prefs.viewCube === "on" || (prefs.viewCube === "auto" && isTouchDevice() && effectiveProfile() !== "mouse");
+  return prefs.viewCube !== "off";
 }
 viewer.onRender(() => {
   cubeBox.hidden = !cubeOn();
@@ -4218,7 +4236,7 @@ function openInputSettings() {
     chk("İki parmakla çevirerek yuvarla (3B)", "twistRoll");
     dlg.appendChild(h("h3", "", "Ekran"));
     sel("Ekran çubuğu", "actionBar", [["auto", "Otomatik (dokunmatikte)"], ["on", "Açık"], ["off", "Kapalı"]]);
-    sel("Görünüm küpü", "viewCube", [["auto", "Otomatik (dokunmatikte)"], ["on", "Açık"], ["off", "Kapalı"]]);
+    sel("Görünüm küpü", "viewCube", [["auto", "Açık"], ["off", "Kapalı"]]);
     chk("Solak kullanım (çubuk ve büyüteç sol tarafta)", "leftHanded");
     chk("Çizime başlayınca alt paneli küçült", "autoMinSheet");
     const bar = h("div", "cut-bar");
