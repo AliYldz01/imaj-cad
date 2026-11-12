@@ -19,8 +19,9 @@ export interface S3Ctx {
   draft(): (Sketch3DFeature & { _act?: number }) | null;
   /** yakalama adayları (model köşeleri, diğer eskiz noktaları) */
   cands(): Vec3[];
-  /** yüzey üzerindeki nokta (model yüzüne tıklama) */
+  /** yüzey üzerindeki nokta (model yüzüne tıklama) ve düz yüzse normali */
   surface(x: number, y: number): Vec3 | null;
+  faceNormal?(x: number, y: number): Vec3 | null;
   changed(): void;
   hint(t: string): void;
 }
@@ -34,6 +35,9 @@ export class Sketch3DTool {
   private last: Cand | null = null;
   private press: { x: number; y: number } | null = null;
   private lastTap = 0;
+  /** 3B eskiz eksen takımı (Ctrl + düz yüz ile hizalanır) */
+  axes: Record<Axis3, THREE.Vector3> = { x: AXV.x.clone(), y: AXV.y.clone(), z: AXV.z.clone() };
+  private drag: { i: number; moved: boolean } | null = null;
   private lastXY: [number, number] = [0, 0];
   constructor(private ctx: S3Ctx) {
     ctx.viewer.overlay.add(this.g);
@@ -60,6 +64,21 @@ export class Sketch3DTool {
     this.g.clear();
     this.tip.style.display = "none";
     this.ctx.viewer.requestRender();
+  }
+  alignTo(n: Vec3 | null) {
+    if (!n) {
+      this.axes = { x: AXV.x.clone(), y: AXV.y.clone(), z: AXV.z.clone() };
+      this.ctx.hint("3B eskiz eksenleri: global");
+    } else {
+      const z = new THREE.Vector3(...n).normalize();
+      const ref = Math.abs(z.x) < 0.9 ? AXV.x : AXV.z;
+      const x = ref.clone().addScaledVector(z, -ref.dot(z)).normalize();
+      const y = new THREE.Vector3().crossVectors(z, x);
+      this.axes = { x, y, z };
+      this.plane = 0;
+      this.ctx.hint("3B eskiz eksenleri seçilen yüze hizalandı (XY = yüz). Ctrl + boşluk = global eksenler");
+    }
+    if (this.last) this.draw(this.last, null);
   }
   cyclePlane(dir = 1) {
     this.plane = (this.plane + dir + 3) % 3;
@@ -118,7 +137,7 @@ export class Sketch3DTool {
         let best: { ax: Axis3; p: Vec3; e: number } | null = null;
         // yalnız etkin düzlemin iki ekseni + düzlem normali (SolidWorks: tutamaçtaki üç eksen)
         for (const ax of axes) {
-          const tip: Vec3 = [A[0] + AXV[ax].x, A[1] + AXV[ax].y, A[2] + AXV[ax].z];
+          const tip: Vec3 = [A[0] + this.axes[ax].x, A[1] + this.axes[ax].y, A[2] + this.axes[ax].z];
           const st = this.screenOf(tip);
           const sl = Math.hypot(st[0] - sa[0], st[1] - sa[1]);
           if (sl < 1e-3) continue; // eksen ekrana dik
@@ -126,7 +145,7 @@ export class Sketch3DTool {
           let e = Math.abs(((ang - aa + Math.PI * 3) % (2 * Math.PI)) - Math.PI);
           e = Math.min(e, Math.PI - e);
           if (e < (7 * Math.PI) / 180 && (!best || e < best.e)) {
-            const p = closestOnLine(ray, new THREE.Vector3(...A), AXV[ax]);
+            const p = closestOnLine(ray, new THREE.Vector3(...A), this.axes[ax]);
             best = { ax, p: [p.x, p.y, p.z], e };
           }
         }
@@ -139,7 +158,7 @@ export class Sketch3DTool {
       if (s) return { p: round3(s), idx: -1, ax: null, kind: "face" };
     }
     // 4) etkin düzlem (çapadan veya orijinden geçen)
-    const n = AXV[PLANE_AX[this.planeName][2]];
+    const n = this.axes[PLANE_AX[this.planeName][2]];
     const o = A ? new THREE.Vector3(...A) : new THREE.Vector3();
     let pl = new THREE.Plane().setFromNormalAndCoplanarPoint(n, o);
     if (Math.abs(ray.direction.dot(n)) < 0.08) {
@@ -166,13 +185,13 @@ export class Sketch3DTool {
       const [u, w, nn] = PLANE_AX[this.planeName];
       const L = k * 46;
       for (const ax of [u, w]) {
-        const e = AXV[ax];
+        const e = this.axes[ax];
         this.g.add(v.fatLines([H[0], H[1], H[2], H[0] + e.x * L, H[1] + e.y * L, H[2] + e.z * L], AXCOL[ax], 2.5));
       }
-      const e = AXV[nn];
+      const e = this.axes[nn];
       this.g.add(v.fatLines([H[0], H[1], H[2], H[0] + e.x * L * 0.5, H[1] + e.y * L * 0.5, H[2] + e.z * L * 0.5], AXCOL[nn], 1, true));
       // düzlem karesi
-      const a = AXV[u].clone().multiplyScalar(L * 0.7), b = AXV[w].clone().multiplyScalar(L * 0.7);
+      const a = this.axes[u].clone().multiplyScalar(L * 0.7), b = this.axes[w].clone().multiplyScalar(L * 0.7);
       const h = new THREE.Vector3(...H);
       const q = [h.clone(), h.clone().add(a), h.clone().add(a).add(b), h.clone().add(b)];
       const pos: number[] = [];
@@ -216,7 +235,8 @@ export class Sketch3DTool {
     }
     if (ai >= 0 && ai !== j) {
       const a = d.ids[ai], b = d.ids[j];
-      if (!d.lines.some((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a))) d.lines.push({ id: `l${d.seq++}`, a, b, ...(c.ax ? { ax: c.ax } : {}) } as any);
+      const gax = axisOf(d.xyz[ai], d.xyz[j]);
+      if (!d.lines.some((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a))) d.lines.push({ id: `l${d.seq++}`, a, b, ...(gax ? { ax: gax } : {}) } as any);
     }
     // var olan noktaya kapanınca SolidWorks zinciri bitirir
     const closed = c.kind === "pt" && ai >= 0;
@@ -247,8 +267,34 @@ export class Sketch3DTool {
     },
     down: (e) => {
       this.press = { x: e.clientX, y: e.clientY };
+      // var olan noktaya basıldı: sürükleme adayı (SolidWorks: noktayı sürükle)
+      const d = this.ctx.draft();
+      this.drag = null;
+      if (d)
+        d.xyz.forEach((p, i) => {
+          const sp = this.screenOf(p);
+          if (!this.drag && Math.hypot(sp[0] - e.clientX, sp[1] - e.clientY) < 10) this.drag = { i, moved: false };
+        });
     },
     move: (e) => {
+      const pr = this.press, dg = this.drag;
+      if (dg && pr && (dg.moved || Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > 6)) {
+        dg.moved = true;
+        const d = this.ctx.draft()!;
+        const P = d.xyz[dg.i];
+        // etkin düzlemde, noktanın içinden geçen düzlemde taşı
+        const n = this.axes[PLANE_AX[this.planeName][2]];
+        const ray = this.ctx.viewer.ray(e.clientX, e.clientY).ray;
+        let pl = new THREE.Plane().setFromNormalAndCoplanarPoint(n, new THREE.Vector3(...P));
+        if (Math.abs(ray.direction.dot(n)) < 0.08) pl = new THREE.Plane().setFromNormalAndCoplanarPoint(ray.direction.clone().negate(), new THREE.Vector3(...P));
+        const q = new THREE.Vector3();
+        if (ray.intersectPlane(pl, q)) {
+          d.xyz[dg.i] = round3([q.x, q.y, q.z]);
+          enforceAlong(d, dg.i);
+          this.ctx.changed();
+        }
+        return;
+      }
       const c = this.locate(e.clientX, e.clientY);
       this.last = c;
       this.draw(c, { x: e.clientX, y: e.clientY });
@@ -256,6 +302,11 @@ export class Sketch3DTool {
     up: (e) => {
       const pr = this.press;
       this.press = null;
+      const dg = this.drag;
+      this.drag = null;
+      if (dg?.moved) return;
+      // Ctrl + düz yüz: eksen takımını yüze hizala (XY = yüz); Ctrl + boşluk: global eksenler
+      if (e.ctrlKey || e.metaKey) return this.alignTo(this.ctx.faceNormal?.(e.clientX, e.clientY) ?? null);
       // tıkla-sürükle-bırak: basılan yerden bırakılan yere çizgi
       if (pr && Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > 8 && this.anchor() < 0) {
         const c0 = this.locate(pr.x, pr.y);
@@ -367,5 +418,28 @@ export function setLineLength(f: Sketch3DFeature, lineId: string, len: number) {
   for (const id of move) {
     const k = f.ids.indexOf(id);
     f.xyz[k] = round3([f.xyz[k][0] + delta[0], f.xyz[k][1] + delta[1], f.xyz[k][2] + delta[2]]);
+  }
+}
+
+/** Along X/Y/Z ilişkilerini koru: i noktası taşındıktan sonra eksen ilişkili çizgilerin diğer uçlarını hizalar (basit 3B çözücü) */
+export function enforceAlong(f: Sketch3DFeature, i: number) {
+  const K = { x: 0, y: 1, z: 2 } as const;
+  const seen = new Set<number>([i]);
+  const st = [i];
+  while (st.length) {
+    const pi = st.pop()!;
+    const pid = f.ids[pi], P = f.xyz[pi];
+    for (const l of f.lines) {
+      if (!l.ax || (l.a !== pid && l.b !== pid)) continue;
+      const qi = f.ids.indexOf(l.a === pid ? l.b : l.a);
+      if (qi < 0 || seen.has(qi)) continue;
+      const Q = f.xyz[qi], k = K[l.ax];
+      const nq = [0, 1, 2].map((c) => (c === k ? Q[c] : P[c])) as Vec3;
+      if (nq.some((v, c) => Math.abs(v - Q[c]) > 1e-9)) {
+        f.xyz[qi] = nq;
+        seen.add(qi);
+        st.push(qi);
+      }
+    }
   }
 }

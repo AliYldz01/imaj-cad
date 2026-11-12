@@ -53,13 +53,19 @@ Tarih: 2026-11-12 · Sürüm: v0.18 · Kapsam: `3B Eskiz` özelliği ve `Yapı E
 
 Test: `tests/e2e/s3d1.py` — tıklayarak çizim, X/Z/Y eksen çıkarımı, Tab, sayıyla uzunluk, çift tık, Esc, uzunluk düzenleme, segment seçimi; X/Z/düşey çizgilerde ve üst düzlem 2B eskizde 100×50 kutunun yönü (100 mm dikey), üst delme noktası. Eski testler `w1`–`w8` değişmeden geçti.
 
-## 4. Kalan farklar (sonraki adımlar)
+## 4. v0.19 ile tamamlananlar (eski "kalan farklar")
 
-| # | Eksik | Öncelik |
+| # | Konu | Durum |
 |---|---|---|
-| K1 | **Gruplar**: tek yapı elemanında birden çok grup, her grup için ayrı döndürme / aynalama / delme noktası / köşe işlemi. Şimdilik her grup için ayrı Yapı Elemanı özelliği gerekir. | Yüksek |
-| K2 | **Alignment**: profil eksenini seçilen bir kenara/çizgiye hizalama. | Orta |
-| K3 | Delme noktasını **profil üzerinde tıklayarak** seçme ("Profili konumlandır" görünümü). Şimdilik 9 hazır konum + öteleme. | Orta |
-| K4 | 3B eskizde **gerçek çözücü** (ilişkiler ve ölçüler sürüklemede korunur); şimdilik Along X/Y/Z yalnız kayıt, uzunluk değişimi bağlı noktaları öteler. | Orta |
-| K5 | Ctrl + düzlem/yüz ile 3B eskiz eksen takımını hizalama; 3B eskizde yay ve spline. | Düşük |
-| K6 | 3B eskiz noktalarını grafik alanda **sürükleme** (eksen/düzlem kısıtlı, triad ile). | Orta |
+| K1 | **Gruplar**: tek yapı elemanında birden çok grup (`groups`); her grubun delme noktası, öteleme, döndürme, aynalama, hizalama ve köşe işlemi ayrı; köşe işlemi grup içinde uygulanır. PM'de "Grup 1/2/… · + Yeni grup · Grubu sil"; grafik alanda tıklanan segment etkin gruba geçer (etkin grup mavi, diğer gruplar mor). | ✅ |
+| K2 | **Alignment**: profilin yatay / dikey eksenini global X/Y/Z'ye veya seçilen model kenarına / eskiz çizgisine paralel yapma (`alignAx`, `alignTo`). | ✅ |
+| K3 | **Profili konumlandır**: profil resminde köşe, yay başı, daire merkezi/çeyrekleri ve sınır kutusunun 9 noktasından birine dokunarak delme noktası seçimi. | ✅ |
+| K4 | **Along X/Y/Z korunur**: nokta sürüklenince veya koordinatı değişince eksen ilişkili çizgilerin diğer uçları zincir boyunca hizalanır (`enforceAlong`). Tam kısıt çözücü (eşit, dik, ölçü sürüş) yok. | 🟡 |
+| K5 | **Ctrl + düz yüz / düzlem**: 3B eskiz eksen takımı yüze hizalanır (XY = yüz); Ctrl + boşluk global eksenlere döner. 3B yay/spline yok (köşe yarıçapı ile bükümlü zincir var). | 🟡 |
+| K6 | **Nokta sürükleme**: 3B eskizde noktaya basıp sürükleyince nokta etkin düzlemde taşınır, bağlı Along ilişkileri korunur. | ✅ |
+
+Test: `tests/e2e/s3d2.py`.
+
+## 5. Hâlâ kalan
+- 3B eskizde tam kısıt çözücü (eşit, dik, paralel, sürücü ölçüler) ve 3B yay / spline.
+- Gruplar arası kırpma sırası (SolidWorks "trim order"); şimdilik gruplar arası birleşim için Kırp/Uzat kullanılır.

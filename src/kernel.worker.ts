@@ -1373,6 +1373,14 @@ function profileX(n: Vec3, d: Vec3, legacy = false): Vec3 {
   return vnorm(vcross(y, d));
 }
 function memberTool(f: Extract<KFeature, { type: "member" }>) {
+  if (!f.gl || f.gl.length < 2) return memberCore(f);
+  // SolidWorks grupları: her grup kendi profil konumu ve köşe işlemiyle (köşe işlemi grup içinde)
+  f.gl.forEach((gp, k) => {
+    const items = f.items.filter((it) => (it.g ?? 0) === k);
+    if (items.length) memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap });
+  });
+}
+function memberCore(f: Extract<KFeature, { type: "member" }>) {
   const items = f.items;
   type LI = { a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
   const lines: (LI | null)[] = items.map((it) => {

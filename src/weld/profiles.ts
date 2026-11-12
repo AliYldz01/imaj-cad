@@ -188,7 +188,7 @@ export function sectionProps(loops: Loop[]): { area: number; c: Vec2 } {
   }
   return { area: A, c: [cx / (A || 1), cy / (A || 1)] };
 }
-function sampleLoop(l: Loop): Vec2[] {
+export function sampleLoop(l: Loop): Vec2[] {
   if ("circle" in l || "ellipse" in l) return loopPoints(l);
   const out: Vec2[] = [];
   for (const s of l.segs) {

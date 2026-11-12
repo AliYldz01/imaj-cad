@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.19: Yapı elemanı **grupları** (her grup ayrı delme noktası/döndürme/köşe işlemi), **Alignment** (profil eksenini X/Y/Z veya kenara hizala), **profili konumlandır** (profil resminde noktaya dokun), 3B eskizde **nokta sürükleme** + X/Y/Z boyunca ilişkisinin korunması, **Ctrl + yüz** ile 3B eksen hizalama
 - v0.18: **3B eskiz SolidWorks gibi**: grafik alanda tıklayarak çizim, Tab ile XY/YZ/ZX, uzay tutamacı, X/Y/Z eksen çıkarımı, rakamla uzunluk, çift tık/Esc bitir, çizgi uzunluğu düzenleme; **profil yönü düzeltildi** (dikey eksen yukarı / eskiz normali); yapı elemanında segmentlere grafik alanda tıklayarak seçim. Rapor: `docs/3B_ESKIZ_RAPORU.md`
 - v0.17: Montaj ekleri — teğet ve limit mesafe eşleşmesi, Ctrl ile iki yüz seçince eşleşme mini çubuğu, sürüklerken çarpışma algılama, doğrusal/dairesel bileşen çoğaltma
 - v0.16: **Montaj** — bileşen ekleme, eşleşmeler (çakışık, paralel, dik, mesafe, açı, eş merkezli, kilit), sürükleme, girişim, patlatma, malzeme listesi, STEP montaj, parça kütüphanesi

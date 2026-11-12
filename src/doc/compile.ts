@@ -4,7 +4,7 @@ import { AXES, STD_FRAMES, offsetFrame } from "./math";
 import { extractLoops, extractPath, extractChains, pointPos, thinRegion, segPoints } from "../sketch/profile";
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
 import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } from "../weld/profiles";
-import type { MemberItem, Sketch3DFeature } from "./types";
+import type { MemberItem, Sketch3DFeature, CornerKind } from "./types";
 import { toWorld } from "./math";
 
 /** Konturun örnek noktaları (içerme testi için) */
@@ -350,7 +350,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         }
         case "member": {
           const std = f.std as ProfileStd;
-          if (!f.segs.length) throw new Error("İskelet eskizinden en az bir segment seçin");
+          if (!f.segs.length && !(f.groups ?? []).some((g) => g.segs.length)) throw new Error("İskelet eskizinden en az bir segment seçin");
           let custom: Loop[] | undefined, cname = "";
           if (f.std === "sketch") {
             const ps = sketchOf(f.size);
@@ -365,12 +365,21 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             custom = cp.loops;
             cname = cp.name;
           } else if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
-          const pr = placedProfile(std, f.size, f.align as Align, f.mirror, f.rot, custom, f.poff);
+          // SolidWorks grupları: 1. grup = özelliğin kendi alanları, sonra f.groups
+          const groups = [{ segs: f.segs, align: f.align, mirror: f.mirror, rot: f.rot, poff: f.poff, corner: f.corner, gap: f.gap, alignAx: f.alignAx, alignTo: f.alignTo }, ...(f.groups ?? [])];
           const items: MemberItem[] = [];
+          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number }[] = [];
+          let gi = 0;
+          let pr0: ReturnType<typeof placedProfile> | null = null;
+          groups.forEach((G, gk) => {
+          const pr = placedProfile(std, f.size, G.align as Align, G.mirror, G.rot, custom, G.poff);
+          pr0 ??= pr;
+          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap });
+          const gItems: MemberItem[] = [];
           // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
           const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];
-          f.segs.forEach((sg, i) => {
-            const key = `${f.id}:${i}`;
+          G.segs.forEach((sg) => {
+            const key = `${f.id}:${gi++}`;
             const any = feats.find((x) => x.id === sg.sk);
             if (any && any.type === "sketch3d") {
               const ln = any.lines.find((l) => l.id === sg.ent);
@@ -392,7 +401,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             const e = sk.data.ents.find((x) => x.id === sg.ent);
             if (!e) throw new Error(`${sk.name}: seçili segment silinmiş`);
             const W = (p: [number, number]) => toWorld(fr, p);
-            if (e.t === "line") return void items.push({ k: "l", a: W(pointPos(sk.data, e.p1)), b: W(pointPos(sk.data, e.p2)), n: fr.n, key });
+            if (e.t === "line") return void gItems.push({ k: "l", a: W(pointPos(sk.data, e.p1)), b: W(pointPos(sk.data, e.p2)), n: fr.n, key });
             if (e.t === "arc") {
               const c = pointPos(sk.data, e.c), a = pointPos(sk.data, e.s), b = pointPos(sk.data, e.e);
               const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]);
@@ -400,12 +409,25 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
               if (a1 <= a0) a1 += 2 * Math.PI;
               const r = Math.hypot(a[0] - c[0], a[1] - c[1]);
               const am = (a0 + a1) / 2;
-              return void items.push({ k: "a", a: W(a), b: W(b), m: W([c[0] + r * Math.cos(am), c[1] + r * Math.sin(am)]), n: fr.n, key });
+              return void gItems.push({ k: "a", a: W(a), b: W(b), m: W([c[0] + r * Math.cos(am), c[1] + r * Math.sin(am)]), n: fr.n, key });
             }
             throw new Error("Yapı elemanı yalnızca çizgi ve yay segmentleri boyunca oluşturulabilir");
           });
-          for (const g of s3) items.push(...sketch3dItems(g.lines, g.f.r, f.ori !== 2));
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori });
+          for (const g of s3) gItems.push(...sketch3dItems(g.lines, g.f.r, f.ori !== 2));
+          // Alignment: profilin yatay (h) / dikey (v) eksenini seçilen yöne hizala
+          if (G.alignTo && f.ori === 2) {
+            const t = n3(G.alignTo);
+            for (const it of gItems) {
+              const d = n3(v3.sub(it.b, it.a));
+              const a = v3.sub(t, v3.mul(d, v3.dot(t, d)));
+              if (v3.len(a) < 1e-6) continue;
+              it.n = G.alignAx === "h" ? n3(v3.cross(d, a)) : n3(a);
+            }
+          }
+          for (const it of gItems) items.push({ ...it, g: gk });
+          });
+          const pr = pr0!;
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, ...(groups.length > 1 ? { gl } : {}) });
           break;
         }
         case "trim": {
@@ -616,7 +638,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
       ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId) ||
-      (f.type === "member" && (f.segs.some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
+      (f.type === "member" && ([...f.segs, ...(f.groups ?? []).flatMap((g) => g.segs)].some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
       ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId),
   );
 }

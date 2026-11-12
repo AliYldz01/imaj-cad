@@ -278,3 +278,14 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Profil yönü: dikey eksen = eskiz normali / dünya yukarısı (`ori: 2`, eski belgeler korunur) | ✅ |
 | Yapı elemanında segmentleri grafik alanda seçme + vurgulama | ✅ |
 | Gruplar, Alignment, profil üzerinde delme noktası seçimi, 3B çözücü, nokta sürükleme | ⬜ |
+
+## v0.19 — Yapı elemanı grupları, Alignment, 3B sürükleme
+
+| Özellik | Durum |
+|---|---|
+| Yapı elemanı grupları (ayrı konum/döndürme/köşe işlemi) | ✅ |
+| Alignment (yatay/dikey eksen → X/Y/Z veya kenar) | ✅ |
+| Profili konumlandır (delme noktasını profil resminde seç) | ✅ |
+| 3B eskiz nokta sürükleme, Along X/Y/Z korunumu | ✅ |
+| Ctrl + yüz ile 3B eksen takımı hizalama | ✅ |
+| 3B tam çözücü, 3B yay/spline, gruplar arası kırpma sırası | ⬜ |

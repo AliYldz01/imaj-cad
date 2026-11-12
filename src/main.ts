@@ -15,7 +15,7 @@ import type {
 import { lastSheetBase, sheetParamsBefore, bendAllowance, effK, GAUGE_TABLE } from "./sheet/sheet";
 import { loftFlatPattern, outlineDxf } from "./sheet/loftflat";
 import { flatToDxf } from "./sheet/dxf";
-import { PROFILES, ALIGN_NAMES, placedProfile, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
+import { PROFILES, ALIGN_NAMES, placedProfile, sampleLoop, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
@@ -24,7 +24,7 @@ import * as THREE from "three";
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
-import { Sketch3DTool, PLANES as S3PLANES, setLineLength } from "./sketch/sketch3d";
+import { Sketch3DTool, PLANES as S3PLANES, setLineLength, enforceAlong } from "./sketch/sketch3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -352,7 +352,10 @@ function drawSketches() {
   if (mode.k === "sketch") return viewer.requestRender();
   const { feats } = viewFeatures();
   // yapı elemanı düzenlenirken iskelet eskizleri görünür, seçili segmentler mavi
-  const memSel = mode.k === "pm" && mode.draft.type === "member" ? new Set(mode.draft.segs.map((q) => q.sk + ":" + q.ent)) : null;
+  const md = mode.k === "pm" && mode.draft.type === "member" ? (mode.draft as any) : null;
+  const memSel = md ? new Set<string>(memGroup(md, Math.min(md._g ?? 0, (md.groups ?? []).length)).segs.map((q: any) => q.sk + ":" + q.ent)) : null;
+  const memOther = md ? new Set<string>([md, ...(md.groups ?? [])].flatMap((x: any) => x.segs).map((q: any) => q.sk + ":" + q.ent)) : null;
+  const othSegs: number[] = [];
   const selSegs: number[] = [];
   for (const f of feats) {
     if (f.type !== "sketch" || f.off) continue;
@@ -377,7 +380,7 @@ function drawSketches() {
         }
         for (let i = 0; i <= 48; i++) pts.push([c[0] + e.r * Math.cos(a0 + ((a1 - a0) * i) / 48), c[1] + e.r * Math.sin(a0 + ((a1 - a0) * i) / 48)]);
       }
-      const arr = e.cons ? cons : memSel?.has(f.id + ":" + e.id) ? selSegs : segs;
+      const arr = e.cons ? cons : memSel?.has(f.id + ":" + e.id) ? selSegs : memOther?.has(f.id + ":" + e.id) ? othSegs : segs;
       for (let i = 0; i < pts.length - 1; i++) arr.push(...toWorld(fr, pts[i]), ...toWorld(fr, pts[i + 1]));
     }
     if (sk.pic) sketchGroup.push(pictureMesh(sk.pic, fr, () => viewer.requestRender()) as any);
@@ -395,7 +398,7 @@ function drawSketches() {
     const segs: number[] = [], cons: number[] = [];
     for (const l of f.lines) {
       const a = P(l.a), b = P(l.b);
-      if (a && b) (l.cons ? cons : memSel?.has(f.id + ":" + l.id) ? selSegs : segs).push(...a, ...b);
+      if (a && b) (l.cons ? cons : memSel?.has(f.id + ":" + l.id) ? selSegs : memOther?.has(f.id + ":" + l.id) ? othSegs : segs).push(...a, ...b);
     }
     const col = editing || treeSel === f.id ? 0x0ca5e9 : 0x1f2a37;
     if (segs.length) sketchGroup.push(viewer.fatLines(segs, col, 2));
@@ -410,6 +413,7 @@ function drawSketches() {
     }
   }
   if (selSegs.length) sketchGroup.push(viewer.fatLines(selSegs, 0x1c7ed6, 3.5));
+  if (othSegs.length) sketchGroup.push(viewer.fatLines(othSegs, 0xae3ec9, 2.5));
   sketchGroup.forEach((o) => viewer.overlay.add(o));
   viewer.requestRender();
 }
@@ -524,6 +528,16 @@ var s3tool: Sketch3DTool = new Sketch3DTool({
   surface: (x, y) => {
     const hh = viewer.pick(x, y, { face: true });
     return hh ? hh.point : null;
+  },
+  faceNormal: (x, y) => {
+    const hh = viewer.pick(x, y, { face: true, plane: true });
+    if (hh?.kind === "face") return viewer.mesh?.faces[hh.index]?.n ?? null;
+    if (hh?.kind === "plane") {
+      const ref = planeRefFromHit(hh);
+      const fr = ref ? resolveFrame(ref, doc.features) : null;
+      return fr ? fr.n : null;
+    }
+    return null;
   },
   changed: () => {
     renderFeaturePM("sketch3d");
@@ -646,6 +660,7 @@ function partClick(e: PointerEvent) {
     if (!ref) return toast("Eskiz yalnızca düzlemsel bir yüze veya düzleme çizilebilir", true);
     return startSketch(ref, mode.tool);
   }
+  if (mode.k === "pm" && mode.draft.type === "member" && (mode.draft as any)._pick === "align") return memberAlignPick(e.clientX, e.clientY);
   if (mode.k === "pm" && mode.draft.type === "member" && memberSegPick(e.clientX, e.clientY)) return;
   if (mode.k === "pm") return pmPick(hit, e);
   if (mode.k === "measure") return measurePick(hit);
@@ -1718,6 +1733,9 @@ function renderFeaturePM(kind: string) {
     }
     case "member": {
       const std = d.std as ProfileStd;
+      // SolidWorks grupları: etkin grup (0 = özelliğin kendi alanları)
+      const gi = Math.min(d._g ?? 0, (d.groups ?? []).length);
+      const g = memGroup(d, gi);
       const lib = loadLibrary();
       const docP = doc.profiles ?? {};
       const closedSk = sketches.filter((x) => extractClosed(x) && !d.segs.some((sg: any) => sg.sk === x.id));
@@ -1740,7 +1758,7 @@ function renderFeaturePM(kind: string) {
         let custom: any;
         if (d.std === "sketch") custom = extractLoops((getFeat(d.size) as SketchFeature).data).loops;
         else if (d.std === "custom") custom = (doc.profiles ?? {})[d.size]?.loops;
-        const pr = placedProfile(std, d.size, d.align, d.mirror, d.rot, custom, d.poff);
+        const pr = placedProfile(std, d.size, g.align as any, g.mirror, g.rot, custom, g.poff);
         const rho = MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85;
         info = `Kesit alanı ${fmtNum(pr.area / 100, 2)} cm² · ≈ ${fmtNum((pr.area * rho) / 1000, 2)} kg/m`;
       } catch {}
@@ -1805,21 +1823,66 @@ function renderFeaturePM(kind: string) {
         gp.appendChild(io);
       }
       body.appendChild(gp);
+      // gruplar
+      const allG = [d, ...(d.groups ?? [])];
+      const gbar = h("div", "pm-row");
+      allG.forEach((x: any, k: number) => gbar.appendChild(button(`Grup ${k + 1} (${x.segs.length})`, () => ((d._g = k), renderFeaturePM(kind), drawSketches()), "btn" + (k === gi ? " primary" : ""))));
+      gbar.appendChild(button("+ Yeni grup", () => {
+        d.groups = [...(d.groups ?? []), { segs: [], align: g.align, mirror: false, rot: 0, corner: g.corner, gap: g.gap }];
+        d._g = d.groups.length;
+        renderFeaturePM(kind);
+        drawSketches();
+      }, "btn"));
+      if (gi > 0) gbar.appendChild(button("Grubu sil", () => {
+        d.segs.push(...d.groups[gi - 1].segs);
+        d.groups.splice(gi - 1, 1);
+        d._g = 0;
+        renderFeaturePM(kind);
+        drawSketches();
+        upd();
+      }, "btn danger"));
+      body.appendChild(group("Gruplar", gbar, h("p", "pm-hint", "Her grubun kendi delme noktası, döndürme, aynalama, hizalama ve köşe işlemi vardır. Grafik alanda tıklanan segment etkin gruba geçer.")));
       body.appendChild(
         group(
           "Konum",
-          selectField("Delme noktası", Object.entries(ALIGN_NAMES).map(([v, t]) => ({ v, t })), d.align, (v) => ((d.align = v), upd())),
-          numField("Delme noktası öteleme X", d.poff?.[0] ?? 0, (v) => ((d.poff = [v, d.poff?.[1] ?? 0]), upd()), { unit: "mm" }),
-          numField("Delme noktası öteleme Y", d.poff?.[1] ?? 0, (v) => ((d.poff = [d.poff?.[0] ?? 0, v]), upd()), { unit: "mm" }),
-          numField("Döndürme açısı", d.rot, (v) => ((d.rot = v), upd()), { unit: "°", key: `${d.id}.rot` }),
-          checkField("Profili aynala", d.mirror, (v) => ((d.mirror = v), upd())),
+          selectField("Delme noktası", Object.entries(ALIGN_NAMES).map(([v, t]) => ({ v, t })), g.align, (v) => ((g.align = v), upd())),
+          numField("Delme noktası öteleme X", g.poff?.[0] ?? 0, (v) => ((g.poff = [v, g.poff?.[1] ?? 0]), upd()), { unit: "mm" }),
+          numField("Delme noktası öteleme Y", g.poff?.[1] ?? 0, (v) => ((g.poff = [g.poff?.[0] ?? 0, v]), upd()), { unit: "mm" }),
+          numField("Döndürme açısı", g.rot, (v) => ((g.rot = v), upd()), { unit: "°", key: `${d.id}.rot${gi || ""}` }),
+          checkField("Profili aynala", g.mirror, (v) => ((g.mirror = v), upd())),
+          button("Profili konumlandır (delme noktası seç)…", () => openPierceDialog(d, g), "btn"),
         ),
       );
+      if (d.ori === 2) {
+        const tgt = !g.alignTo ? "" : (["x", "y", "z"].find((a, k) => Math.abs(Math.abs(g.alignTo[k]) - 1) < 1e-9) ?? "edge");
+        const ga = group(
+          "Hizalama (Alignment)",
+          selectField("Profil ekseni", [{ v: "", t: "Yok (varsayılan)" }, { v: "h", t: "Yatay eksen" }, { v: "v", t: "Dikey eksen" }], g.alignAx ?? "", (v) => {
+            g.alignAx = v || undefined;
+            if (!v) g.alignTo = undefined;
+            else g.alignTo ??= [1, 0, 0];
+            renderFeaturePM(kind);
+            upd();
+          }),
+        );
+        if (g.alignAx) {
+          ga.appendChild(
+            selectField("Hedef yön", [{ v: "x", t: "Global X" }, { v: "y", t: "Global Y" }, { v: "z", t: "Global Z" }, ...(tgt === "edge" ? [{ v: "edge", t: "Seçilen kenar/çizgi" }] : [])], tgt, (v) => {
+              if (v !== "edge") g.alignTo = v === "x" ? [1, 0, 0] : v === "y" ? [0, 1, 0] : [0, 0, 1];
+              renderFeaturePM(kind);
+              upd();
+            }),
+          );
+          ga.appendChild(button(d._pick === "align" ? "Kenar / çizgi seçiliyor… (iptal)" : "Kenar veya eskiz çizgisi seç", () => ((d._pick = d._pick === "align" ? undefined : "align"), renderFeaturePM(kind)), "btn" + (d._pick === "align" ? " primary" : "")));
+        }
+        ga.appendChild(h("p", "pm-hint", "Profilin yatay ya da dikey eksenini seçilen yöne paralel yapar (eğik çerçevelerde profili düz tutmak için)."));
+        body.appendChild(ga);
+      }
       const gc = group(
         "Köşe işlemi",
-        segField([{ v: "miter", t: "Gönye" }, { v: "butt1", t: "Alın 1" }, { v: "butt2", t: "Alın 2" }, { v: "none", t: "Yok" }], d.corner, (v) => ((d.corner = v), renderFeaturePM(kind), upd())),
+        segField([{ v: "miter", t: "Gönye" }, { v: "butt1", t: "Alın 1" }, { v: "butt2", t: "Alın 2" }, { v: "none", t: "Yok" }], g.corner, (v) => ((g.corner = v), renderFeaturePM(kind), upd())),
       );
-      if (d.corner !== "none") gc.appendChild(numField("Boşluk", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }));
+      if (g.corner !== "none") gc.appendChild(numField("Boşluk", g.gap, (v) => ((g.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }));
       gc.appendChild(h("p", "pm-hint", "Uç uca birleşen iki eleman köşede kesilir. T birleşimleri için Kırp/Uzat kullanın."));
       body.appendChild(gc);
       // segmentler
@@ -1827,11 +1890,11 @@ function renderFeaturePM(kind: string) {
       for (const sk of sketches) {
         const ents = sk.data.ents.filter((e) => !e.cons && (e.t === "line" || e.t === "arc"));
         if (!ents.length) continue;
-        const all = ents.every((e) => d.segs.some((x: any) => x.sk === sk.id && x.ent === e.id));
+        const all = ents.every((e) => g.segs.some((x: any) => x.sk === sk.id && x.ent === e.id));
         segBox.appendChild(
           checkField(`${sk.name} — tümü (${ents.length})`, all, (on) => {
-            d.segs = d.segs.filter((x: any) => x.sk !== sk.id);
-            if (on) d.segs.push(...ents.map((e) => ({ sk: sk.id, ent: e.id })));
+            g.segs = g.segs.filter((x: any) => x.sk !== sk.id);
+            if (on) ents.forEach((e) => (memTake(d, sk.id, e.id), g.segs.push({ sk: sk.id, ent: e.id })));
             renderFeaturePM(kind);
             upd();
           }),
@@ -1842,10 +1905,10 @@ function renderFeaturePM(kind: string) {
             const a = pointPos(sk.data, e.p1), b = pointPos(sk.data, e.p2);
             lbl = `Çizgi ${j + 1} · ${fmtNum(Math.hypot(b[0] - a[0], b[1] - a[1]), 1)} mm`;
           } else lbl = `Yay ${j + 1} · R${fmtNum((e as any).r, 1)}`;
-          const on = d.segs.some((x: any) => x.sk === sk.id && x.ent === e.id);
+          const on = g.segs.some((x: any) => x.sk === sk.id && x.ent === e.id);
           const cf = checkField(lbl, on, (v) => {
-            d.segs = d.segs.filter((x: any) => !(x.sk === sk.id && x.ent === e.id));
-            if (v) d.segs.push({ sk: sk.id, ent: e.id });
+            g.segs = g.segs.filter((x: any) => !(x.sk === sk.id && x.ent === e.id));
+            if (v) (memTake(d, sk.id, e.id), g.segs.push({ sk: sk.id, ent: e.id }));
             upd();
           });
           cf.style.paddingLeft = "18px";
@@ -1855,28 +1918,28 @@ function renderFeaturePM(kind: string) {
       for (const s3 of doc.features.slice(0, idx).filter((f) => f.type === "sketch3d") as Sketch3DFeature[]) {
         const ls = s3.lines.filter((l) => !l.cons);
         if (!ls.length) continue;
-        const all = ls.every((l) => d.segs.some((x: any) => x.sk === s3.id && x.ent === l.id));
+        const all = ls.every((l) => g.segs.some((x: any) => x.sk === s3.id && x.ent === l.id));
         segBox.appendChild(
           checkField(`${s3.name} — tümü (${ls.length})`, all, (on) => {
-            d.segs = d.segs.filter((x: any) => x.sk !== s3.id);
-            if (on) d.segs.push(...ls.map((l) => ({ sk: s3.id, ent: l.id })));
+            g.segs = g.segs.filter((x: any) => x.sk !== s3.id);
+            if (on) ls.forEach((l) => (memTake(d, s3.id, l.id), g.segs.push({ sk: s3.id, ent: l.id })));
             renderFeaturePM(kind);
             upd();
           }),
         );
         ls.forEach((l, j) => {
           const a = s3.xyz[s3.ids.indexOf(l.a)], b = s3.xyz[s3.ids.indexOf(l.b)];
-          const on = d.segs.some((x: any) => x.sk === s3.id && x.ent === l.id);
+          const on = g.segs.some((x: any) => x.sk === s3.id && x.ent === l.id);
           const cf = checkField(`Çizgi ${j + 1} · ${fmtNum(dist3(a, b), 1)} mm`, on, (v) => {
-            d.segs = d.segs.filter((x: any) => !(x.sk === s3.id && x.ent === l.id));
-            if (v) d.segs.push({ sk: s3.id, ent: l.id });
+            g.segs = g.segs.filter((x: any) => !(x.sk === s3.id && x.ent === l.id));
+            if (v) (memTake(d, s3.id, l.id), g.segs.push({ sk: s3.id, ent: l.id }));
             upd();
           });
           cf.style.paddingLeft = "18px";
           segBox.appendChild(cf);
         });
       }
-      body.appendChild(group(`Segmentler (${d.segs.length} seçili)`, segBox));
+      body.appendChild(group(`Segmentler — Grup ${gi + 1} (${g.segs.length} seçili)`, segBox));
       break;
     }
     case "sketch3d": {
@@ -1940,6 +2003,8 @@ function renderFeaturePM(kind: string) {
         (["X", "Y", "Z"] as const).forEach((ax, k) => {
           const nf = numField(ax, f3.xyz[i][k], (v) => {
             f3.xyz[i][k] = v;
+            enforceAlong(f3, i);
+            renderFeaturePM(kind);
             drawSketches();
             upd();
           }, { key: `${f3.id}.xyz[${i}][${k}]` });
@@ -2645,6 +2710,14 @@ async function checkInterference() {
   toast(`${pairs.length} girişim: ` + pairs.map((p) => `Gövde ${p.a + 1} ↔ ${p.b + 1} (${fmtNum(p.vol / 1000, 2)} cm³)`).join(", "), true);
 }
 
+// ---------- Yapı elemanı grupları ----------
+function memGroup(d: any, k: number): any {
+  return k <= 0 ? d : d.groups[k - 1];
+}
+/** segmenti tüm gruplardan çıkar (bir segment tek grupta olur) */
+function memTake(d: any, sk: string, ent: string) {
+  for (const x of [d, ...(d.groups ?? [])]) x.segs = x.segs.filter((q: any) => !(q.sk === sk && q.ent === ent));
+}
 // ---------- Yapı elemanı: segmenti grafik alanda seç (SolidWorks gibi) ----------
 /** ekranda tıklanan yere en yakın iskelet segmenti (≤ 10 px) */
 function memberSegAt(x: number, y: number): { sk: string; ent: string } | null {
@@ -2696,14 +2769,116 @@ function memberSegAt(x: number, y: number): { sk: string; ent: string } | null {
   }
   return best;
 }
+/** iskelet segmentinin dünya yönü */
+function segDir(sg: { sk: string; ent: string }): Vec3 | null {
+  const f = getFeat(sg.sk);
+  if (f?.type === "sketch3d") {
+    const l = f.lines.find((q) => q.id === sg.ent);
+    if (!l) return null;
+    const a = f.xyz[f.ids.indexOf(l.a)], b = f.xyz[f.ids.indexOf(l.b)];
+    return [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  }
+  if (f?.type === "sketch") {
+    const e = f.data.ents.find((q) => q.id === sg.ent);
+    const fr = resolveFrame(f.plane, doc.features);
+    if (!e || !fr) return null;
+    const [p1, p2] = e.t === "line" ? [e.p1, e.p2] : e.t === "arc" ? [e.s, e.e] : [null, null];
+    if (!p1 || !p2) return null;
+    const a = toWorld(fr, pointPos(f.data, p1)), b = toWorld(fr, pointPos(f.data, p2));
+    return [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  }
+  return null;
+}
+/** Alignment hedefi: model kenarı veya eskiz çizgisi */
+function memberAlignPick(x: number, y: number) {
+  if (mode.k !== "pm") return;
+  const d = mode.draft as any;
+  const g = memGroup(d, Math.min(d._g ?? 0, (d.groups ?? []).length));
+  let dir: Vec3 | null = null;
+  const sg = memberSegAt(x, y);
+  if (sg) dir = segDir(sg);
+  if (!dir) {
+    const hh = viewer.pick(x, y, { edge: true });
+    const m = viewer.mesh;
+    if (hh?.kind === "edge" && m) {
+      const e = m.edges[hh.index];
+      dir = [e.e[0] - e.s[0], e.e[1] - e.s[1], e.e[2] - e.s[2]];
+    }
+  }
+  if (!dir) return toast("Bir model kenarı veya eskiz çizgisi seçin", true);
+  const L = Math.hypot(...dir);
+  if (L < 1e-9) return toast("Düz bir kenar seçin", true);
+  g.alignTo = dir.map((v) => Math.round((v / L) * 1e6) / 1e6) as Vec3;
+  d._pick = undefined;
+  renderFeaturePM(kindOf(d));
+  schedulePreview();
+}
+/** SolidWorks "Profili konumlandır": profil resminde köşe / nokta seçerek delme noktası */
+function openPierceDialog(d: any, g: any) {
+  let custom: any;
+  if (d.std === "sketch") custom = extractLoops((getFeat(d.size) as SketchFeature).data).loops;
+  else if (d.std === "custom") custom = (doc.profiles ?? {})[d.size]?.loops;
+  let loops: import("./doc/types").Loop[];
+  try {
+    loops = placedProfile(d.std, d.size, "c", false, 0, custom).loops;
+  } catch {
+    return toast("Profil okunamadı", true);
+  }
+  const pts: Vec2[] = [];
+  const add = (p: Vec2) => {
+    if (!pts.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.05)) pts.push([Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]);
+  };
+  for (const l of loops) {
+    if ("circle" in l) {
+      const { c, r } = l.circle;
+      [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].forEach(([dx, dy]) => add([c[0] + dx, c[1] + dy]));
+    } else if ("segs" in l) for (const sgm of l.segs) add(sgm.a);
+  }
+  const all = loops.flatMap(sampleLoop);
+  const xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  for (const fx of [0, 0.5, 1]) for (const fy of [0, 0.5, 1]) add([x0 + (x1 - x0) * fx, y0 + (y1 - y0) * fy]);
+  const W = 300, pad = 24, sc = (W - 2 * pad) / Math.max(x1 - x0, y1 - y0, 1e-6);
+  const X = (p: Vec2) => pad + (p[0] - x0) * sc + ((W - 2 * pad) - (x1 - x0) * sc) / 2;
+  const Y = (p: Vec2) => W - pad - (p[1] - y0) * sc - ((W - 2 * pad) - (y1 - y0) * sc) / 2;
+  const cur: Vec2 | null = g.align === "c" ? [g.poff?.[0] ?? 0, g.poff?.[1] ?? 0] : null;
+  let svg = `<svg viewBox="0 0 ${W} ${W}" width="${W}" height="${W}" style="background:#f6f8fa;border-radius:6px">`;
+  for (const l of loops) svg += `<polygon points="${sampleLoop(l).map((p) => X(p) + "," + Y(p)).join(" ")}" fill="${l.depth % 2 ? "#f6f8fa" : "#c5d3e3"}" stroke="#1f2a37" stroke-width="1.2"/>`;
+  pts.forEach((p, k) => {
+    const on = cur && Math.hypot(cur[0] - p[0], cur[1] - p[1]) < 0.05;
+    svg += `<circle data-k="${k}" class="pp" cx="${X(p)}" cy="${Y(p)}" r="${on ? 7 : 5}" fill="${on ? "#f76707" : "#1c7ed6"}" style="cursor:pointer"/>`;
+  });
+  svg += "</svg>";
+  const dlg = h("dialog", "input-dialog") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", "Profili konumlandır"));
+  const wrap = h("div", "");
+  wrap.innerHTML = svg;
+  dlg.appendChild(wrap);
+  dlg.appendChild(h("p", "pm-hint", "Delme noktası olacak köşeye / noktaya dokunun. Profil, iskelet çizgisi bu noktadan geçecek şekilde kayar."));
+  dlg.appendChild(button("Kapat", () => dlg.close(), "btn"));
+  wrap.querySelectorAll<SVGCircleElement>("circle.pp").forEach((c) =>
+    c.addEventListener("click", () => {
+      const p = pts[+c.dataset.k!];
+      g.align = "c";
+      g.poff = [p[0], p[1]];
+      dlg.close();
+      renderFeaturePM(kindOf(d));
+      schedulePreview();
+    }),
+  );
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.appendChild(dlg);
+  dlg.showModal();
+}
 function memberSegPick(x: number, y: number): boolean {
   if (mode.k !== "pm" || mode.draft.type !== "member") return false;
   const sg = memberSegAt(x, y);
   if (!sg) return false;
-  const d = mode.draft;
-  const i = d.segs.findIndex((q) => q.sk === sg.sk && q.ent === sg.ent);
-  if (i >= 0) d.segs.splice(i, 1);
-  else d.segs.push(sg);
+  const d = mode.draft as any;
+  const g = memGroup(d, Math.min(d._g ?? 0, (d.groups ?? []).length));
+  const i = g.segs.findIndex((q: any) => q.sk === sg.sk && q.ent === sg.ent);
+  if (i >= 0) g.segs.splice(i, 1);
+  else (memTake(d, sg.sk, sg.ent), g.segs.push(sg));
   renderFeaturePM(kindOf(d));
   drawSketches();
   schedulePreview();

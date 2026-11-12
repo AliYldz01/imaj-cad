@@ -489,6 +489,23 @@ export interface MemberFeature extends FeatBase {
   poff?: [number, number];
   /** profil yönü sürümü: 2 = SolidWorks (profil Y ekseni = eskiz normali / dünya yukarısı); yoksa eski (v0.17 öncesi) yön */
   ori?: 2;
+  /** profil ekseni hizalama (SolidWorks Alignment): eksen + hedef yön */
+  alignAx?: "h" | "v";
+  alignTo?: Vec3;
+  /** ek gruplar (1. grup = özelliğin kendi alanları) */
+  groups?: MemberGroup[];
+}
+/** Yapı elemanı grubu: kendi segmentleri ve profil konumu / köşe işlemi */
+export interface MemberGroup {
+  segs: { sk: string; ent: string }[];
+  align: string;
+  mirror: boolean;
+  rot: number;
+  poff?: [number, number];
+  corner: CornerKind;
+  gap: number;
+  alignAx?: "h" | "v";
+  alignTo?: Vec3;
 }
 /** Kırp / uzat: hedef elemanları sınır elemanlara göre kırpar ve gerekiyorsa uzatır */
 export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean; /** sınır düz yüzler (ör. taban levhası) */ faces?: FaceRef[] }
@@ -650,7 +667,7 @@ export type KFeature =
   | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
   | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
   | { id: string; type: "vchamfer"; v: Vec3; d: number }
-  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2 }
+  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number }[] }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }
@@ -658,7 +675,7 @@ export type KFeature =
   | { id: string; type: "sketchbend"; pl: KPlane; line: [Vec2, Vec2]; angle: number; side: boolean; flip: boolean; pos: "center" | "inside" | "outside"; r: number; t: number; k: number };
 
 /** Yapı elemanı segmenti (3B): çizgi veya yay; n = eskiz düzlemi normali */
-export type MemberItem = { k: "l"; a: Vec3; b: Vec3; n: Vec3; key: string } | { k: "a"; a: Vec3; b: Vec3; m: Vec3; n: Vec3; key: string };
+export type MemberItem = ({ k: "l"; a: Vec3; b: Vec3; n: Vec3; key: string } | { k: "a"; a: Vec3; b: Vec3; m: Vec3; n: Vec3; key: string }) & { g?: number };
 /** Yapı elemanı için segment grubu: teğet zincirler tek gövde olarak süpürülür */
 /** Kesim listesi satırı (gövde başına) */
 export interface CutItem {
