@@ -15,8 +15,8 @@ export interface AsmComp {
 }
 /** eşleşme varlığı: bileşen yerel koordinatlarında düz yüz veya silindir */
 export interface MateEnt { comp: string; kind: "plane" | "cyl"; c: Vec3; n: Vec3; r?: number; label?: string }
-export type MateType = "coincident" | "parallel" | "perpendicular" | "distance" | "angle" | "concentric" | "lock";
-export interface Mate { id: string; type: MateType; a: MateEnt; b: MateEnt; v?: number; flip?: boolean; off?: boolean }
+export type MateType = "coincident" | "parallel" | "perpendicular" | "distance" | "angle" | "concentric" | "lock" | "tangent" | "limit";
+export interface Mate { id: string; type: MateType; a: MateEnt; b: MateEnt; v?: number; vmax?: number; flip?: boolean; off?: boolean }
 export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number }
 
 export const MATE_NAMES: Record<MateType, string> = {
@@ -27,6 +27,8 @@ export const MATE_NAMES: Record<MateType, string> = {
   angle: "Açı",
   concentric: "Eş merkezli",
   lock: "Kilit",
+  tangent: "Teğet",
+  limit: "Limit mesafe",
 };
 
 export const newAsm = (): AsmDoc => ({ kind: "asm", name: "Montaj1", comps: [], mates: [] });
@@ -66,7 +68,7 @@ export function cylAxis(mesh: MeshData, face: number): Vec3 | null {
 }
 
 /** eşleşmenin kaldırdığı serbestlik */
-const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6 };
+const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0 };
 
 export function dofOf(doc: AsmDoc, id: string): number {
   const c = doc.comps.find((x) => x.id === id);
@@ -117,7 +119,8 @@ export function solve(doc: AsmDoc): { ok: boolean; unsolved: string[] } {
         let tm: THREE.Vector3 | null = null;
         if (m.type === "coincident" || m.type === "distance") tm = m.flip ? vb.clone() : vb.clone().negate();
         else if (m.type === "parallel" || m.type === "concentric") tm = vb.clone().multiplyScalar((vm.dot(vb) >= 0 ? 1 : -1) * (m.flip ? -1 : 1));
-        else if (m.type === "perpendicular") {
+        else if (m.type === "limit") tm = vb.clone().negate();
+        else if (m.type === "perpendicular" || m.type === "tangent") {
           const t = vm.clone().addScaledVector(vb, -vm.dot(vb));
           tm = t.length() > 1e-6 ? t.normalize() : perpOf(vb);
         } else if (m.type === "angle") {
@@ -155,6 +158,18 @@ export function solve(doc: AsmDoc): { ok: boolean; unsolved: string[] } {
       } else if (m.type === "concentric") {
         const w = B.pt.clone().sub(M.pt);
         d = w.addScaledVector(B.n, -w.dot(B.n));
+      } else if (m.type === "limit") {
+        const gap = M.pt.clone().sub(B.pt).dot(B.n);
+        const a = m.v ?? 0, b = m.vmax ?? a, lo = Math.min(a, b), hi = Math.max(a, b);
+        if (gap < lo) d = B.n.clone().multiplyScalar(lo - gap);
+        else if (gap > hi) d = B.n.clone().multiplyScalar(hi - gap);
+      } else if (m.type === "tangent") {
+        const planeIsBase = base.kind === "plane";
+        const pl = planeIsBase ? B : M, cy = planeIsBase ? M : B;
+        const r = (planeIsBase ? mov.r : base.r) ?? 0;
+        const cur = cy.pt.clone().sub(pl.pt).dot(pl.n);
+        const want = (cur >= 0 ? 1 : -1) * (m.flip ? -1 : 1) * r;
+        d = pl.n.clone().multiplyScalar((want - cur) * (planeIsBase ? 1 : -1));
       }
       for (const u of L.trans) d.addScaledVector(u, -d.dot(u));
       cm.p = [cm.p[0] + d.x, cm.p[1] + d.y, cm.p[2] + d.z];
@@ -169,6 +184,7 @@ export function solve(doc: AsmDoc): { ok: boolean; unsolved: string[] } {
         addTransLock(L, p2);
         addRot(B.n);
       } else if (m.type === "parallel") addRot(B.n);
+      else if (m.type === "tangent") addTransLock(L, base.kind === "plane" ? B.n : M.n);
       else if (m.type === "lock") {
         L.rot.push(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0));
         [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)].forEach((x) => addTransLock(L, x));
@@ -178,6 +194,11 @@ export function solve(doc: AsmDoc): { ok: boolean; unsolved: string[] } {
     }
   const unsolved = mates.filter((m) => !done.has(m.id)).map((m) => m.id);
   return { ok: !unsolved.length, unsolved };
+}
+
+/** bileşenin dünya sınır kutusu (çarpışma) */
+export function worldBox(c: AsmComp, bb: { min: Vec3; max: Vec3 }): THREE.Box3 {
+  return new THREE.Box3(V(bb.min), V(bb.max)).applyMatrix4(new THREE.Matrix4().compose(V(c.p), Q(c), new THREE.Vector3(1, 1, 1)));
 }
 
 /** Malzeme listesi (BOM): parça adına göre adet */

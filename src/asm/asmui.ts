@@ -5,7 +5,7 @@ import type { Kernel } from "../kernel";
 import type { MeshData, Vec3 } from "../doc/types";
 import { compile } from "../doc/compile";
 import { h, numField, checkField, selectField, group, button } from "../ui/dom";
-import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, MATE_NAMES, newAsm, solve, dofOf, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldEnt } from "./assembly";
+import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, MATE_NAMES, newAsm, solve, dofOf, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldEnt, worldBox } from "./assembly";
 
 export interface AsmCtx {
   viewer: Viewer;
@@ -32,7 +32,11 @@ export class AsmUI {
   private meshes = new Map<string, MeshData | null>();
   private objs = new Map<string, THREE.Group>();
   sel: string | null = null;
-  private mateDraft: { ents: MateEnt[]; type: MateType; v: number; flip: boolean } | null = null;
+  private mateDraft: { ents: MateEnt[]; type: MateType; v: number; vmax: number; flip: boolean } | null = null;
+  /** sürüklerken çarpışma algılama (SolidWorks: Bileşeni taşı → Çarpışma algılama) */
+  collide = false;
+  /** Ctrl ile ön seçilen yüzler (eşleşme mini araç çubuğu) */
+  private pre: MateEnt[] = [];
   private press: { x: number; y: number; comp: string | null; moved: boolean } | null = null;
   explode = 0;
   private prevHandler: InputHandler | null = null;
@@ -181,7 +185,21 @@ export class AsmUI {
       const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
       const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
       const d = right.multiplyScalar(dx * k).add(up.multiplyScalar(-dy * k));
-      c.p = [c.p[0] + d.x, c.p[1] + d.y, c.p[2] + d.z];
+      if (this.collide) {
+        // adım adım ilerle: büyük sürüklemede parçanın içinden geçmesin
+        const bb = this.bbox(c), sz = bb ? bb.getSize(new THREE.Vector3()) : null;
+        const lim = sz ? Math.max(0.5, Math.min(sz.x, sz.y, sz.z) / 3) : d.length();
+        const n = Math.max(1, Math.ceil(d.length() / lim));
+        for (let i = 0; i < n; i++) {
+          const old = c.p;
+          c.p = [c.p[0] + d.x / n, c.p[1] + d.y / n, c.p[2] + d.z / n];
+          if (this.collides(c)) {
+            c.p = old;
+            this.ctx.hint("Çarpışma: bileşen durduruldu");
+            break;
+          }
+        }
+      } else c.p = [c.p[0] + d.x, c.p[1] + d.y, c.p[2] + d.z];
       pr.x = e.clientX;
       pr.y = e.clientY;
       this.draw();
@@ -197,13 +215,38 @@ export class AsmUI {
         this.renderTree();
         return;
       }
-      this.click(e.clientX, e.clientY);
+      this.click(e.clientX, e.clientY, e.ctrlKey || e.metaKey);
     },
     tap: (e) => this.click(e.clientX, e.clientY),
   };
 
-  private click(x: number, y: number) {
+  /** dünya sınır kutusu (mesh köşe noktalarından) */
+  bbox(c: AsmComp): THREE.Box3 | null {
+    const m = this.meshes.get(c.id);
+    if (!m || !m.vertices.length) return null;
+    const v = m.vertices, mn: Vec3 = [Infinity, Infinity, Infinity], mx: Vec3 = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < v.length; i += 3) for (let k = 0; k < 3; k++) (mn[k] = Math.min(mn[k], v[i + k])), (mx[k] = Math.max(mx[k], v[i + k]));
+    return worldBox(c, { min: mn, max: mx });
+  }
+  /** c başka bir görünür bileşenle çakışıyor mu (kutu, 0.05 mm pay) */
+  collides(c: AsmComp): boolean {
+    const a = this.bbox(c);
+    if (!a) return false;
+    a.expandByScalar(-0.05);
+    return this.doc.comps.some((o) => o !== c && !o.hidden && !!this.bbox(o)?.intersectsBox(a));
+  }
+
+  private click(x: number, y: number, ctrl = false) {
     const p = this.pick(x, y);
+    if (!this.mateDraft && ctrl && p?.ent) {
+      // SolidWorks: Ctrl ile iki yüz seç → eşleşme açılır araç çubuğu
+      this.pre = [...this.pre.filter((e) => e.comp !== p.ent!.comp), p.ent].slice(-2);
+      if (this.pre.length === 2) this.showMateBar(x, y);
+      else this.ctx.hint("İkinci bileşenden bir yüz seçin (Ctrl)");
+      return;
+    }
+    this.pre = [];
+    document.querySelector(".asm-matebar")?.remove();
     if (this.mateDraft) {
       if (!p?.ent) return this.ctx.toast("Düz yüz veya silindirik yüz seçin", true);
       const d = this.mateDraft;
@@ -219,13 +262,69 @@ export class AsmUI {
   }
 
   // ---------- eşleşme ----------
+  /** seçim türlerine göre geçerli eşleşmeler */
+  static typesFor(ents: MateEnt[]): MateType[] {
+    const both = ents.length === 2 ? ents.map((e) => e.kind).sort().join("-") : "";
+    if (both === "cyl-cyl") return ["concentric", "parallel", "perpendicular", "lock"];
+    if (both === "plane-plane") return ["coincident", "parallel", "perpendicular", "distance", "limit", "angle", "lock"];
+    if (both === "cyl-plane") return ["tangent", "lock"];
+    return ["coincident", "parallel", "perpendicular", "distance", "limit", "angle", "concentric", "tangent", "lock"];
+  }
+  /** eşleşme açılır araç çubuğu (Ctrl ile iki yüz seçilince) */
+  showMateBar(x: number, y: number) {
+    document.querySelector(".asm-matebar")?.remove();
+    const ents = this.pre.slice();
+    const bar = h("div", "minibar sw-popup asm-matebar");
+    const types = AsmUI.typesFor(ents);
+    const sug = this.suggest(ents[0], ents[1]);
+    for (const t of [sug, ...types.filter((x) => x !== sug)]) {
+      const b = h("button", "sw-sb", MATE_NAMES[t]);
+      b.dataset.mate = t;
+      b.addEventListener("click", () => {
+        bar.remove();
+        let v: number | undefined, vmax: number | undefined;
+        if (t === "distance" || t === "angle") {
+          const r = prompt(t === "angle" ? "Açı (°)" : "Mesafe (mm)", t === "angle" ? "90" : "10");
+          if (r === null) return;
+          v = parseFloat(r.replace(",", ".")) || 0;
+        }
+        if (t === "limit") {
+          const r = prompt("Limit mesafe: en az; en çok (mm)", "0; 20");
+          if (r === null) return;
+          const [a, b2] = r.split(/[;\s]+/).map((z) => parseFloat(z.replace(",", ".")) || 0);
+          (v = a), (vmax = b2 ?? a);
+        }
+        this.addMate({ id: uid(), type: t, a: ents[0], b: ents[1], v, vmax });
+        this.pre = [];
+      });
+      bar.appendChild(b);
+    }
+    bar.style.position = "fixed";
+    bar.style.left = Math.max(4, Math.min(innerWidth - 320, x + 14)) + "px";
+    bar.style.top = Math.max(4, y - 52) + "px";
+    bar.style.zIndex = "60";
+    bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    document.body.appendChild(bar);
+  }
+  private addMate(m: Mate) {
+    this.doc.mates.push(m);
+    const r = solve(this.doc);
+    if (!r.ok) this.ctx.toast("Bazı eşleşmeler çözülemedi (en az bir bileşen sabit olmalı)", true);
+    this.ctx.hint("");
+    this.save();
+    this.draw();
+    this.renderTree();
+  }
   private suggest(a: MateEnt, b: MateEnt): MateType {
     if (a.kind === "cyl" && b.kind === "cyl") return "concentric";
+    if (a.kind !== b.kind) return "tangent";
     return "coincident";
   }
   startMate() {
     if (this.doc.comps.length < 2) return this.ctx.toast("Eşleşme için en az iki bileşen gerekir", true);
-    this.mateDraft = { ents: [], type: "coincident", v: 10, flip: false };
+    this.mateDraft = { ents: this.pre.slice(), type: "coincident", v: 10, vmax: 20, flip: false };
+    this.pre = [];
+    if (this.mateDraft.ents.length === 2) this.mateDraft.type = this.suggest(this.mateDraft.ents[0], this.mateDraft.ents[1]);
     this.ctx.showPM("Eşleşme", () => this.commitMate(), () => this.cancelMate());
     this.renderMatePM();
   }
@@ -242,8 +341,7 @@ export class AsmUI {
     body.innerHTML = "";
     const name = (e: MateEnt) => `${this.doc.comps.find((c) => c.id === e.comp)?.name ?? "?"} · ${e.label ?? e.kind}`;
     body.appendChild(group("Eşleşme seçimleri", h("div", "pm-picks", d.ents.length ? d.ents.map(name).join(" ↔ ") : "İki bileşenden birer yüz seçin"), ...(d.ents.length ? [button("Seçimi temizle", () => ((d.ents = []), this.renderMatePM()))] : [])));
-    const both = d.ents.length === 2 ? d.ents.map((e) => e.kind).join("-") : "";
-    const types: MateType[] = both === "cyl-cyl" ? ["concentric", "parallel", "perpendicular", "lock"] : both === "plane-plane" ? ["coincident", "parallel", "perpendicular", "distance", "angle", "lock"] : both ? ["lock"] : ["coincident", "parallel", "perpendicular", "distance", "angle", "concentric", "lock"];
+    const types = AsmUI.typesFor(d.ents);
     if (!types.includes(d.type)) d.type = types[0];
     body.appendChild(
       group(
@@ -251,25 +349,19 @@ export class AsmUI {
         selectField("Tür", types.map((t) => ({ v: t, t: MATE_NAMES[t] })), d.type, (v) => ((d.type = v), this.renderMatePM())),
         ...(d.type === "distance" ? [numField("Mesafe", d.v, (v) => (d.v = v), { unit: "mm" })] : []),
         ...(d.type === "angle" ? [numField("Açı", d.v, (v) => (d.v = v), { unit: "°" })] : []),
+        ...(d.type === "limit" ? [numField("En az", d.v, (v) => (d.v = v), { unit: "mm" }), numField("En çok", d.vmax, (v) => (d.vmax = v), { unit: "mm" })] : []),
         checkField("Hizalamayı çevir (hizalı / ters hizalı)", d.flip, (v) => (d.flip = v)),
       ),
     );
-    if (both === "plane-cyl" || both === "cyl-plane") body.appendChild(h("p", "pm-hint", "Düz yüz ile silindir arasında yalnız kilit desteklenir; teğet eşleşme sonraki sürümde."));
     this.ctx.hint(d.ents.length < 2 ? "Eşleştirilecek yüzlere dokunun (iki farklı bileşen)" : "Türü seçip ✓ ile onaylayın");
   }
   private commitMate() {
     const d = this.mateDraft;
     if (!d || d.ents.length < 2) return this.ctx.toast("İki yüz seçin", true);
-    const m: Mate = { id: uid(), type: d.type, a: d.ents[0], b: d.ents[1], v: d.type === "distance" || d.type === "angle" ? d.v : undefined, flip: d.flip || undefined };
-    this.doc.mates.push(m);
-    const r = solve(this.doc);
-    if (!r.ok) this.ctx.toast("Bazı eşleşmeler çözülemedi (en az bir bileşen sabit olmalı)", true);
+    const m: Mate = { id: uid(), type: d.type, a: d.ents[0], b: d.ents[1], v: d.type === "distance" || d.type === "angle" || d.type === "limit" ? d.v : undefined, vmax: d.type === "limit" ? d.vmax : undefined, flip: d.flip || undefined };
     this.mateDraft = null;
     this.ctx.hidePM();
-    this.ctx.hint("");
-    this.save();
-    this.draw();
-    this.renderTree();
+    this.addMate(m);
   }
 
   // ---------- bileşen işlemleri ----------
@@ -350,6 +442,51 @@ export class AsmUI {
     body.appendChild(group("Öteleme (Δ)", numField("ΔX", 0, (v) => (st.dx = v), { unit: "mm" }), numField("ΔY", 0, (v) => (st.dy = v), { unit: "mm" }), numField("ΔZ", 0, (v) => (st.dz = v), { unit: "mm" }), button("Uygula", apply, "btn primary")));
     body.appendChild(group("Döndür (90°)", button("X ekseni", () => rot([1, 0, 0], 90)), button("Y ekseni", () => rot([0, 1, 0], 90)), button("Z ekseni", () => rot([0, 0, 1], 90))));
     body.appendChild(h("p", "pm-hint", "Bileşeni modelde fareyle/parmakla sürükleyerek de taşıyabilirsiniz; eşleşmeler bırakınca yeniden uygulanır."));
+  }
+  /** bileşen çoğaltma: doğrusal / dairesel (SolidWorks Doğrusal/Dairesel Bileşen Çoğaltma) */
+  openPattern() {
+    const c = this.comp();
+    if (!c) return this.ctx.toast("Önce çoğaltılacak bileşeni seçin", true);
+    const st = { kind: "lin", ax: "x", n: 3, d: 50, ang: 360, n2: 1, d2: 50, ax2: "y" };
+    const done = () => {
+      const axis = (a: string) => new THREE.Vector3(a === "x" ? 1 : 0, a === "y" ? 1 : 0, a === "z" ? 1 : 0);
+      const src = c;
+      let k = this.doc.comps.filter((x) => x.part.name === src.part.name).length;
+      const add = (p: THREE.Vector3, q: THREE.Quaternion) => {
+        k++;
+        this.doc.comps.push({ id: uid(), name: `${src.part.name}<${k}>`, part: JSON.parse(JSON.stringify(src.part)), q: [q.x, q.y, q.z, q.w], p: [p.x, p.y, p.z], fixed: false });
+      };
+      const p0 = new THREE.Vector3(...src.p), q0 = new THREE.Quaternion(...src.q);
+      if (st.kind === "lin") {
+        for (let i = 0; i < Math.max(1, st.n); i++)
+          for (let j = 0; j < Math.max(1, st.n2); j++) {
+            if (!i && !j) continue;
+            add(p0.clone().addScaledVector(axis(st.ax), i * st.d).addScaledVector(axis(st.ax2), j * st.d2), q0.clone());
+          }
+      } else {
+        const n = Math.max(2, st.n), step = ((st.ang >= 360 ? st.ang / n : st.ang / (n - 1)) * Math.PI) / 180;
+        for (let i = 1; i < n; i++) {
+          const r = new THREE.Quaternion().setFromAxisAngle(axis(st.ax), i * step);
+          add(p0.clone().applyQuaternion(r), r.clone().multiply(q0));
+        }
+      }
+      this.ctx.hidePM();
+      this.save();
+      this.refresh().then(() => this.renderTree());
+    };
+    this.ctx.showPM("Bileşen çoğaltma", done, () => this.ctx.hidePM());
+    const body = document.getElementById("pm-body")!;
+    const render = () => {
+      body.innerHTML = "";
+      const axes = [{ v: "x", t: "X" }, { v: "y", t: "Y" }, { v: "z", t: "Z" }];
+      body.appendChild(group("Tür", selectField("Çoğaltma", [{ v: "lin", t: "Doğrusal" }, { v: "circ", t: "Dairesel (orijin ekseni)" }], st.kind, (v) => ((st.kind = v), render()))));
+      if (st.kind === "lin") {
+        body.appendChild(group("Yön 1", selectField("Yön", axes, st.ax, (v) => (st.ax = v)), numField("Aralık", st.d, (v) => (st.d = v), { unit: "mm" }), numField("Adet", st.n, (v) => (st.n = Math.round(v)))));
+        body.appendChild(group("Yön 2", selectField("Yön", axes, st.ax2, (v) => (st.ax2 = v)), numField("Aralık", st.d2, (v) => (st.d2 = v), { unit: "mm" }), numField("Adet", st.n2, (v) => (st.n2 = Math.round(v)))));
+      } else body.appendChild(group("Eksen", selectField("Eksen", axes, st.ax, (v) => (st.ax = v)), numField("Toplam açı", st.ang, (v) => (st.ang = v), { unit: "°" }), numField("Adet", st.n, (v) => (st.n = Math.round(v)))));
+      body.appendChild(h("p", "pm-hint", `Kaynak: ${c.name}. Kopyalar serbest bileşen olarak eklenir.`));
+    };
+    render();
   }
   async interference() {
     const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(c.part.features, c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
@@ -452,6 +589,8 @@ export class AsmUI {
       { id: "addComp", label: "Bileşen Ekle", icon: "extrude", run: () => this.openAddDialog() },
       { id: "mate", label: "Eşleşme", icon: "normal", run: () => this.startMate(), active: () => !!this.mateDraft },
       { id: "move", label: "Taşı / Döndür", icon: "move", run: () => this.openMove() },
+      { id: "cpattern", label: "Bileşen Çoğalt", icon: "lpattern", run: () => this.openPattern() },
+      { id: "collide", label: "Çarpışma Algıla", icon: "measure", run: () => ((this.collide = !this.collide), this.ctx.toast(this.collide ? "Sürüklerken çarpışma algılama açık" : "Çarpışma algılama kapalı")), active: () => this.collide },
       "sep",
       { id: "interf", label: "Girişim", icon: "measure", run: () => this.interference() },
       {

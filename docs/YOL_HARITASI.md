@@ -141,6 +141,7 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Kaynaklı yapı / profil (v0.6) | İskelet eskizden yapı elemanı, EN profil kütüphanesi (kutu, boru, L, UPN, IPE, HEA, HEB, lama, dolu çubuk), delme noktası / döndürme / aynalama, gönye ve alın köşe işlemleri, kırp/uzat (düz veya profile göre), uç kapağı, köşe takviyesi, bükümlü boru, kesim listesi (gruplama, boy, açı, ağırlık, CSV, tekil STEP) | ✅ |
 | Kaynaklı (v0.7) | 3B eskiz (yön+uzunluk, Δ, mutlak koordinat, yakalama, köşe büküm yarıçapı), bükümlü zincir elemanlar, kaynak dikişi (köşe / boru çevresi / kesikli) ve kaynak tablosu, özel profil kütüphanesi (eskizden, cihaz kütüphanesi, içe/dışa aktarma), yüze göre kırpma, UPN eğimli flanş, eleman / levha imalat resimleri (A4, PDF, SVG, levha DXF) | ✅ |
 | Montaj (v0.16) | Bileşen ekleme, eşleşmeler, patlatma, girişim, BOM, STEP | 🟡 |
+| Montaj ekleri (v0.17) | Teğet, limit mesafe, eşleşme mini çubuğu, çarpışma algılama, bileşen çoğaltma | ✅ |
 | Teknik resim | Görünüşler, kesit, ölçülendirme, antet, PDF | ⬜ |
 | Saha özellikleri | Fotoğraf ekleme, Bluetooth kumpas | ⬜ |
 
@@ -253,3 +254,14 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Hareket | Sürükleyerek taşı, Δ öteleme, 90° döndür | ✅ |
 | Değerlendirme | Girişim, patlatma, malzeme listesi (CSV), STEP montaj | ✅ |
 | Sonra | Teğet, gelişmiş ve mekanik eşleşmeler, çarpışma, bileşen çoğaltma, alt montaj | ⬜ |
+
+## v0.17 — Montaj ekleri (Paket D devam)
+
+| Özellik | Durum |
+|---|---|
+| Teğet eşleşme (düz yüz ↔ silindir) | ✅ |
+| Limit mesafe eşleşmesi (en az / en çok) | ✅ |
+| Eşleşme açılır mini çubuğu (Ctrl ile iki yüz) | ✅ |
+| Sürüklerken çarpışma algılama (adımlı kutu testi) | ✅ |
+| Doğrusal (2 yön) / dairesel bileşen çoğaltma | ✅ |
+| Simetrik, genişlik, mekanik eşleşmeler, alt montaj, bağlam içi düzenleme | ⬜ |
