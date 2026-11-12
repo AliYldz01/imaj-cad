@@ -1,5 +1,5 @@
 // Belge özelliklerini çekirdeğin anlayacağı çözülmüş tanımlara çevirir.
-import type { Feature, Frame, KFeature, KPlane, Loop, PlaneRef, SketchFeature, Vec3 } from "./types";
+import type { Feature, Frame, KFeature, KPlane, Loop, PlaneRef, SketchFeature, Vec2, Vec3 } from "./types";
 import { AXES, STD_FRAMES, offsetFrame } from "./math";
 import { extractLoops, extractPath, extractChains, pointPos, thinRegion, segPoints } from "../sketch/profile";
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
@@ -7,13 +7,125 @@ import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } fro
 import type { MemberItem, Sketch3DFeature } from "./types";
 import { toWorld } from "./math";
 
+/** Konturun örnek noktaları (içerme testi için) */
+export function loopSamples(l: Loop): Vec2[] {
+  if ("circle" in l) return Array.from({ length: 24 }, (_, i) => [l.circle.c[0] + l.circle.r * Math.cos((i / 24) * Math.PI * 2), l.circle.c[1] + l.circle.r * Math.sin((i / 24) * Math.PI * 2)] as Vec2);
+  if ("ellipse" in l) {
+    const { c, rx, ry, rot } = l.ellipse;
+    const cr = Math.cos((rot * Math.PI) / 180), sr = Math.sin((rot * Math.PI) / 180);
+    return Array.from({ length: 24 }, (_, i) => {
+      const a = (i / 24) * Math.PI * 2, x = rx * Math.cos(a), y = ry * Math.sin(a);
+      return [c[0] + x * cr - y * sr, c[1] + x * sr + y * cr] as Vec2;
+    });
+  }
+  return l.segs.flatMap((sg) => segPoints(sg, 8).slice(0, -1));
+}
+function inPoly(p: Vec2, poly: Vec2[]) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++)
+    if (poly[i][1] > p[1] !== poly[j][1] > p[1] && p[0] < ((poly[j][0] - poly[i][0]) * (p[1] - poly[i][1])) / (poly[j][1] - poly[i][1]) + poly[i][0]) c = !c;
+  return c;
+}
+/** Bölgeler: çift derinlikli (dış) konturlar; her bölge doğrudan içindeki delikleri de kapsar */
+export function contourRegions(loops: Loop[]): number[][] {
+  const out: number[][] = [];
+  const pts = loops.map(loopSamples);
+  loops.forEach((l, i) => {
+    if (l.depth % 2) return;
+    const reg = [i];
+    loops.forEach((h, j) => {
+      if (h.depth === l.depth + 1 && inPoly(pts[j][0], pts[i])) reg.push(j);
+    });
+    out.push(reg);
+  });
+  return out;
+}
+/** Seçili konturlar: verilen bölge indekslerindeki konturları döndür */
+export function selectContours(loops: Loop[], sel?: number[]): Loop[] {
+  if (!sel?.length) return loops;
+  const regs = contourRegions(loops);
+  const keep = new Set(sel.flatMap((r) => regs[r] ?? []));
+  const out = loops.filter((_, i) => keep.has(i)).map((l) => ({ ...l, depth: l.depth % 2 }));
+  if (!out.length) throw new Error("Seçili kontur bulunamadı");
+  return out;
+}
+
 export function resolveFrame(ref: PlaneRef, feats: Feature[]): Frame | null {
   if (ref.k === "std") return STD_FRAMES[ref.n];
   if (ref.k === "face") return ref.frame;
   const pf = feats.find((f) => f.id === ref.id);
   if (!pf || pf.type !== "plane") return null;
-  const base = resolveFrame(pf.base, feats);
-  return base ? offsetFrame(base, pf.offset, pf.flip) : null;
+  return planeFrame(pf, feats);
+}
+
+const V = {
+  sub: (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  add: (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+  mul: (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k],
+  dot: (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: (a: Vec3): Vec3 => {
+    const l = Math.hypot(a[0], a[1], a[2]) || 1;
+    return [a[0] / l, a[1] / l, a[2] / l];
+  },
+};
+/** Referans düzlem çerçevesi (SolidWorks düzlem türleri) */
+export function planeFrame(pf: Extract<Feature, { type: "plane" }>, feats: Feature[]): Frame | null {
+  const mode = pf.mode ?? "offset";
+  const flipF = (f: Frame): Frame => (pf.flip ? { o: f.o, n: V.mul(f.n, -1), x: V.mul(f.x, -1) } : f);
+  const xFor = (n: Vec3, pref?: Vec3): Vec3 => {
+    let x = pref ? V.sub(pref, V.mul(n, V.dot(pref, n))) : V.cross([0, 1, 0], n);
+    if (Math.hypot(...x) < 1e-6) x = V.cross([0, 0, 1], n);
+    if (Math.hypot(...x) < 1e-6) x = [1, 0, 0];
+    return V.norm(x);
+  };
+  if (mode === "offset") {
+    const base = resolveFrame(pf.base, feats);
+    return base ? offsetFrame(base, pf.offset, pf.flip) : null;
+  }
+  if (mode === "angle") {
+    const base = resolveFrame(pf.base, feats);
+    if (!base || !pf.edge) return null;
+    const k = V.norm(pf.edge.d), a = ((pf.angle ?? 45) * Math.PI) / 180;
+    // Rodrigues: tabanın normalini kenar ekseni etrafında döndür
+    const v = base.n, c = Math.cos(a), s = Math.sin(a);
+    const n = V.norm(V.add(V.add(V.mul(v, c), V.mul(V.cross(k, v), s)), V.mul(k, V.dot(k, v) * (1 - c))));
+    return flipF({ o: pf.edge.m, n, x: k });
+  }
+  if (mode === "mid") {
+    const A = resolveFrame(pf.base, feats), B = pf.base2 && resolveFrame(pf.base2, feats);
+    if (!A || !B) return null;
+    const nb = V.dot(A.n, B.n) < 0 ? V.mul(B.n, -1) : B.n;
+    const n = V.norm(V.add(A.n, nb));
+    const o = V.mul(V.add(A.o, V.add(B.o, V.mul(nb, 0))), 0.5);
+    // paralel düzlemlerde: A.o'yu iki düzlemin ortasına taşı
+    const dB = V.dot(V.sub(B.o, A.o), n);
+    const oo = Math.abs(Math.abs(V.dot(A.n, nb)) - 1) < 1e-6 ? V.add(A.o, V.mul(n, dB / 2)) : o;
+    return flipF({ o: oo, n, x: xFor(n, A.x) });
+  }
+  const pts = pf.pts ?? [];
+  if (mode === "3pt") {
+    if (pts.length < 3) return null;
+    const n = V.norm(V.cross(V.sub(pts[1], pts[0]), V.sub(pts[2], pts[0])));
+    if (!isFinite(n[0]) || Math.hypot(...V.cross(V.sub(pts[1], pts[0]), V.sub(pts[2], pts[0]))) < 1e-9) return null;
+    return flipF({ o: pts[0], n, x: V.norm(V.sub(pts[1], pts[0])) });
+  }
+  if (mode === "normal") {
+    if (!pf.edge || !pts.length) return null;
+    const n = V.norm(pf.edge.d);
+    return flipF({ o: pts[0], n, x: xFor(n) });
+  }
+  if (mode === "parallelPt") {
+    const base = resolveFrame(pf.base, feats);
+    if (!base || !pts.length) return null;
+    return flipF({ o: pts[0], n: base.n, x: base.x });
+  }
+  if (mode === "screen") {
+    if (!pts.length || !pf.nv) return null;
+    const n = V.norm(pf.nv);
+    return flipF({ o: V.add(pts[0], V.mul(n, pf.offset || 0)), n, x: xFor(n) });
+  }
+  return null;
 }
 
 function kplane(ref: PlaneRef, feats: Feature[], sketchId?: string): KPlane | null {
@@ -132,12 +244,15 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           if (!resolveFrame(f.type === "sketch" ? f.plane : f.base, feats)) throw new Error("Düzlem referansı bulunamadı");
           break;
         case "extrude": {
-          const pr = f.thin ? { ...thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one"), texts: [] } : profileOf(f.sketch);
-          kfeats.push({ id: f.id, type: "extrude", startOff: f.startOff, cut: f.cut, pl: pr.pl, loops: pr.loops, texts: pr.texts, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut, twist: f.twist, merge: f.merge });
+          const pr0 = f.thin ? { ...thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one"), texts: [] } : profileOf(f.sketch);
+          const pr = { ...pr0, loops: selectContours(pr0.loops, f.contours) };
+          kfeats.push({ id: f.id, type: "extrude", fromFace: f.fromFace, fromVtx: f.fromVtx, vtx: f.vtx, bodyRef: f.bodyRef, dirVec: f.dirVec, flipCut: f.flipCut, startOff: f.startOff, cut: f.cut, pl: pr.pl, loops: pr.loops, texts: pr.texts, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut, twist: f.twist, merge: f.merge });
           break;
         }
         case "revolve": {
-          const { sk, pl, loops } = f.thin ? thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one") : profileOf(f.sketch);
+          const r0 = f.thin ? thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one") : profileOf(f.sketch);
+          const { sk, pl } = r0;
+          const loops = selectContours(r0.loops, f.contours);
           const ax = sk.data.ents.find((e) => e.id === f.axis);
           if (!ax || ax.t !== "line") throw new Error("Döndürme ekseni seçin (eskizde bir merkez çizgisi çizin)");
           kfeats.push({ id: f.id, type: "revolve", cut: f.cut, pl, loops, axis: [pointPos(sk.data, ax.p1), pointPos(sk.data, ax.p2)], angle: f.angle, mid: f.mid, rev: f.rev, merge: f.merge });

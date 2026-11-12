@@ -10,9 +10,9 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 | # | Önem | Eksik / hatalı | Yapılacak (SolidWorks davranışı) | Durum |
 |---|---|---|---|---|
-| E1 | K | **Seçili konturlar** yok: ekstrüzyon/döndürme tüm kapalı bölgeleri alıyor | PM'de "Seçili konturlar" kutusu; bölgeye/kontura dokunarak seçim; iç içe bölgelerde yalnız seçilen; model kenarları da kontur olabilir | ⬜ |
-| E2 | K | **Paylaşılan eskiz** yok (bir eskiz = bir özellik) | Aynı eskiz birden çok özellikte (farklı konturlarla) kullanılabilsin; ağaçta paylaşım simgesi | ⬜ |
-| E3 | Ö | Değiştir kutusu eksik | **⟳ yeniden oluştur** (kutu açıkken model güncellenir), **± yönü ters çevir**, "çizimler için işaretle", denklem (=) ✅, tekerlek artımı ✅ | 🟡 |
+| E1 | K | **Seçili konturlar** yok: ekstrüzyon/döndürme tüm kapalı bölgeleri alıyor | PM'de "Seçili konturlar" kutusu; bölgeye/kontura dokunarak seçim; iç içe bölgelerde yalnız seçilen; model kenarları da kontur olabilir | ✅ v0.13 |
+| E2 | K | **Paylaşılan eskiz** yok (bir eskiz = bir özellik) | Aynı eskiz birden çok özellikte (farklı konturlarla) kullanılabilsin; ağaçta paylaşım simgesi | ✅ v0.13 |
+| E3 | Ö | Değiştir kutusu eksik | **⟳ yeniden oluştur** (kutu açıkken model güncellenir), **± yönü ters çevir**, "çizimler için işaretle", denklem (=) ✅, tekerlek artımı ✅ | ✅ v0.13 |
 | E4 | Ö | Eskiz radyüs/pahında köşe ölçüsü kayboluyor | **Sanal sivri köşe** korunur; ölçülü köşeyi koru seçeneği; eşit ölçüler | ⬜ |
 | E5 | Ö | Yay ölçüsünde koşul yok | Daire/yay ölçüsünde **merkez / min / maks** (Shift ile veya ölçü özelliğinden) | 🟡 |
 | E6 | Ö | Eksik ilişkiler | E6.1 **eş yarıçaplı (coradial)** · E6.2 **noktaları birleştir (merge)** · E6.3 **delme (pierce)** · E6.4 **eşit eğri uzunluğu** · E6.5 **iki nokta arası yatay/dikey** · E6.6 eşit eğrilik (spline) · E6.7 eşit kanallar · E6.8 sabit kanal | ⬜ |
@@ -35,15 +35,15 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 | # | Önem | Eksik / hatalı | Yapılacak | Durum |
 |---|---|---|---|---|
-| F1 | K | **Referans düzlem** yalnız öteleme | 3 referanslı düzlem: F1.1 çakışık · F1.2 paralel (nokta/köşeden) · F1.3 dik (eğriye/kenara noktada) · F1.4 **açılı** (kenar+yüz, adet) · F1.5 öteleme (adet) ✅ · F1.6 **orta düzlem** · F1.7 **teğet** (silindire) · F1.8 **3 noktadan** · F1.9 **ekrana paralel** | 🟡 |
-| F2 | K | Ekstrüzyon seçenekleri eksik | F2.1 **Başlangıç**: yüzey/yüz/düzlem, köşe (öteleme ✅) · F2.2 bitiş **köşeye kadar** · F2.3 **gövdeye kadar** · F2.4 yüzeyden ötele: **yüzeyi taşı** · F2.5 **ekstrüzyon yönü** (kenar/eksen) · F2.6 **ince özellik** (tek yön / orta / iki yön farklı kalınlık, köşeleri otomatik yuvarla, **uçları kapat**) — açık eskizde zorunlu · F2.7 **kesme tarafını çevir** · F2.8 özellik kapsamı (çok gövde) · F2.9 tümünü geç–iki yön | 🟡 |
+| F1 | K | **Referans düzlem** yalnız öteleme | 3 referanslı düzlem: F1.1 çakışık · F1.2 paralel (nokta/köşeden) · F1.3 dik (eğriye/kenara noktada) · F1.4 **açılı** (kenar+yüz, adet) · F1.5 öteleme (adet) ✅ · F1.6 **orta düzlem** · F1.7 **teğet** (silindire) · F1.8 **3 noktadan** · F1.9 **ekrana paralel** | 🟡 v0.13: teğet hariç hepsi |
+| F2 | K | Ekstrüzyon seçenekleri eksik | F2.1 **Başlangıç**: yüzey/yüz/düzlem, köşe (öteleme ✅) · F2.2 bitiş **köşeye kadar** · F2.3 **gövdeye kadar** · F2.4 yüzeyden ötele: **yüzeyi taşı** · F2.5 **ekstrüzyon yönü** (kenar/eksen) · F2.6 **ince özellik** (tek yön / orta / iki yön farklı kalınlık, köşeleri otomatik yuvarla, **uçları kapat**) — açık eskizde zorunlu · F2.7 **kesme tarafını çevir** · F2.8 özellik kapsamı (çok gövde) · F2.9 tümünü geç–iki yön | ✅ v0.13 (özellik kapsamı hariç) |
 | F3 | K | Süpürme yalnız profil+yol | F3.1 **dairesel profil** (yalnız çap) · F3.2 **katı profil** (takım gövdesiyle kesme) · F3.3 **profil yönelimi**: yolu izle / normali sabit tut · F3.4 **burulma**: yok / en az / 1. kılavuz / 1.-2. kılavuz / **açı** (derece-radyan-tur) · F3.5 **kılavuz eğriler** · F3.6 **iki yönlü** · F3.7 başlangıç/bitiş teğetliği · F3.8 ince özellik · F3.9 düzgün yüzleri birleştir | ⬜ |
 | F4 | Ö | Loft seçenekleri | F4.1 **başlangıç/bitiş kısıtı** (yok / yön vektörü / profile normal / komşu yüzlere teğet) · F4.2 **bağlayıcılar** · F4.3 **kapalı loft** · F4.4 ince özellik · F4.5 kılavuz etki türü (kılavuz ✅, merkez çizgisi ✅) | 🟡 |
 | F5 | Ö | Radyüs türleri | F5.1 **değişken boyut** (kontrol noktaları, düz/yumuşak geçiş) · F5.2 **tam yuvarlak** · F5.3 **yüz radyüsü** (tutma çizgisi, sabit genişlik) · F5.4 **çoklu yarıçap** (kenar başına) · F5.5 **yuvarlak köşeler** · F5.6 **setback** · F5.7 profil: **konik rho**, eğrilik sürekli · F5.8 **teğet yayılımı** aç/kapat · F5.9 özellikleri koru · asimetrik ✅ | 🟡 |
 | F6 | Ö | Çoğaltma | F6.1 **örnekleri atla** (örneğe dokun) · F6.2 **kadar** (aralık yerine referansa kadar) · F6.3 **eskizi değiştir (vary)** · F6.4 **değişken çoğaltma** · F6.5 gövde / yüz çoğaltma ayrımı · F6.6 geometri çoğaltma | 🟡 |
 | F7 | Ö | Kabuk | F7.1 **dışa kabuk** · F7.2 **yüz başına farklı kalınlık** | 🟡 |
 | F8 | Ö | Koniklik | F8.1 **ayırma çizgisi** · F8.2 **basamaklı** · F8.3 DraftXpert (analiz) | 🟡 |
-| F9 | Ö | Ağaç işlemleri | F9.1 **bastır / bastırmayı kaldır** · F9.2 **sürükleyerek sırala** · F9.3 **klasör** · F9.4 **F2 ile ad değiştir** · F9.5 **ebeveyn/çocuk** göster · F9.6 geri alma çubuğunu sürükleme (rollback ✅) | 🟡 |
+| F9 | Ö | Ağaç işlemleri | F9.1 **bastır / bastırmayı kaldır** · F9.2 **sürükleyerek sırala** · F9.3 **klasör** · F9.4 **F2 ile ad değiştir** · F9.5 **ebeveyn/çocuk** göster · F9.6 geri alma çubuğunu sürükleme (rollback ✅) | 🟡 v0.13: sürükle/▲▼ sırala, F2, ebeveyn-çocuk; klasör yok |
 | F10 | Ö | **Instant3D** yok | Seçili özellikte yeşil ok tutamağı ile derinlik sürükleme, cetvel; sağ tıkla bitiş koşulu değiştirme | ⬜ |
 | F11 | Ö | Görüntü stilleri | **Kenarlı gölgeli, gölgeli, gizli çizgi kaldır, gizli çizgi görünür, tel kafes**, perspektif, gövde gizle/göster, saydamlık | ⬜ |
 | F12 | Ö | Doğrudan düzenleme | **Yüz taşı**, **yüz sil** (onar/doldur), **yüz değiştir** — içe aktarılan STEP için | ⬜ |
@@ -87,12 +87,12 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 | # | Önem | Eksik / hatalı | Yapılacak | Durum |
 |---|---|---|---|---|
 | G1 | K | **Tek belge** | Çoklu belge (parça/montaj sekmeleri), proje / dosya yöneticisi, parça kütüphanesi — montaj için şart | ⬜ |
-| G2 | Ö | 3B seçim | Parça modunda **kutu/kesişen seçim**, **diğerini seç** (arka yüz), **döngü seç**, **teğet seç** | 🟡 |
+| G2 | Ö | 3B seçim | Parça modunda **kutu/kesişen seçim**, **diğerini seç** (arka yüz), **döngü seç**, **teğet seç** | 🟡 v0.13: kutu seçim, diğerini seç; döngü/teğet seç yok |
 | G3 | Ö | Hata açıklaması | "Ne yanlış?" penceresi, düzeltme önerisi | 🟡 |
 | G4 | Ö | **Belge özellikleri** | Birim (mm/inç), ondalık, standart, özel dosya özellikleri | ⬜ |
 | G5 | İ | Dışa aktarma | Eskiz/yüz **DXF**, **PDF**, IGES, 3MF | 🟡 |
 | G6 | İ | Önizleme | Radyüs, pah, kabuk vb. için sarı önizleme | 🟡 |
-| G7 | Ö | **Bağlam mini araç çubuğu** | Seçince imleç yanında uygun komutlar (eskiz, ekstrüzyon, normal görünüm, ilişki) | ⬜ |
+| G7 | Ö | **Bağlam mini araç çubuğu** | Seçince imleç yanında uygun komutlar (eskiz, ekstrüzyon, normal görünüm, ilişki) | ✅ v0.13 |
 | G8 | İ | PropertyManager **pimi** | Aynı komutu tekrar tekrar kullanmak için PM'i açık tut | ⬜ |
 
 ## 6. Montaj (M) — sıradaki modülün kapsamı

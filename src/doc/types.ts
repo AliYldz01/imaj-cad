@@ -128,7 +128,7 @@ export interface SketchFeature extends FeatBase {
   data: SketchData;
 }
 
-export type EndCond = "blind" | "mid" | "through" | "surface" | "offset" | "next";
+export type EndCond = "blind" | "mid" | "through" | "surface" | "offset" | "next" | "vertex" | "body";
 
 export interface ExtrudeFeature extends FeatBase {
   type: "extrude";
@@ -148,6 +148,19 @@ export interface ExtrudeFeature extends FeatBase {
   draft?: number;
   draftOut?: boolean;
   /** İnce özellik */
+  /** Seçili konturlar (bölge indeksleri; boş = tümü) */
+  contours?: number[];
+  /** Başlangıç: yüz / köşe (startOff yerine) */
+  fromFace?: FaceRef | null;
+  fromVtx?: Vec3 | null;
+  /** Köşeye kadar */
+  vtx?: Vec3 | null;
+  /** Gövdeye kadar: gövdenin bir yüzü */
+  bodyRef?: FaceRef | null;
+  /** Ekstrüzyon yönü (kenar yönü) */
+  dirVec?: Vec3 | null;
+  /** Kesme tarafını çevir (profilin dışını kes) */
+  flipCut?: boolean;
   thin?: boolean;
   thinT?: number;
   /** ince özellik yönü: tek taraf / ters / orta */
@@ -163,6 +176,7 @@ export interface ExtrudeFeature extends FeatBase {
 export interface RevolveFeature extends FeatBase {
   type: "revolve";
   sketch: string;
+  contours?: number[];
   cut: boolean;
   /** eksen: eskizdeki çizgi/merkez çizgisi kimliği */
   axis: string;
@@ -318,6 +332,17 @@ export interface PlaneFeature extends FeatBase {
   base: PlaneRef;
   offset: number;
   flip: boolean;
+  /** SolidWorks düzlem türleri: öteleme (varsayılan), açılı, orta, 3 noktadan, kenara dik, noktadan paralel, ekrana paralel */
+  mode?: "offset" | "angle" | "mid" | "3pt" | "normal" | "parallelPt" | "screen";
+  /** açılı: dönme ekseni (kenar) */
+  edge?: { m: Vec3; d: Vec3 } | null;
+  angle?: number;
+  /** orta düzlem: ikinci referans */
+  base2?: PlaneRef;
+  /** noktalar (3 nokta / kenara dik noktası / paralel nokta / ekran noktası) */
+  pts?: Vec3[];
+  /** ekrana paralel: oluşturulduğu andaki bakış yönü */
+  nv?: Vec3;
 }
 
 // ---------------- Gövde işlemleri, ek çoğaltmalar, diş, esnet ----------------
@@ -568,7 +593,7 @@ export interface TextItem { text: string; x: number; y: number; size: number; an
 export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 
 export type KFeature =
-  | { id: string; type: "extrude"; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
+  | { id: string; type: "extrude"; fromFace?: FaceRef | null; fromVtx?: Vec3 | null; vtx?: Vec3 | null; bodyRef?: FaceRef | null; dirVec?: Vec3 | null; flipCut?: boolean; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
   | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
   | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full"; r2?: number }
   | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da"; d2?: number; angle?: number; flip?: boolean }

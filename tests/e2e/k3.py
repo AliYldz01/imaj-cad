@@ -11,7 +11,7 @@ with sync_playwright() as p:
     box = sketch("s1","S1",FRONT, lambda pt,line,rect,circle,text: rect(0,0,100,60))
     box2 = sketch("s2","S2",FRONT, lambda pt,line,rect,circle,text: rect(50,30,150,90))
     run(pg,"two",[box, ext("e1","s1",d1=20), box2, ext("e2","s2",d1=20,merge=False)])
-    pg.click("#viewbar button[title='Önden']"); pg.click("#viewbar button[title='Ekrana sığdır']"); time.sleep(0.4)
+    pg.keyboard.press('Control+1'); pg.click("#viewbar button[title='Ekrana sığdır']"); time.sleep(0.4)
     print("cmds:", len(pg.eval_on_selector_all("#cmds button","e=>e")))
     pg.click("#cmds button:has-text('Birleştir')"); time.sleep(0.4)
     tapP(pg,[20,20,20]); tapP(pg,[130,80,20])

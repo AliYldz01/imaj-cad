@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.13: Paket A — seçili konturlar, paylaşılan eskiz, ekstrüzyon başlangıç/bitiş/yön seçenekleri, 7 düzlem türü, canlı ölçü, ağaç sıralama, kutu seçim, diğerini seç, mini çubuk
 - v0.12.3: yakalama türü imleç simgesiyle gösterilir (yazı yok)
 - v0.12.2: Akıllı Ölçü'de orta nokta, çeyrek, merkez ve model noktaları seçilebilir
 - v0.12.1: dikdörtgen merkezine ve model kenarı üzerine yakalama

@@ -2962,32 +2962,59 @@ export class SketchEditor implements InputHandler {
 
   editDim(d: SDim, x: number, y: number) {
     if (d.ref) return this.host.toast("Referans ölçü geometriye göre değişir; düzenlenemez. Sürücü yapmak için seçip 'Sürücü ölçü' deyin.");
+    // SolidWorks Değiştir kutusu: değer yazarken / ⟳ ile eskiz canlı güncellenir, ✕ ile geri döner
+    const snap = JSON.stringify(this.data);
+    let flip = false;
+    const restore = () => {
+      this.data = JSON.parse(snap);
+      this.resolve();
+      this.render();
+    };
+    const live = (v: number | null, toggleFlip = false) => {
+      if (toggleFlip) flip = !flip;
+      this.data = JSON.parse(snap);
+      const dd = this.data.dims.find((x) => x.id === d.id);
+      if (dd && v !== null && (v > 0 || dd.t === "dist")) {
+        const sg = (dd.t === "dist" && dd.sub !== "a" ? Math.sign(dd.v || 1) : 1) * (flip ? -1 : 1);
+        dd.v = dd.t === "dist" && dd.sub !== "a" ? v * sg : v;
+      }
+      this.resolve();
+      this.render();
+    };
     this.promptValue(x, y, Math.abs(d.v), d.t === "angle" ? "°" : "", (v) => {
+      restore();
       const ex = this.lastExpr;
       if (v <= 0 && d.t !== "dist") return this.host.toast("Değer sıfırdan büyük olmalı", true);
-      const old = d.v;
+      const old = d.v * (flip ? -1 : 1);
       const ok = this.op(() => {
         const dd = this.data.dims.find((x) => x.id === d.id);
         if (dd) {
           dd.v = dd.t === "dist" && dd.sub !== "a" ? v * Math.sign(old || 1) : v;
+          if (flip && dd.t !== "dist") flip = false;
           if (ex) dd.expr = ex;
           else delete dd.expr;
         }
       }, "Bu değer eskizde çözülemiyor");
       if (ok) this.host.changed();
-    });
+    }, { live, cancel: restore, canFlip: d.t === "dist" && d.sub !== "a" });
   }
 
   /** son girilen değer değişken içeren bir ifadeyse (ör. "=kalinlik*2") */
   lastExpr: string | null = null;
 
-  private promptValue(x: number, y: number, cur: number, unit: string, done: (v: number) => void) {
+  private promptValue(x: number, y: number, cur: number, unit: string, done: (v: number) => void, extra?: { live: (v: number | null, flip?: boolean) => void; cancel: () => void; canFlip: boolean }) {
     document.querySelector(".dim-prompt")?.remove();
     const box = document.createElement("div");
     box.className = "dim-prompt";
-    box.innerHTML = `<button class="dec" aria-label="Azalt">−</button><input inputmode="decimal" autocomplete="off" /><button class="inc" aria-label="Artır">+</button><span>${unit}</span><button class="ok" aria-label="Tamam">✓</button><button class="no" aria-label="İptal">✕</button>`;
+    box.innerHTML = `<button class="dec" aria-label="Azalt">−</button><input inputmode="decimal" autocomplete="off" /><button class="inc" aria-label="Artır">+</button><span>${unit}</span><button class="ok" aria-label="Tamam">✓</button><button class="no" aria-label="İptal">✕</button>${extra ? `<button class="rb" title="Yeniden oluştur (canlı)">⟳</button>${extra.canFlip ? `<button class="fl" title="Yönü ters çevir">±</button>` : ""}` : ""}`;
     const inp = box.querySelector("input")!;
     inp.value = fmtNum(cur, 3);
+    const liveNow = () => extra?.live(evalNum(inp.value.trim()));
+    if (extra) {
+      inp.addEventListener("input", liveNow);
+      box.querySelector(".rb")!.addEventListener("click", liveNow);
+      box.querySelector(".fl")?.addEventListener("click", () => extra.live(evalNum(inp.value.trim()), true));
+    }
     document.body.appendChild(box);
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(8, Math.min(window.innerWidth - r.width - 8, x - r.width / 2)) + "px";
@@ -3007,7 +3034,7 @@ export class SketchEditor implements InputHandler {
       done(v);
     };
     box.querySelector(".ok")!.addEventListener("click", apply);
-    box.querySelector(".no")!.addEventListener("click", close);
+    box.querySelector(".no")!.addEventListener("click", () => (close(), extra?.cancel()));
     // SolidWorks Değiştir kutusu: tekerlek / ↑↓ ile artım (Shift ×10, Alt ×0,1)
     const bump = (dir: number, ev: { shiftKey: boolean; altKey: boolean }) => {
       const v = evalNum(inp.value.trim());
@@ -3015,6 +3042,7 @@ export class SketchEditor implements InputHandler {
       const step = ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
       inp.value = fmtNum(Math.round((v + dir * step) * 1e6) / 1e6, 3);
       inp.classList.remove("bad");
+      liveNow();
     };
     box.querySelector(".dec")!.addEventListener("click", () => bump(-1, { shiftKey: false, altKey: false }));
     box.querySelector(".inc")!.addEventListener("click", () => bump(1, { shiftKey: false, altKey: false }));
@@ -3024,7 +3052,7 @@ export class SketchEditor implements InputHandler {
     }, { passive: false });
     inp.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") apply();
-      if (ev.key === "Escape") close();
+      if (ev.key === "Escape") (close(), extra?.cancel());
       if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
         ev.preventDefault();
         bump(ev.key === "ArrowUp" ? 1 : -1, ev);

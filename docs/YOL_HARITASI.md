@@ -217,3 +217,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Eskiz (v0.12.1) | Dikdörtgen merkezine doğrudan yakalama, model kenarı üzerinde yakalama | ✅ |
 | Akıllı Ölçü (v0.12.2) | Çizgi ortası, çeyrek, yay ortası, kesişim, dikdörtgen merkezi, model noktaları seçilebilir; Seç + Ctrl ile ilişki | ✅ |
 | İmleç (v0.12.3) | Yakalama türüne göre SolidWorks tarzı imleç simgeleri, yazı etiketi kaldırıldı | ✅ |
+
+## v0.13 — Paket A (SolidWorks farkları)
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Eskiz | Seçili konturlar, paylaşılan eskiz, canlı ölçü güncelleme (⟳, ±) | ✅ |
+| Ekstrüzyon | Başlangıç yüz/köşe, köşeye/gövdeye kadar, kenar yönü, kesme tarafını çevir | ✅ |
+| Referans düzlem | Açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel | ✅ |
+| Ağaç | Sürükle / ▲▼ sırala, F2, ebeveyn-çocuk | ✅ |
+| Seçim | Kutu seçim (parça), diğerini seç, bağlam mini çubuğu | ✅ |

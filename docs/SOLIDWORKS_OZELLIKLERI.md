@@ -76,21 +76,21 @@ Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) vars
 | Izgara, ızgaraya yakalama, açı yakalama (15° adım) | 🟡 |
 
 ### 1.6 Eskiz durumu
-Renkler (mavi tanımsız / siyah tam / kırmızı aşırı) ✅ · açık uç gösterimi ✅ · **seçili konturlar** (bir eskizin yalnız bir bölgesini kullanma) ⬜ E1 · **paylaşılan eskiz** ⬜ E2 · eskiz düzlemini değiştir 🟡 · türetilmiş eskiz ⬜.
+Renkler (mavi tanımsız / siyah tam / kırmızı aşırı) ✅ · açık uç gösterimi ✅ · **seçili konturlar** ✅ (v0.13) · **paylaşılan eskiz** ✅ (v0.13) · eskiz düzlemini değiştir 🟡 · türetilmiş eskiz ⬜.
 
 ---
 
 ## 2. Katı özellikler
 
 ### 2.1 Ekstrüzyon (çıkıntı / kesme / yüzey)
-- **Başlangıç (From):** eskiz düzlemi · yüzey/yüz/düzlem (düzlemsel olmayan da olabilir) · köşe · öteleme. İmaj: yalnız öteleme 🟡 F2
-- **Bitiş koşulları:** kör, tümünü geç, tümünü geç–iki yön, sonrakine kadar, **köşeye kadar**, yüzeye kadar, yüzeyden ötele (yüzeyi taşı seçeneği), **gövdeye kadar**, orta düzlem. İmaj: kör/orta/tümü/yüzey/öteleme/sonraki ✅, köşe ⬜, gövde ⬜ F2
-- **Ekstrüzyon yönü** (kenar/eksen seçerek eğik ekstrüzyon) ⬜ F2
+- **Başlangıç (From):** eskiz düzlemi · yüzey/yüz/düzlem · köşe · öteleme. İmaj: ✅ (v0.13; düzlemsel olmayan yüz hariç)
+- **Bitiş koşulları:** kör, tümünü geç, tümünü geç–iki yön, sonrakine kadar, **köşeye kadar**, yüzeye kadar, yüzeyden ötele (yüzeyi taşı seçeneği), **gövdeye kadar**, orta düzlem. İmaj: hepsi ✅ (v0.13)
+- **Ekstrüzyon yönü** (kenar seçerek eğik ekstrüzyon) ✅ (v0.13)
 - **Koniklik** aç/kapat, dışa doğru ✅
 - **Yön 2** (ayrı bitiş koşulu) ✅
-- **İnce özellik:** tek yön / orta düzlem / iki yön farklı kalınlık, köşeleri otomatik yuvarla (açık eskiz), uçları kapat (kapak kalınlığı). Açık eskizde zorunlu. ⬜ F2
-- **Seçili konturlar** ⬜ E1 · **Özellik kapsamı** (çok gövdede hangi gövdeler etkilenir) 🟡
-- Kesme: **kesme tarafını çevir** 🟡, sacda **normal kesim** ⬜
+- **İnce özellik:** tek yön / orta / ters ✅ · iki yön farklı kalınlık, köşeleri otomatik yuvarla, uçları kapat ⬜
+- **Seçili konturlar** ✅ (v0.13) · **Özellik kapsamı** (çok gövdede hangi gövdeler etkilenir) 🟡
+- Kesme: **kesme tarafını çevir** ✅ (v0.13), sacda **normal kesim** ⬜
 - Çıkıntı: **sonucu birleştir** aç/kapat ✅
 - Bitiş koşulunu modelde sağ tıkla değiştirme, sürükleme tutamağı (Instant3D) ⬜ F10
 
@@ -140,7 +140,7 @@ Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, bo
 - İmaj: türler ✅, örnek atla/vary/değişken ⬜ F6
 
 ### 2.10 Referans geometri
-- **Düzlem:** 3 referanslı sihirbaz — çakışık, paralel, dik, **açılı** (adet), öteleme (adet), **orta düzlem**, **teğet** (silindire), **ekrana paralel**, 3 noktadan, çizgi+nokta, eğriye dik (eğri üzerinde nokta). İmaj: yalnız öteleme 🟡 F1
+- **Düzlem:** 3 referanslı sihirbaz — çakışık, paralel, dik, **açılı** (adet), öteleme (adet), **orta düzlem**, **teğet** (silindire), **ekrana paralel**, 3 noktadan, çizgi+nokta, eğriye dik (eğri üzerinde nokta). İmaj: öteleme, açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel ✅ (v0.13); teğet ⬜
 - Eksen: çizgi/kenar, iki düzlem, iki nokta, silindir yüzü, nokta+yüz. İmaj 🟡
 - Nokta (yay merkezi, yüz merkezi, kesişim, projeksiyon, eğri boyunca), Koordinat sistemi, Kütle merkezi. İmaj 🟡
 
@@ -148,7 +148,7 @@ Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, bo
 Ekstrüzyon/döndürme/süpürme/loft yüzeyi, sınır yüzeyi, dolgu, düzlemsel yüzey, öteleme yüzeyi, **dikiş (knit)**, **kalınlaştır**, yüzeyle kes, kırp/uzat yüzey, yüzeyi sil/değiştir, cetvel yüzeyi.
 
 ### 2.12 Parça seviyesinde diğer
-Malzeme ✅ · kütle özellikleri ✅ · ölçüm ✅ · kesit görünüşü ✅ · girişim (gövdeler) ✅ · **konfigürasyonlar / tasarım tablosu** ⬜ F14 · denklemler ve global değişkenler ✅ · **görünüm (renk/doku)** ⬜ F15 · özellik **bastır / klasör / sürükleyerek sırala / geri alma çubuğu** 🟡 F9 · ebeveyn–çocuk ⬜ · "Ne yanlış?" hata penceresi 🟡 G3.
+Malzeme ✅ · kütle özellikleri ✅ · ölçüm ✅ · kesit görünüşü ✅ · girişim (gövdeler) ✅ · **konfigürasyonlar / tasarım tablosu** ⬜ F14 · denklemler ve global değişkenler ✅ · **görünüm (renk/doku)** ⬜ F15 · özellik bastır ✅ · sürükleyerek sırala ✅ · ebeveyn/çocuk ✅ · geri alma çubuğu ✅ · klasör ⬜ (F9) · ebeveyn–çocuk ⬜ · "Ne yanlış?" hata penceresi 🟡 G3.
 
 ---
 

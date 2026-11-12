@@ -248,12 +248,31 @@ function touching(pieces: Shape[], ref: Shape) {
 
 function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false): Shape {
   const frame0 = resolvePlane(f.pl);
-  const frame = f.startOff ? { ...frame0, o: vadd(frame0.o, vmul(frame0.n, f.startOff)) } : frame0;
+  // başlangıç: yüz / köşe / öteleme
+  let so = f.startOff ?? 0;
+  if (f.fromFace) {
+    const pf = planarFace(f.fromFace);
+    if (!pf) throw new Error("Başlangıç yüzü bulunamadı");
+    if (Math.abs(Math.abs(vdot(pf.n, frame0.n)) - 1) > 1e-6) throw new Error("Başlangıç yüzü eskiz düzlemine paralel olmalı");
+    so = vdot(vsub(pf.c, frame0.o), frame0.n);
+  } else if (f.fromVtx) so = vdot(vsub(f.fromVtx, frame0.o), frame0.n);
+  const frame = so ? { ...frame0, o: vadd(frame0.o, vmul(frame0.n, so)) } : frame0;
   const sign = (f.rev ? -1 : 1) * (f.cut ? -1 : 1) * (flipped ? -1 : 1);
+  if (f.flipCut && f.cut) {
+    // kesme tarafını çevir: profilin dışında kalan malzemeyi kes
+    const inner = extrudeTool({ ...f, flipCut: false }, flipped);
+    const big = extrudeTool({ ...f, flipCut: false, loops: [{ circle: { c: [0, 0], r: bodySize() * 4 }, depth: 0 }], texts: [] }, flipped);
+    return big.cut(inner);
+  }
   const through = bodySize();
   const sk = (shift: number) => profile(f.loops, f.texts).sketchOnPlane(makePlane(frame, shift));
   let d1 = f.d1;
   let clipFace: any = null;
+  if (f.end === "vertex") {
+    if (!f.vtx) throw new Error("Hedef köşeyi seçin");
+    d1 = vdot(vsub(f.vtx, frame.o), vmul(frame.n, sign));
+    if (d1 <= 1e-6) throw new Error("Köşe bu yönde değil; yönü ters çevirin");
+  }
   if (f.end === "surface" || f.end === "offset") {
     if (!f.face) throw new Error("Hedef yüzü seçin");
     const pf = planarFace(f.face);
@@ -276,6 +295,15 @@ function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false)
     const keep = touching(pieces, base);
     if (!keep.length) throw new Error("Hedef yüz profili kesmiyor");
     solid = keep.reduce((a, b) => a.fuse(b));
+  } else if (f.end === "body") {
+    if (!f.bodyRef) throw new Error("Hedef gövdeyi seçin");
+    const target = bodies[bodyIdxOf(f.bodyRef)];
+    if (!target) throw new Error("Hedef gövde bulunamadı");
+    const long = sk(0).extrude(sign * through);
+    const pieces = solidsOf(f.cut ? long.intersect(target) : long.cut(target));
+    const keep = touching(pieces, sk(0).face());
+    if (!keep.length) throw new Error("Profil yönünde gövde bulunamadı");
+    solid = keep.reduce((x, y) => x.fuse(y));
   } else if (f.end === "next") {
     const long = sk(0).extrude(sign * through);
     const a = all();
@@ -291,7 +319,15 @@ function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false)
     const s2 = profile(f.loops).offset(off, { lineJoinType: "miter" }).sketchOnPlane(makePlane(frame, sign * d1));
     solid = s1.loftWith(s2, { ruled: true });
   } else if (f.end === "mid") solid = sk((-sign * f.d1) / 2).extrude(sign * f.d1, f.twist ? { twistAngle: f.twist } : undefined);
-  else if (f.end === "through") solid = sk(0).extrude(sign * through);
+  else if (f.dirVec && (f.end === "blind" || f.end === "through" || f.end === "vertex")) {
+    // ekstrüzyon yönü: kenar vektörü (eğik ekstrüzyon); derinlik normal doğrultusunda ölçülür
+    let dv = vnorm(f.dirVec);
+    if (vdot(dv, frame.n) * sign < 0) dv = vmul(dv, -1);
+    const cosA = Math.abs(vdot(dv, frame.n));
+    if (cosA < 1e-3) throw new Error("Yön vektörü eskiz düzlemine paralel olamaz");
+    const dist = (f.end === "through" ? through : d1) / cosA;
+    solid = sk(0).extrude(dist, { extrusionDirection: dv as any });
+  } else if (f.end === "through") solid = sk(0).extrude(sign * through);
   else solid = sk(0).extrude(sign * d1, f.twist ? { twistAngle: f.twist } : undefined);
   if (f.dir2 && (f.end === "blind" || f.end === "through")) {
     const d2 = f.end2 === "through" ? through : f.d2;

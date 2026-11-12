@@ -305,3 +305,5 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
   .cmd-chip { font-size: 13px; padding: 5px 12px; border-radius: 14px; }
 }
 .fs-btn { font-size: 20px; }
+#tree li.drop { box-shadow: inset 0 2px 0 var(--primary, #1c7ed6); }
+.minibar { display: flex; gap: 2px; padding: 3px; background: rgba(255,255,255,.96); border: 1px solid #c9d1dc; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }

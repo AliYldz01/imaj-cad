@@ -699,6 +699,40 @@ export class Viewer {
     return null;
   }
 
+  /** imleç altındaki tüm yüz adayları (önden arkaya) — "diğerini seç" için */
+  pickFacesAll(clientX: number, clientY: number): PickHit[] {
+    if (!this.modelMesh) return [];
+    const rc = this.ray(clientX, clientY);
+    const out: PickHit[] = [];
+    for (const h of rc.intersectObject(this.modelMesh, false)) {
+      if (h.faceIndex === undefined || h.faceIndex === null) continue;
+      const idx = this.faceGroupOf(h.faceIndex);
+      if (idx >= 0 && !out.some((o) => o.kind === "face" && o.index === idx)) out.push({ kind: "face", index: idx, point: h.point.toArray() as Vec3 });
+    }
+    return out;
+  }
+  /** ekran kutusundaki yüz ve kenarlar (yüz merkezi / kenar orta noktası kutuda) */
+  pickBox(x0: number, y0: number, x1: number, y1: number, cross: boolean): { faces: number[]; edges: number[] } {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const [ax, bx] = [Math.min(x0, x1) - r.left, Math.max(x0, x1) - r.left], [ay, by] = [Math.min(y0, y1) - r.top, Math.max(y0, y1) - r.top];
+    const inB = (w: Vec3) => {
+      const s = this.toScreen(w);
+      return s[0] >= ax && s[0] <= bx && s[1] >= ay && s[1] <= by;
+    };
+    const m = this.mesh;
+    if (!m) return { faces: [], edges: [] };
+    const edges: number[] = [];
+    m.edges.forEach((e, i) => {
+      const ins = [e.s, e.m, e.e].map(inB);
+      if (cross ? ins.some(Boolean) : ins.every(Boolean)) edges.push(i);
+    });
+    const faces: number[] = [];
+    m.faces.forEach((f, i) => {
+      if (f.c && inB(f.c) && !cross) faces.push(i);
+    });
+    return { faces, edges };
+  }
+
   // ---------- Vurgulama ----------
   setHighlight(sel: { faces: number[]; edges: number[]; planes: string[] }, hover: PickHit | null) {
     for (const c of [...this.hl.children]) {
