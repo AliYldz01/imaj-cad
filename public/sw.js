@@ -1,5 +1,5 @@
 // Çevrimdışı çalışma: sayfa önce ağdan, diğer dosyalar önce önbellekten yüklenir.
-const CACHE = "imajcad-v15";
+const CACHE = "imajcad-v16";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./manifest.webmanifest", "./icon-192.png"])));

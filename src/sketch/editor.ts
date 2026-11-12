@@ -2808,7 +2808,12 @@ export class SketchEditor implements InputHandler {
     if (!h) {
       const v = this.virtualPt(p);
       const id = v && this.realizeVirtual(v);
-      if (id) h = { kind: "pt", id, q: P(this.data, id) };
+      if (id) {
+        h = { kind: "pt", id, q: P(this.data, id) };
+        // tek başına kalırsa (boşluğa tıklanınca) ait olduğu eğriye dön
+        const owner = v!.mid ?? (v!.on && !v!.on2 ? v!.on.id : undefined);
+        if (owner) (st.vown = st.vown ?? {})[id] = owner;
+      }
     }
     if (!h) h = this.hitTest(p);
     if (!h) {
@@ -2822,6 +2827,13 @@ export class SketchEditor implements InputHandler {
       return;
     }
     if (!st.refs.length) return;
+    if (st.refs.length === 1 && st.vown?.[st.refs[0]]) {
+      // çizgi ortasına / çeyreğe tıklanıp tek bırakıldı: SolidWorks gibi çizginin/dairenin kendisini ölç
+      const vid = st.refs[0];
+      st.refs = [st.vown[vid]];
+      this.op(() => deleteIds(this.data, [...this.data.ents.filter((e) => e.t === "point" && (e as any).p === vid).map((e) => e.id), vid]));
+    }
+    st.vown = undefined;
     const spec = this.dimSpec(st.refs, p);
     st.refs = [];
     this.render();
