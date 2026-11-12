@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.16: **Montaj** — bileşen ekleme, eşleşmeler (çakışık, paralel, dik, mesafe, açı, eş merkezli, kilit), sürükleme, girişim, patlatma, malzeme listesi, STEP montaj, parça kütüphanesi
 - v0.15: büküm payı/düşümü, kalınlık tablosu, huni (geçiş parçası) ve açınımı, köşe kır, delme noktası ötelemesi
 - v0.14: dairesel süpürme, örnek atla, dışa kabuk, çoklu yarıçap, görüntü stilleri, Instant3D, hızlı yakalama, güç kırpma
 - v0.13: Paket A — seçili konturlar, paylaşılan eskiz, ekstrüzyon başlangıç/bitiş/yön seçenekleri, 7 düzlem türü, canlı ölçü, ağaç sıralama, kutu seçim, diğerini seç, mini çubuk

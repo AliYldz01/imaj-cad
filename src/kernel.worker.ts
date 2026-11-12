@@ -2616,6 +2616,54 @@ function exportShape(id: number, format: "step" | "stl") {
   }
 }
 
+/** Montaj: her bileşeni kur, dönüşüm matrisiyle yerleştir; STEP (bileşik) veya bileşenler arası girişim */
+async function asmOp(id: number, op: "step" | "interfere", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]) {
+  const placed: Shape[] = [];
+  for (const p of parts) {
+    bodies = [];
+    frames = {};
+    tools.clear();
+    memberReg = new Map();
+    welds = [];
+    weldInfo = [];
+    for (const f of p.features) {
+      try {
+        await buildFeature(f);
+      } catch {}
+    }
+    const a = all();
+    if (!a) {
+      placed.push(null as any);
+      continue;
+    }
+    // dörtlük (quaternion) → eksen-açı döndürme, sonra öteleme
+    const [qx, qy, qz, qw] = p.q;
+    const ang = 2 * Math.acos(Math.max(-1, Math.min(1, qw)));
+    const sn = Math.sqrt(Math.max(0, 1 - qw * qw));
+    let sh: Shape = a;
+    if (ang > 1e-9 && sn > 1e-9) sh = sh.rotate((ang * 180) / Math.PI, [0, 0, 0], [qx / sn, qy / sn, qz / sn]);
+    placed.push(sh.translate(p.p));
+  }
+  bodies = [];
+  if (op === "step") {
+    const ok = placed.filter(Boolean);
+    if (!ok.length) return post({ id, type: "asm", blob: null, message: "Montajda katı yok" });
+    const c = makeCompound(ok.map((x) => x.clone()));
+    post({ id, type: "asm", blob: c.blobSTEP() });
+    return;
+  }
+  const pairs: { a: number; b: number; vol: number }[] = [];
+  for (let i = 0; i < placed.length; i++)
+    for (let j = i + 1; j < placed.length; j++) {
+      if (!placed[i] || !placed[j] || !bbOverlapStrict(placed[i], placed[j])) continue;
+      try {
+        const v = volOf(placed[i].clone().intersect(placed[j].clone()));
+        if (v > 1e-3) pairs.push({ a: i, b: j, vol: v });
+      } catch {}
+    }
+  post({ id, type: "asm", pairs });
+}
+
 // İstekler sırayla işlenir (yapım zaman uyumsuz olabilir)
 let queue: Promise<void> = Promise.resolve();
 self.onmessage = (ev: MessageEvent<KernelRequest>) => {
@@ -2634,6 +2682,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);
     else if (req.type === "interfere") interfere(req.id);
+    else if (req.type === "asm") await asmOp(req.id, req.op, req.parts);
    } catch (e) {
     // Hata kuyruğu kilitlemesin; isteği yanıtsız bırakma
     const t = req.type === "build" ? "built" : req.type === "export" ? "exported" : req.type === "measure" ? "measured" : req.type;

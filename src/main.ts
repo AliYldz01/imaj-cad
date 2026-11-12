@@ -23,6 +23,7 @@ import { holeDefaults, MATERIALS, METRIC_PITCH, sizesFor, threadMajor, threadLab
 import * as THREE from "three";
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
+import { AsmUI } from "./asm/asmui";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -36,6 +37,8 @@ function emptyDoc(): PartDoc {
   return { version: 2, name: "Parça1", features: [], seq: {} };
 }
 let doc: PartDoc = loadDoc();
+/** montaj çalışma alanı (Montaj sekmesi) */
+let asmUI: AsmUI | null = null;
 function loadDoc(): PartDoc {
   try {
     const raw = localStorage.getItem(STORE);
@@ -264,6 +267,7 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
 }
 
 async function rebuild() {
+  if (asmUI?.on) return;
   if (building) {
     pending = true;
     return;
@@ -3429,6 +3433,7 @@ const FEAT_ICON: Record<string, string> = {
 };
 
 function renderTree() {
+  if (asmUI?.on) return asmUI.renderTree();
   $("#part-name").textContent = doc.name;
   const ul = $("#tree");
   ul.innerHTML = "";
@@ -3607,8 +3612,11 @@ function deleteFeature(id: string) {
 // Komut çubuğu
 // =====================================================================
 type Cmd = { id: string; label: string; icon: string; run: () => void; active?: () => boolean } | "sep";
-let tab: "features" | "sketch" | "evaluate" | "sheet" | "weld" = "features";
-function setTab(t: "features" | "sketch" | "evaluate" | "sheet" | "weld") {
+let tab: "features" | "sketch" | "evaluate" | "sheet" | "weld" | "asm" = "features";
+function setTab(t: "features" | "sketch" | "evaluate" | "sheet" | "weld" | "asm") {
+  if (t !== "asm" && asmUI?.on) asmUI.leave();
+  if (t === "asm" && mode.k === "sketch") exitSketch(true);
+  if (t === "asm" && mode.k === "pm") cancelFeature();
   tab = t;
   document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
   document.querySelector<HTMLElement>(`#tabs button[data-tab="${t}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -3625,6 +3633,7 @@ const skTool = (t: SkTool, icon: string, label = TOOL_NAMES[t]): Cmd => ({
 });
 
 function commands(): Cmd[] {
+  if (tab === "asm") return asmUI ? asmUI.commands() : [];
   if (tab === "features")
     return [
       { id: "extrude", label: "Ekstrüzyon", icon: "extrude", run: () => newFeature("extrude") },
@@ -3823,6 +3832,7 @@ const GROUP_NAMES: Record<string, string[]> = {
   weld: ["", "Eskiz / Kesme", "Liste"],
   sheet: ["", "Kesme", "Açınım"],
   evaluate: ["", "Eskiz", "Diğer"],
+  asm: ["", "Değerlendir", "Dosya"],
 };
 const groupSel: Record<string, number> = {};
 let lastGroupTool = "";
@@ -4668,6 +4678,24 @@ addEventListener("resize", () => renderCommands());
   });
 }
 
+// ---------- montaj ----------
+asmUI = new AsmUI({
+  viewer,
+  kernel,
+  toast,
+  hint,
+  showPM,
+  hidePM,
+  download,
+  currentPart: () => ({ name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles }),
+  setStatus: (k, t) => setStatus(k as any, t),
+  onLeave: () => {
+    renderTree();
+    renderCommands();
+    rebuild();
+  },
+});
+
 // ---------- görünüm küpü ----------
 const cubeBox = h("div", "vcube");
 const cube = h("div", "cube");
@@ -4992,6 +5020,9 @@ function showCmd(title: string) {
 }
 (window as any).__app = {
   showCmd,
+  get asm() {
+    return asmUI;
+  },
   get doc() { return doc; },
   get mode() { return mode; },
   viewer,

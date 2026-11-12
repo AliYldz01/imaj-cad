@@ -1,5 +1,5 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, CutItem, WeldItem, DrawData } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, CutItem, WeldItem, DrawData, Vec3 } from "./doc/types";
 
 export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members: { key: string; name: string; body: number }[] };
 
@@ -38,6 +38,11 @@ export class Kernel {
     });
   }
 
+  /** montaj: STEP veya bileşenler arası girişim */
+  async asm(op: "step" | "interfere", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]): Promise<{ blob?: Blob | null; pairs?: { a: number; b: number; vol: number }[]; message?: string }> {
+    await this.ready;
+    return this.request({ type: "asm", op, parts } as any);
+  }
   async build(features: KFeature[]): Promise<BuildResult> {
     await this.ready;
     const fontUrl = new URL("fonts/DejaVuSans.ttf", document.baseURI).href;

@@ -86,7 +86,7 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 | # | Önem | Eksik / hatalı | Yapılacak | Durum |
 |---|---|---|---|---|
-| G1 | K | **Tek belge** | Çoklu belge (parça/montaj sekmeleri), proje / dosya yöneticisi, parça kütüphanesi — montaj için şart | ⬜ |
+| G1 | K | **Tek belge** | Çoklu belge (parça/montaj sekmeleri), proje / dosya yöneticisi, parça kütüphanesi — montaj için şart | 🟡 v0.16: parça kütüphanesi + montaj belgesi |
 | G2 | Ö | 3B seçim | Parça modunda **kutu/kesişen seçim**, **diğerini seç** (arka yüz), **döngü seç**, **teğet seç** | 🟡 v0.13: kutu seçim, diğerini seç; döngü/teğet seç yok |
 | G3 | Ö | Hata açıklaması | "Ne yanlış?" penceresi, düzeltme önerisi | 🟡 |
 | G4 | Ö | **Belge özellikleri** | Birim (mm/inç), ondalık, standart, özel dosya özellikleri | ⬜ |
@@ -99,17 +99,16 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 | # | Önem | Yapılacak |
 |---|---|---|
-| M1 | K | Bileşen ekle (dosya / açık belge), ilk bileşen sabit, sabitle/serbest, gizle/göster, saydam, bastır |
-| M2 | K | **Standart eşleşmeler**: çakışık, paralel, dik, teğet, eş merkezli, mesafe, açı, kilit; **hizalı / ters hizalı** |
-| M3 | K | Eşleşme arayüzü: seçime göre öneren mini çubuk, Alt ile hizalama çevir, eşleşme klasörü, hatalı eşleşme uyarısı, serbestlik göstergesi |
-| M4 | Ö | Bileşeni sürükle-döndür, delta XYZ, **çarpışma algılama** |
-| M5 | Ö | **Gelişmiş**: limit (mesafe/açı aralığı), simetrik, genişlik, profil merkezi, yol, doğrusal kuplör |
-| M6 | İ | **Mekanik**: menteşe, dişli, kremayer–pinyon, vida, kanal, kam, üniversal mafsal |
-| M7 | Ö | Girişim tespiti, açıklık, kütle özellikleri |
-| M8 | Ö | **Patlatılmış görünüm** (adımlar, radyal, patlatma çizgileri) |
-| M9 | Ö | **BOM**, bileşen çoğaltma (doğrusal/dairesel/desen güdümlü), ayna bileşen, alt montaj |
-| M10 | Ö | **STEP montaj** dışa aktarma, bağlam içi parça düzenleme |
-
+| M1 | K | Bileşen ekle (dosya / açık belge), ilk bileşen sabit, sabitle/serbest, gizle/göster, saydam, bastır | 🟡 v0.16 (bastır yok) |
+| M2 | K | **Standart eşleşmeler**: çakışık, paralel, dik, teğet, eş merkezli, mesafe, açı, kilit; **hizalı / ters hizalı** | 🟡 v0.16 (teğet yok) |
+| M3 | K | Eşleşme arayüzü: seçime göre öneren mini çubuk, Alt ile hizalama çevir, eşleşme klasörü, hatalı eşleşme uyarısı, serbestlik göstergesi | 🟡 v0.16 serbestlik, hizalama çevir, eşleşme listesi; açılır mini çubuk yok |
+| M4 | Ö | Bileşeni sürükle-döndür, delta XYZ, **çarpışma algılama** | 🟡 v0.16 sürükle + Δ + 90° döndür; çarpışma yok |
+| M5 | Ö | **Gelişmiş**: limit (mesafe/açı aralığı), simetrik, genişlik, profil merkezi, yol, doğrusal kuplör | ⬜ |
+| M6 | İ | **Mekanik**: menteşe, dişli, kremayer–pinyon, vida, kanal, kam, üniversal mafsal | ⬜ |
+| M7 | Ö | Girişim tespiti, açıklık, kütle özellikleri | 🟡 v0.16 girişim |
+| M8 | Ö | **Patlatılmış görünüm** (adımlar, radyal, patlatma çizgileri) | 🟡 v0.16 otomatik patlatma |
+| M9 | Ö | **BOM**, bileşen çoğaltma (doğrusal/dairesel/desen güdümlü), ayna bileşen, alt montaj | 🟡 v0.16 BOM; bileşen çoğaltma yok |
+| M10 | Ö | **STEP montaj** dışa aktarma, bağlam içi parça düzenleme | 🟡 v0.16 STEP montaj |
 ---
 
 ## 7. Uygulama sırası (paketler)

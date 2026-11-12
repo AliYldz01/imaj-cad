@@ -140,7 +140,7 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Sac metal ekleri (v0.8) | Kademe (jog), gönye flanş (otomatik taban bükümüyle), köşe kapatma (alın / bindirme), katıdan saca dönüştür (büküm + yarık + köşe boşaltma) | ✅ |
 | Kaynaklı yapı / profil (v0.6) | İskelet eskizden yapı elemanı, EN profil kütüphanesi (kutu, boru, L, UPN, IPE, HEA, HEB, lama, dolu çubuk), delme noktası / döndürme / aynalama, gönye ve alın köşe işlemleri, kırp/uzat (düz veya profile göre), uç kapağı, köşe takviyesi, bükümlü boru, kesim listesi (gruplama, boy, açı, ağırlık, CSV, tekil STEP) | ✅ |
 | Kaynaklı (v0.7) | 3B eskiz (yön+uzunluk, Δ, mutlak koordinat, yakalama, köşe büküm yarıçapı), bükümlü zincir elemanlar, kaynak dikişi (köşe / boru çevresi / kesikli) ve kaynak tablosu, özel profil kütüphanesi (eskizden, cihaz kütüphanesi, içe/dışa aktarma), yüze göre kırpma, UPN eğimli flanş, eleman / levha imalat resimleri (A4, PDF, SVG, levha DXF) | ✅ |
-| Montaj **(sıradaki)** | Bileşen ekleme, çakışık/eş merkezli/mesafe eşleşmeleri, patlatma | ⬜ |
+| Montaj (v0.16) | Bileşen ekleme, eşleşmeler, patlatma, girişim, BOM, STEP | 🟡 |
 | Teknik resim | Görünüşler, kesit, ölçülendirme, antet, PDF | ⬜ |
 | Saha özellikleri | Fotoğraf ekleme, Bluetooth kumpas | ⬜ |
 
@@ -243,3 +243,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 |---|---|---|
 | Sac | Büküm payı / düşümü, kalınlık tablosu, geçiş parçası (huni) + açınım DXF, köşe kır | ✅ |
 | Kaynaklı | Delme noktası ötelemesi | ✅ |
+
+## v0.16 — Montaj (Paket D ilk sürüm)
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Bileşen | Ekle (geçerli parça / kütüphane / dosya), sabitle, gizle, sil, kütüphaneden güncelle | ✅ |
+| Eşleşme | Çakışık, paralel, dik, mesafe, açı, eş merkezli, kilit; hizalama çevir; serbestlik göstergesi | ✅ |
+| Hareket | Sürükleyerek taşı, Δ öteleme, 90° döndür | ✅ |
+| Değerlendirme | Girişim, patlatma, malzeme listesi (CSV), STEP montaj | ✅ |
+| Sonra | Teğet, gelişmiş ve mekanik eşleşmeler, çarpışma, bileşen çoğaltma, alt montaj | ⬜ |
