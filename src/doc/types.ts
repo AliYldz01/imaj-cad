@@ -106,7 +106,7 @@ export const ORIGIN = "O";
 /** Kenar referansı: orta noktası ve (doğrusalsa) yönü ile geometrik olarak saklanır */
 export interface EdgeRef { m: Vec3; d?: Vec3 | null }
 /** Yüz referansı: merkezi ve normali */
-export interface FaceRef { c: Vec3; n?: Vec3 | null }
+export interface FaceRef { c: Vec3; n?: Vec3 | null; /** silindirik yüz yarıçapı (aynı merkezli yüzleri ayırmak için) */ r?: number }
 
 interface FeatBase {
   id: string;
@@ -414,6 +414,17 @@ export interface MemberFeature extends FeatBase {
 export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean }
 /** Uç kapağı */
 export interface EndCapFeature extends FeatBase { type: "endcap"; faces: FaceRef[]; t: number; inset: number }
+/** Kaynak dikişi (köşe kaynağı) */
+export interface WeldFeature extends FeatBase {
+  type: "weld";
+  pairs: { f1: FaceRef; f2: FaceRef }[];
+  /** kaynak kalınlığı (a ölçüsü) */
+  a: number;
+  intermittent: boolean;
+  /** kesikli: dikiş boyu ve adım (merkezden merkeze) */
+  len: number;
+  pitch: number;
+}
 /** Köşe takviyesi (üçgen levha) */
 export interface GussetFeature extends FeatBase {
   type: "gusset";
@@ -431,6 +442,7 @@ export interface GussetFeature extends FeatBase {
 export type Feature =
   | Sketch3DFeature
   | MemberFeature
+  | WeldFeature
   | TrimFeature
   | EndCapFeature
   | GussetFeature
@@ -516,6 +528,7 @@ export type KFeature =
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
   | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
   | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number }
+  | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }
   | { id: string; type: "gusset"; f1: FaceRef; f2: FaceRef; d1: number; d2: number; t: number; chamfer: number; offset: number }
@@ -540,6 +553,9 @@ export interface CutItem {
   key?: string;
 }
 
+/** Kaynak tablosu satırı */
+export interface WeldItem { name: string; a: number; length: number; count: number; vol: number }
+
 /** Açınım (düz desen) 2B öğeleri: çizgi, yay (saat yönü tersine a0→a1, derece), daire */
 export type Flat2D =
   | { k: "l"; a: Vec2; b: Vec2 }
@@ -557,7 +573,7 @@ export interface FlatResult {
   error?: string;
 }
 
-export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string; /** gövde sırası */ b?: number }
+export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string; /** gövde sırası */ b?: number; /** silindir yarıçapı */ r?: number }
 export interface EdgeInfo {
   m: Vec3;
   d: Vec3 | null;
@@ -621,4 +637,4 @@ export type KernelResponse =
   | { id: number; type: "props"; props: MassProps | null }
   | { id: number; type: "exported"; blob: Blob | null; message?: string }
   | ({ id: number; type: "flat" } & FlatResult)
-  | { id: number; type: "cutlist"; items: CutItem[] };
+  | { id: number; type: "cutlist"; items: CutItem[]; welds: WeldItem[] };

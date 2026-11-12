@@ -10,14 +10,17 @@ import {
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
-  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem,
+  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem,
 } from "./doc/types";
 import { thinRegion } from "./sketch/profile";
-import { unfold } from "./sheet/unfold";
+import { unfold, cylinderParams } from "./sheet/unfold";
 
 type Shape = any;
 /** Çoklu gövde: her eleman ayrı bir katı */
 let bodies: Shape[] = [];
+/** kaynak dikişleri: görüntü ve dışa aktarmaya katılır, gövde işlemlerine katılmaz */
+let welds: Shape[] = [];
+let weldInfo: WeldItem[] = [];
 let frames: Record<string, Frame> = {};
 let fontReady: Promise<void> | null = null;
 
@@ -66,11 +69,12 @@ function makePlane(f: Frame, shift = 0) {
 
 /** Tüm gövdeler tek şekil olarak */
 function all(): Shape | null {
-  if (!bodies.length) return null;
+  const list = [...bodies, ...welds];
+  if (!list.length) return null;
   // makeCompound girdileri siler: kopyalarla çalış
-  return bodies.length === 1 ? bodies[0] : makeCompound(bodies.map((b) => b.clone()));
+  return list.length === 1 ? list[0] : makeCompound(list.map((b) => b.clone()));
 }
-const freeAll = (a: Shape) => { if (bodies.length > 1) try { a.delete(); } catch {} };
+const freeAll = (a: Shape) => { if (bodies.length + welds.length > 1) try { a.delete(); } catch {} };
 const allFaces = () => bodies.flatMap((b) => b.faces as any[]);
 const allEdges = () => bodies.flatMap((b) => b.edges as any[]);
 
@@ -204,7 +208,17 @@ function planarFace(ref: FaceRef): { c: Vec3; n: Vec3; face: any } | null {
   let bd = Infinity;
   for (const face of allFaces()) {
     const c = tup(face.center);
-    const d = vlen(vsub(c, ref.c));
+    let d = vlen(vsub(c, ref.c));
+    if (ref.r !== undefined) {
+      // aynı merkezli silindirleri yarıçapla ayır
+      if (String(face.geomType) !== "CYLINDRE") d += 1000;
+      else
+        try {
+          d += Math.abs(cylinderParams(face).rho - ref.r) * 10;
+        } catch {
+          d += 1000;
+        }
+    }
     if (d < bd) {
       bd = d;
       const planar = String(face.geomType) === "PLANE";
@@ -779,6 +793,84 @@ function memberBodyMap(): Map<string, number> {
   return out;
 }
 
+/** Köşe kaynağı: iki düz yüz arasında üçgen kesitli dikiş; boru–levha için çevresel dikiş */
+function weldTool(f: Extract<KFeature, { type: "weld" }>) {
+  const z = f.a * Math.SQRT2; // bacak boyu
+  let total = 0, count = 0, vol = 0;
+  for (const pr of f.pairs) {
+    const p1 = planarFace(pr.f1), p2 = planarFace(pr.f2);
+    if (!p1 || !p2) throw new Error("Kaynak yüzü modelde bulunamadı");
+    const t1 = String(p1.face.geomType), t2 = String(p2.face.geomType);
+    if ((t1 === "CYLINDRE" && t2 === "PLANE") || (t1 === "PLANE" && t2 === "CYLINDRE")) {
+      const [pc, pp] = t1 === "CYLINDRE" ? [p1, p2] : [p2, p1];
+      const cy = cylinderParams(pc.face);
+      if (Math.abs(Math.abs(vdot(cy.a, pp.n)) - 1) > 1e-3) throw new Error("Boru ekseni levhaya dik olmalı");
+      const tt = vdot(vsub(pp.c, cy.L), pp.n) / vdot(cy.a, pp.n);
+      const C = vadd(cy.L, vmul(cy.a, tt));
+      // dış yüzey mi iç yüzey mi: silindir yüzü normali eksenden dışa bakıyorsa dış yüzey
+      const pc0 = tup(pc.face.center);
+      const radial = vnorm(vsub(vsub(pc0, cy.L), vmul(cy.a, vdot(vsub(pc0, cy.L), cy.a))));
+      const outer = vdot(vnorm(tup(pc.face.normalAt(pc0))), radial) > 0;
+      const R = cy.rho, s = outer ? 1 : -1;
+      const ax = vmul(pp.n, 1);
+      const xd = vnorm(Math.abs(ax[2]) < 0.9 ? vcross(ax, [0, 0, 1]) : vcross(ax, [1, 0, 0]));
+      const prof = draw([R, 0]).lineTo([R + s * z, 0]).lineTo([R, z]).close();
+      // profil düzlemi: x = radyal, y = levha normali (eksen boyunca, boruya doğru)
+      const plane = new Plane(C, xd, vcross(xd, ax));
+      const ring = (prof as any).sketchOnPlane(plane).revolve(ax, { origin: C, angle: 360 });
+      welds.push(ring);
+      total += 2 * Math.PI * R;
+      count++;
+      vol += volOf(ring);
+      continue;
+    }
+    if (t1 !== "PLANE" || t2 !== "PLANE") throw new Error("Kaynak için iki düz yüz veya boru + düz yüz seçin");
+    const n1 = p1.n, n2 = p2.n;
+    const Lr = vcross(n1, n2);
+    if (vlen(Lr) < 1e-6) throw new Error("Seçili yüzler paralel; kaynak için birbirine açılı yüzler seçin");
+    const L = vnorm(Lr);
+    const d1 = vdot(p1.c, n1), d2 = vdot(p2.c, n2);
+    const det = vdot(n1, vcross(n2, L));
+    const C0 = vmul(vadd(vmul(vcross(n2, L), d1), vmul(vcross(L, n1), d2)), 1 / det);
+    // yüzlerin köşe çizgisi boyunca ortak aralığı
+    const span = (fc: any) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const e of fc.edges as any[])
+        for (const q of [0, 0.5, 1]) {
+          const t = vdot(vsub(tup(e.pointAt(q)), C0), L);
+          lo = Math.min(lo, t);
+          hi = Math.max(hi, t);
+        }
+      return [lo, hi];
+    };
+    const [a1, b1] = span(p1.face), [a2, b2] = span(p2.face);
+    const lo = Math.max(a1, a2), hi = Math.min(b1, b2);
+    if (hi - lo < 1e-3) throw new Error("Seçili yüzler köşe çizgisi boyunca örtüşmüyor");
+    let u1 = vnorm(vcross(L, n1));
+    if (vdot(u1, n2) < 0) u1 = vmul(u1, -1);
+    let u2 = vnorm(vcross(L, n2));
+    if (vdot(u2, n1) < 0) u2 = vmul(u2, -1);
+    const y = vcross(L, u1);
+    const P2: Vec2 = [vdot(u2, u1) * z, vdot(u2, y) * z];
+    const runs: [number, number][] = [];
+    if (f.intermittent) {
+      const n = Math.max(1, Math.floor((hi - lo - f.len) / f.pitch) + 1);
+      const used = (n - 1) * f.pitch + f.len;
+      const st = lo + (hi - lo - used) / 2;
+      for (let k = 0; k < n; k++) runs.push([st + k * f.pitch, Math.min(hi, st + k * f.pitch + f.len)]);
+    } else runs.push([lo, hi]);
+    for (const [r0, r1] of runs) {
+      const bead = (draw([0, 0]).lineTo([z, 0]).lineTo(P2).close() as any).sketchOnPlane(new Plane(vadd(C0, vmul(L, r0)), u1, L)).extrude(r1 - r0);
+      welds.push(bead);
+      total += r1 - r0;
+      count++;
+      vol += volOf(bead);
+    }
+  }
+  weldInfo.push({ name: `Köşe kaynağı a${fmt3(f.a)}${f.intermittent ? ` kesikli ${fmt3(f.len)}/${fmt3(f.pitch)}` : ""}`, a: f.a, length: total, count, vol });
+}
+const fmt3 = (v: number) => String(Math.round(v * 100) / 100);
+
 function trimTool(f: Extract<KFeature, { type: "trim" }>) {
   const map = memberBodyMap();
   const bPairs = f.bounds.map((k) => ({ k, i: map.get(k) })).filter((x): x is { k: string; i: number } => x.i !== undefined);
@@ -860,11 +952,11 @@ function gussetTool(f: Extract<KFeature, { type: "gusset" }>) {
   const s = (vdot(p1.c, L) + vdot(p2.c, L)) / 2 + f.offset;
   const det = vdot(n1, vcross(n2, L));
   const C = vmul(vadd(vadd(vmul(vcross(n2, L), d1), vmul(vcross(L, n1), d2)), vmul(vcross(n1, n2), s)), 1 / det);
+  // bacaklar: her yüz boyunca, diğer yüzün baktığı (açık) tarafa
   let u1 = vnorm(vcross(L, n1));
-  if (vdot(vsub(p1.c, C), u1) < 0) u1 = vmul(u1, -1);
+  if (vdot(u1, n2) < 0) u1 = vmul(u1, -1);
   let u2 = vnorm(vcross(L, n2));
-  if (vdot(vsub(p2.c, C), u2) < 0) u2 = vmul(u2, -1);
-  if (vdot(u1, n2) < 1e-6 || vdot(u2, n1) < 1e-6) throw new Error("Seçili yüzler bir iç köşe oluşturmuyor");
+  if (vdot(u2, n1) < 0) u2 = vmul(u2, -1);
   const y = vcross(L, u1);
   const P1: Vec2 = [f.d1, 0];
   const P2: Vec2 = [vdot(u2, u1) * f.d2, vdot(u2, y) * f.d2];
@@ -956,7 +1048,7 @@ function cutList(id: number) {
   } catch (e) {
     console.warn(e);
   }
-  post({ id, type: "cutlist", items });
+  post({ id, type: "cutlist", items, welds: weldInfo });
 }
 
 function exportBody(id: number, i: number) {
@@ -1165,6 +1257,9 @@ async function buildFeature(f: KFeature) {
     case "trim":
       trimTool(f);
       return;
+    case "weld":
+      weldTool(f);
+      return;
     case "endcap":
       endCapTool(f);
       return;
@@ -1345,7 +1440,12 @@ function toMesh(shape: Shape): MeshData {
         n = null;
       }
     }
-    return { c, n, type };
+    const info: FaceInfo = { c, n, type };
+    if (type === "CYLINDRE")
+      try {
+        info.r = cylinderParams(f).rho;
+      } catch {}
+    return info;
   });
   const edgeInfo: EdgeInfo[] = edges.map((ed, i) => {
     eIdx.set(ed.hashCode, i);
@@ -1383,6 +1483,8 @@ async function build(id: number, features: KFeature[]) {
   frames = {};
   tools.clear();
   memberReg = new Map();
+  welds = [];
+  weldInfo = [];
   for (const f of features) {
     try {
       await buildFeature(f);
@@ -1396,7 +1498,7 @@ async function build(id: number, features: KFeature[]) {
     const mesh = toMesh(a);
     freeAll(a);
     // yüz -> gövde sırası
-    const counts = bodies.map((b) => (b.faces as any[]).length);
+    const counts = [...bodies, ...welds].map((b) => (b.faces as any[]).length);
     if (counts.reduce((x, y) => x + y, 0) === mesh.faces.length) {
       let k = 0;
       counts.forEach((c, bi) => {

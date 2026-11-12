@@ -66,6 +66,7 @@ export const ICONS: Record<string, string> = {
   material: s("M4 4h16v16H4z M4 9h16 M9 4v16"),
   rename: s("M4 20h4L19 9l-4-4L4 16z M14 6l4 4"),
   sketch3d: s("M4 20l5-3 M9 17l8 2 M17 19l2-9 M19 10l-7-5 M4 20V9 M12 5L4 9"),
+  weld: s("M3 20h18 M3 20V6 M3 20l7-7 M5 18l2-2 M7 16l2-2 M14 4l3 3-6 6-3-3z"),
   member: s("M4 20V8l4-4h12v12l-4 4H4z M4 8h12v12 M16 8l4-4"),
   trimm: s("M3 12h11 M14 4v16 M18 4v16 M7 9l-3 3 3 3"),
   endcap: s("M4 8h10v8H4z M14 6v12h3V6z"),

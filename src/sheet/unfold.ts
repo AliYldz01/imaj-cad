@@ -58,7 +58,7 @@ function cylP(m: CylMap, x: Vec3): Vec3 {
 }
 const mapP = (m: FMap, x: Vec3) => (m.k === "p" ? rigidP(m, x) : cylP(m, x));
 
-function cylinderParams(face: Shape): { L: Vec3; a: Vec3; rho: number } {
+export function cylinderParams(face: Shape): { L: Vec3; a: Vec3; rho: number } {
   const oc = getOC() as any;
   const ad = new oc.BRepAdaptor_Surface(face.wrapped, false);
   try {

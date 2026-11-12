@@ -69,6 +69,7 @@ function afterDocChange() {
 }
 const FEAT_NAMES: Record<string, string> = {
   sketch3d: "3B-Eskiz",
+  weld: "Kaynak-Dikişi",
   member: "Yapı-Elemanı",
   trim: "Kırp-Uzat",
   endcap: "Uç-Kapağı",
@@ -398,6 +399,7 @@ function refreshHighlight() {
       sel.faces = (d.faces ?? []).map((r) => nearestFace(r)).filter((i) => i >= 0);
     }
     if (m && (d.type === "edgeflange" || d.type === "hem") && !(d as any)._preview) sel.edges = d.edges.map((r) => nearestEdge(r)).filter((i) => i >= 0);
+    if (m && d.type === "weld") sel.faces = [...d.pairs.flatMap((p) => [p.f1, p.f2]), ...((d as any)._p1 ? [(d as any)._p1] : [])].map((r) => nearestFace(r)).filter((i) => i >= 0);
     if (m && d.type === "endcap") sel.faces = d.faces.map((r) => nearestFace(r)).filter((i) => i >= 0);
     if (m && d.type === "gusset") sel.faces = [d.f1, d.f2].filter(Boolean).map((r) => nearestFace(r!)).filter((i) => i >= 0);
     if (m && d.type === "trim") {
@@ -433,7 +435,7 @@ function nearestFace(r: FaceRef) {
   const m = viewer.mesh!;
   let best = -1, bd = 0.5;
   m.faces.forEach((f, i) => {
-    const d = dist3(f.c, r.c);
+    const d = dist3(f.c, r.c) + (r.r !== undefined ? (f.r === undefined ? 1 : Math.abs(f.r - r.r) * 10) : 0);
     if (d < bd) [bd, best] = [d, i];
   });
   return best;
@@ -491,7 +493,7 @@ function pickWant() {
     const t = mode.draft.type;
     if (t === "fillet" && mode.draft.type === "fillet" && mode.draft.kind === "full") return { face: true };
     if (t === "fillet" || t === "chamfer") return { edge: true, face: true };
-    if (t === "trim" || t === "endcap" || t === "gusset") return { face: true };
+    if (t === "trim" || t === "endcap" || t === "gusset" || t === "weld") return { face: true };
     if (t === "sketch3d") return { face: true, edge: true, plane: true };
     if (t === "edgeflange" || t === "hem") return (mode.draft as any)._preview ? {} : { edge: true };
     if (t === "shell" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
@@ -784,6 +786,9 @@ function newFeature(kind: string) {
       draft = { id, type: "member", name: "", segs, std: prev?.std ?? "kutu", size: prev?.size ?? "40x40x3", align: "c", mirror: false, rot: 0, corner: "miter", gap: 0 };
       break;
     }
+    case "weld":
+      draft = { id, type: "weld", name: "", pairs: [], a: 3, intermittent: false, len: 50, pitch: 100 };
+      break;
     case "trim":
       if (!doc.features.some((f) => f.type === "member")) return toast("Önce yapı elemanı oluşturun", true);
       draft = { id, type: "trim", name: "", targets: [], bounds: [] };
@@ -861,7 +866,7 @@ function selectedEdgeRefs(): EdgeRef[] {
 }
 function faceRef(i: number): FaceRef {
   const f = viewer.mesh!.faces[i];
-  return { c: f.c, n: f.n };
+  return f.r !== undefined && !f.n ? { c: f.c, n: f.n, r: f.r } : { c: f.c, n: f.n };
 }
 function patternable(before = insertAt()) {
   return doc.features.slice(0, before).filter((f) => (f.type === "extrude" || f.type === "revolve") && !f.off);
@@ -901,6 +906,8 @@ function commitFeature(kind: string) {
   if ((draft.type === "dome" || draft.type === "wrap") && !draft.face) return toast("Yüzü seçin", true);
   if (draft.type === "sketch3d" && !draft.lines.length) return toast("3B eskizde en az bir çizgi olmalı", true);
   if (draft.type === "sketch3d") ["_link", "_len", "_d", "_act", "_abs"].forEach((k) => delete (draft as any)[k]);
+  if (draft.type === "weld" && !draft.pairs.length) return toast("Kaynak için en az bir yüz çifti seçin", true);
+  delete (draft as any)._p1;
   if (draft.type === "member" && !draft.segs.length) return toast("En az bir segment seçin", true);
   if (draft.type === "trim" && (!draft.targets.length || !draft.bounds.length)) return toast("Kırpılacak ve sınır elemanlarını seçin", true);
   if (draft.type === "endcap" && !draft.faces.length) return toast("Elemanın uç yüzünü seçin", true);
@@ -1549,6 +1556,29 @@ function renderFeaturePM(kind: string) {
       hint(d._pick === "bounds" ? "Sınır elemanlarına dokunun" : "Kırpılacak elemanlara dokunun");
       break;
     }
+    case "weld": {
+      const list = h("div", "pm-feats");
+      if (!d.pairs.length) list.appendChild(h("p", "pm-hint", "Henüz dikiş yok"));
+      d.pairs.forEach((_: any, j: number) => {
+        const row = h("div", "pm-row");
+        row.append(h("span", "", `Dikiş ${j + 1}`), button("✕", () => (d.pairs.splice(j, 1), renderFeaturePM(kind), refreshHighlight(), upd()), "btn danger"));
+        list.appendChild(row);
+      });
+      body.appendChild(group(`Yüz çiftleri (${d.pairs.length})`, h("div", "pm-picks", d._p1 ? "2. yüze dokunun" : "Kaynak yapılacak 1. yüze dokunun"), list, h("p", "pm-hint", "Her dikiş için birbirine değen iki yüz seçin (ör. dikmenin yan yüzü ve kirişin üst yüzü). Boru–levha için boru yüzeyi ve levha yüzü seçilirse çevresel dikiş oluşur.")));
+      body.appendChild(
+        group(
+          "Kaynak",
+          numField("Kaynak kalınlığı a", d.a, (v) => ((d.a = v), renderFeaturePM(kind), upd()), { min: 0.5, unit: "mm", key: `${d.id}.a` }),
+          h("p", "pm-hint", `Bacak boyu z = a·√2 = ${fmtNum(d.a * Math.SQRT2, 2)} mm`),
+          checkField("Kesikli kaynak", d.intermittent, (v) => ((d.intermittent = v), renderFeaturePM(kind), upd())),
+          ...(d.intermittent
+            ? [numField("Dikiş boyu", d.len, (v) => ((d.len = v), upd()), { min: 1, unit: "mm" }), numField("Adım (merkezden merkeze)", d.pitch, (v) => ((d.pitch = v), upd()), { min: 1, unit: "mm" })]
+            : []),
+        ),
+      );
+      hint(d._p1 ? "Kaynağın 2. yüzüne dokunun" : "Kaynağın 1. yüzüne dokunun");
+      break;
+    }
     case "endcap": {
       const g = group("Yüzler", h("div", "pm-picks", d.faces.length ? `${d.faces.length} uç yüz seçili` : "Elemanların uç yüzlerine dokunun"));
       if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight(), upd())));
@@ -1913,8 +1943,10 @@ function snapPoint(p: Vec3): Vec3 {
 
 // ---------- Kaynaklı yapı: kesim listesi ----------
 interface CutRow { no: number; qty: number; name: string; length: number; a1: number; a2: number; kg: number; bodies: number[]; kind: string; dims: [number, number, number] }
+let lastWelds: import("./doc/types").WeldItem[] = [];
 async function cutRows(): Promise<CutRow[]> {
-  const items = await kernel.cutList();
+  const { items, welds } = await kernel.cutListFull();
+  lastWelds = welds;
   const rho = MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85;
   const groups = new Map<string, CutRow>();
   for (const it of items) {
@@ -1982,12 +2014,31 @@ async function openCutList() {
   }
   wrap.appendChild(tbl);
   dlg.appendChild(wrap);
+  if (lastWelds.length) {
+    const wt = h("table", "cut-table");
+    const hd = h("tr");
+    ["Kaynak", "a (mm)", "Dikiş adedi", "Toplam boy (mm)", "Kaynak metali kg"].forEach((x) => hd.appendChild(h("th", "", x)));
+    wt.appendChild(hd);
+    for (const w of lastWelds) {
+      const tr = h("tr");
+      tr.append(h("td", "", w.name), h("td", "num", fmtNum(w.a, 1)), h("td", "num", String(w.count)), h("td", "num", fmtNum(w.length, 1)), h("td", "num", fmtNum((w.vol * 7.85) / 1e6, 3)));
+      wt.appendChild(tr);
+    }
+    const ww = h("div", "cut-wrap");
+    ww.appendChild(wt);
+    dlg.appendChild(h("h3", "", "Kaynak tablosu"));
+    dlg.appendChild(ww);
+  }
   const sum = [...totalLen].map(([n, L]) => `${n}: ${fmtNum(L / 1000, 2)} m`).join(" · ");
   dlg.appendChild(h("p", "small", `Toplam ağırlık: ${fmtNum(total, 2)} kg${sum ? " · Profil toplam boyları — " + sum : ""}`));
   const csv = button("CSV (Excel) indir", () => {
     const L = [["No", "Adet", "Tanım", "Boy (mm)", "Açı 1 (°)", "Açı 2 (°)", "Birim kg", "Toplam kg"].join(";")];
     for (const r of rows) L.push([r.no, r.qty, rowDesc(r), fmtNum(r.length, 1), r.kind === "member" ? fmtNum(r.a1, 1) : "", r.kind === "member" ? fmtNum(r.a2, 1) : "", fmtNum(r.kg, 3), fmtNum(r.kg * r.qty, 3)].join(";"));
     L.push(`;;;;;;Toplam;${fmtNum(total, 3)}`);
+    if (lastWelds.length) {
+      L.push("", ["Kaynak", "a (mm)", "Dikiş adedi", "Toplam boy (mm)", "Kaynak metali kg"].join(";"));
+      for (const w of lastWelds) L.push([w.name, fmtNum(w.a, 1), w.count, fmtNum(w.length, 1), fmtNum((w.vol * 7.85) / 1e6, 3)].join(";"));
+    }
     download(new Blob(["\ufeff" + L.join("\r\n")], { type: "text/csv;charset=utf-8" }), `${doc.name}_kesim_listesi.csv`);
   }, "btn");
   const form = h("form");
@@ -2056,6 +2107,17 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else if (d.type === "sketch3d") {
     s3Add(d, snapPoint(hit.point));
     return;
+  } else if (d.type === "weld" && hit.kind === "face" && m) {
+    const fc = m.faces[hit.index];
+    if (!fc.n && fc.type !== "CYLINDRE") return toast("Düz yüz veya boru yüzeyi seçin", true);
+    const r = faceRef(hit.index);
+    if (!d._p1) d._p1 = r;
+    else {
+      if (dist3(d._p1.c, r.c) < 1e-6) return;
+      d.pairs.push({ f1: d._p1, f2: r });
+      d._p1 = null;
+      schedulePreview();
+    }
   } else if (d.type === "trim" && hit.kind === "face" && m) {
     const b = m.faces[hit.index].b;
     const mb = memberBodies.find((x) => x.body === b);
@@ -2463,6 +2525,7 @@ function openSection() {
 // =====================================================================
 const FEAT_ICON: Record<string, string> = {
   sketch3d: "sketch3d",
+  weld: "weld",
   member: "member",
   trim: "trimm",
   endcap: "endcap",
@@ -2677,6 +2740,7 @@ function commands(): Cmd[] {
       { id: "member", label: "Yapı Elemanı", icon: "member", run: () => newFeature("member") },
       { id: "trim", label: "Kırp / Uzat", icon: "trimm", run: () => newFeature("trim") },
       { id: "endcap", label: "Uç Kapağı", icon: "endcap", run: () => newFeature("endcap") },
+      { id: "weld", label: "Kaynak Dikişi", icon: "weld", run: () => newFeature("weld") },
       { id: "gusset", label: "Köşe Takviyesi", icon: "gusset", run: () => newFeature("gusset") },
       "sep",
       { id: "sketch", label: "Eskiz", icon: "sketch", run: () => beginSketchCommand() },

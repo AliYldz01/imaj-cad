@@ -201,6 +201,12 @@ export function compile(feats: Feature[]): { kfeats: KFeature[]; errors: Map<str
           kfeats.push({ id: f.id, type: "trim", targets: f.targets.map((r) => `${r.f}:${r.i}`), bounds: f.bounds.map((r) => `${r.f}:${r.i}`), coped: f.coped });
           break;
         }
+        case "weld":
+          if (!f.pairs.length) throw new Error("Kaynak yapılacak yüz çiftlerini seçin");
+          if (!(f.a > 0)) throw new Error("Kaynak kalınlığı sıfırdan büyük olmalı");
+          if (f.intermittent && !(f.len > 0 && f.pitch >= f.len)) throw new Error("Kesikli kaynakta adım, dikiş boyundan küçük olamaz");
+          kfeats.push({ id: f.id, type: "weld", pairs: f.pairs, a: f.a, intermittent: f.intermittent, len: f.len, pitch: f.pitch });
+          break;
         case "endcap":
           if (!f.faces.length) throw new Error("Elemanın uç yüzünü seçin");
           if (!(f.t > 0)) throw new Error("Kalınlık sıfırdan büyük olmalı");
