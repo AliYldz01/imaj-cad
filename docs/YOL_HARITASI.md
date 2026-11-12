@@ -317,3 +317,15 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Ayakların profil yönünü otomatik döndürme | ✅ |
 | X kesişen elemanlar (biri sürekli, diğeri iki parça) | ✅ |
 | 3B yay/daire/spline, 3B kırp/ayna/öteleme, 3B ölçü–denklem bağı | ⬜ |
+
+## v0.22 — 3B eskiz eksikleri
+
+| Özellik | Durum |
+|---|---|
+| 3 noktalı yay, yapı elemanı yay boyunca | ✅ |
+| Eskiz radyüsü (teğet + R otomatik) | ✅ |
+| Teğet ilişkisi, yarıçap ölçüsü | ✅ |
+| Kırp / Uzat | ✅ |
+| Ayna (XY/YZ/ZX, noktadan geçen) | ✅ |
+| 3B ölçü–denklem bağı | ✅ |
+| Gruplar arası kırpma önceliği | ✅ |

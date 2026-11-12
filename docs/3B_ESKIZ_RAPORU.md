@@ -85,7 +85,16 @@ Test: `tests/e2e/s3d2.py`.
 | Köşeye gelen tekil elemanın (ayak) profili otomatik 90° adımlarla dönerek iç tarafı köşeye bakar (L, U; simetrik profillerde gerekmez). Kullanıcı döndürme/aynalama/hizalama verirse otomatik dönmez. | ✅ |
 | X kesişim: ortadan kesişen iki elemandan biri sürekli kalır, diğeri onun dış konturuyla kesilip iki parçaya ayrılır (açılı kesişimde de girişimsiz); kesim listesinde iki parça | ✅ |
 
-## 6. Hâlâ kalan
-- 3B eskizde yay, daire, spline; kırp/uzat, ayna, öteleme, eskiz radyüsü (2B'de var).
-- 3B ölçülerin denklemlere bağlanması (2B ölçüler gibi).
-- Gruplar arası kırpma sırasını elle seçme.
+## 6. v0.22 ile tamamlananlar
+| Konu | Durum |
+|---|---|
+| **3 noktalı yay** (başlangıç, bitiş, yay üzerindeki nokta; canlı önizleme); yapı elemanı yay boyunca (teğet zincir tek gövde, bükümlü) | ✅ |
+| **Eskiz radyüsü**: köşe noktası seçilip yarıçap girilir; teğet ilişkileri + R ölçüsü otomatik | ✅ |
+| **Teğet** ilişkisi (çizgi–yay, yay–yay) ve **yarıçap** ölçüsü (Akıllı Ölçü ile yaya tıkla) | ✅ |
+| **Kırp** (tıklanan parça kesişimler/noktalar arasından silinir), **Uzat** (serbest uç ilk hedef çizgiye) | ✅ |
+| **Ayna** (XY/YZ/ZX; seçimde bir nokta varsa düzlem o noktadan geçer) | ✅ |
+| 3B ölçülerin **denklemlere** bağlanması (`<id>.dims3[i].v`), denklem değişince eskiz yeniden çözülür | ✅ |
+| Gruplar arası **kırpma önceliği** (1 = sürekli kalır, 0 = otomatik); X kesişimde de geçerli | ✅ |
+
+## 7. Bilerek yapılmayanlar
+- 3B spline ve 3B ötele: SolidWorks'te yapı elemanı spline boyunca oluşturulamaz; 3B eskizde Ötele Varlıkları da yoktur (yüzeyde öteleme ayrı komut).

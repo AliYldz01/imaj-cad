@@ -468,7 +468,9 @@ export interface Sketch3DFeature extends FeatBase {
   /** 3B ilişkiler (çakışık, sabit, paralel, dik, eşit, orta nokta, üzerinde, doğrusal, düzleme paralel) */
   cons3?: { id: string; t: import("../sketch/solver3d").Rel3; e: string[]; p?: Vec3 }[];
   /** 3B sürücü ölçüler: çizgi boyu, iki nokta arası, iki çizgi arası açı */
-  dims3?: { id: string; t: "len" | "dist" | "ang"; e: string[]; v: number }[];
+  dims3?: { id: string; t: "len" | "dist" | "ang" | "rad"; e: string[]; v: number }[];
+  /** 3B yaylar: başlangıç a, bitiş b, yay üzerindeki nokta m (nokta kimlikleri) */
+  arcs3?: { id: string; a: string; b: string; m: string; cons?: boolean }[];
 }
 
 /** Eleman referansı: yapı elemanı özelliği + segment sırası */
@@ -496,6 +498,8 @@ export interface MemberFeature extends FeatBase {
   /** profil ekseni hizalama (SolidWorks Alignment): eksen + hedef yön */
   alignAx?: "h" | "v";
   alignTo?: Vec3;
+  /** 1. grubun kırpma önceliği */
+  prio?: number;
   /** ek gruplar (1. grup = özelliğin kendi alanları) */
   groups?: MemberGroup[];
 }
@@ -510,6 +514,8 @@ export interface MemberGroup {
   gap: number;
   alignAx?: "h" | "v";
   alignTo?: Vec3;
+  /** gruplar arası birleşimde kırpma önceliği (küçük = sürekli kalır); boşsa otomatik */
+  prio?: number;
 }
 /** Kırp / uzat: hedef elemanları sınır elemanlara göre kırpar ve gerekiyorsa uzatır */
 export interface TrimFeature extends FeatBase { type: "trim"; targets: MemberRef[]; bounds: MemberRef[]; /** profile göre kesim (koplama) */ coped?: boolean; /** sınır düz yüzler (ör. taban levhası) */ faces?: FaceRef[] }
@@ -671,7 +677,7 @@ export type KFeature =
   | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
   | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
   | { id: string; type: "vchamfer"; v: Vec3; d: number }
-  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; auto?: boolean; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean }[] }
+  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; auto?: boolean; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number }[] }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }

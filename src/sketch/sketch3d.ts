@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import type { Viewer, InputHandler } from "../viewer";
 import type { Sketch3DFeature, Vec3 } from "../doc/types";
-import { solve3d, dimValue, REL3_TAG, type Solve3Result } from "./solver3d";
+import { solve3d, dimValue, REL3_TAG, arcPts, circum, type Solve3Result } from "./solver3d";
 
 export type Axis3 = "x" | "y" | "z";
 export const PLANES = ["XY", "YZ", "ZX"] as const;
@@ -29,8 +29,8 @@ export interface S3Ctx {
   /** yalnız seçim değişti: paneli ve çizimi yenile (yeniden kurma yok) */
   selChanged?(): void;
 }
-export type S3Mode = "line" | "rect" | "point" | "select" | "dim";
-export type S3Sel = { k: "p" | "l"; id: string };
+export type S3Mode = "line" | "rect" | "point" | "arc" | "trim" | "extend" | "select" | "dim";
+export type S3Sel = { k: "p" | "l" | "a"; id: string };
 
 type Cand = { p: Vec3; idx: number; ax: Axis3 | null; kind: "pt" | "model" | "axis" | "plane" | "face" };
 
@@ -49,6 +49,8 @@ export class Sketch3DTool {
   sel: S3Sel[] = [];
   private dimPick: S3Sel[] = [];
   private rectP: Vec3 | null = null;
+  /** 3 noktalı yay: seçilen başlangıç / bitiş */
+  private arcPick: Cand[] = [];
   private hov: S3Sel | null = null;
   private labels: HTMLDivElement;
   last3: Solve3Result | null = null;
@@ -127,7 +129,7 @@ export class Sketch3DTool {
     if (!d) return null;
     const v = this.ctx.viewer;
     const ai = this.mode === "line" ? this.anchor() : -1;
-    const A = ai >= 0 ? d.xyz[ai] : this.mode === "rect" ? this.rectP : null;
+    const A = ai >= 0 ? d.xyz[ai] : this.mode === "rect" ? this.rectP : this.mode === "arc" && this.arcPick.length ? this.arcPick[0].p : null;
     // 1) nokta yakalama (ekran mesafesi)
     if (snap) {
       let best: Cand | null = null, bd = 12;
@@ -218,8 +220,14 @@ export class Sketch3DTool {
       for (let i = 0; i < 4; i++) pos.push(...q[i].toArray(), ...q[(i + 1) % 4].toArray());
       this.g.add(v.fatLines(pos, 0xf59f00, 1, true));
     }
+    if (c && this.mode === "arc" && this.arcPick.length === 2) {
+      const ps = arcPts(this.arcPick[0].p, c.p, this.arcPick[1].p);
+      const pos: number[] = [];
+      for (let i = 0; i + 1 < ps.length; i++) pos.push(...ps[i], ...ps[i + 1]);
+      this.g.add(v.fatLines(pos, 0xf76707, 2));
+    } else if (c && this.mode === "arc" && this.arcPick.length === 1) this.g.add(v.fatLines([...this.arcPick[0].p, ...c.p], 0xf76707, 1, true));
     if (c) {
-      if (A) this.g.add(v.fatLines([...A, ...c.p], c.ax ? AXCOL[c.ax] : 0xf76707, 2, !c.ax));
+      if (A && this.mode !== "arc") this.g.add(v.fatLines([...A, ...c.p], c.ax ? AXCOL[c.ax] : 0xf76707, 2, !c.ax));
       const r = k * 5;
       const p = c.p;
       this.g.add(v.fatLines([p[0] - r, p[1], p[2], p[0] + r, p[1], p[2], p[0], p[1] - r, p[2], p[0], p[1] + r, p[2], p[0], p[1], p[2] - r, p[0], p[1], p[2] + r], c.kind === "pt" || c.kind === "model" ? 0xf59f00 : 0x0ca5e9, c.kind === "pt" || c.kind === "model" ? 3 : 1.5));
@@ -348,6 +356,7 @@ export class Sketch3DTool {
     this.mode = m;
     this.dimPick = [];
     this.rectP = null;
+    this.arcPick = [];
     const d = this.ctx.draft();
     if (d && m !== "line") d._act = -1;
     this.clear();
@@ -355,6 +364,9 @@ export class Sketch3DTool {
       m === "line" ? `Çizgi: tıklayarak çizin · Tab = düzlem (${this.planeName})`
       : m === "rect" ? `Dikdörtgen: iki köşeye tıklayın (düzlem ${this.planeName}, Tab ile değiştir)`
       : m === "point" ? "Nokta: tıklayın"
+      : m === "arc" ? "3 noktalı yay: başlangıç, bitiş, sonra yay üzerindeki noktaya tıklayın"
+      : m === "trim" ? "Kırp: silinecek çizgi parçasına tıklayın (kesişimlerden bölünür)"
+      : m === "extend" ? "Uzat: uzatılacak çizginin ucuna yakın tıklayın"
       : m === "dim" ? "Akıllı Ölçü: çizgi (boy), iki nokta (mesafe) veya iki çizgi (açı) seçin"
       : "Seç: nokta / çizgiye tıklayın (Ctrl ile çoklu), sürükleyin; Delete = sil",
     );
@@ -377,6 +389,16 @@ export class Sketch3DTool {
       const t = L2 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)) : 0;
       const dd = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
       if (dd < bd) (bd = dd), (best = { k: "l", id: l.id });
+    }
+    for (const ar of d.arcs3 ?? []) {
+      const pts = arcPts(d.xyz[d.ids.indexOf(ar.a)], d.xyz[d.ids.indexOf(ar.m)], d.xyz[d.ids.indexOf(ar.b)], 24).map((q) => this.screenOf(q));
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+        const t = L2 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)) : 0;
+        const dd = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
+        if (dd < bd) (bd = dd), (best = { k: "a", id: ar.id });
+      }
     }
     return best;
   }
@@ -402,6 +424,10 @@ export class Sketch3DTool {
       this.dimPick = [];
       return this.ctx.changed();
     }
+    if (P.length === 0 && en.k === "a") {
+      this.addDim("rad", [en.id], e);
+      return this.ctx.changed();
+    }
     P.push(en);
     if (P.length === 1 && en.k === "l") {
       // SolidWorks: çizgiye tıklayınca boy ölçüsü; ikinci çizgi seçilirse açı
@@ -419,7 +445,7 @@ export class Sketch3DTool {
     }
     this.ctx.changed();
   }
-  addDim(t: "len" | "dist" | "ang", e: string[], ev: { clientX: number; clientY: number }) {
+  addDim(t: "len" | "dist" | "ang" | "rad", e: string[], ev: { clientX: number; clientY: number }) {
     const d = this.ctx.draft();
     if (!d) return;
     const cur = dimValue(d, t, e);
@@ -471,6 +497,12 @@ export class Sketch3DTool {
       d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: t as any, e: [pt.id, ln.id] }];
     } else if (t === "coinc") {
       d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "coinc", e: [ids[0], ids[1]] }];
+    } else if (t === "tan") {
+      d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "tan", e: [ids[0], ids[1]] }];
+    } else if (t === "fillet") {
+      return this.askValue(innerWidth / 2, innerHeight / 2, 20, (R) => this.fillet(S[0].id, R));
+    } else if (t === "mirXY" || t === "mirYZ" || t === "mirZX") {
+      return this.mirror(t === "mirXY" ? "z" : t === "mirYZ" ? "x" : "y");
     } else if (t === "parXY" || t === "parYZ" || t === "parZX") {
       for (const q of S) if (q.k === "l") d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: t as any, e: [q.id] }];
     }
@@ -484,28 +516,223 @@ export class Sketch3DTool {
   }
   /** seçime uygun ilişkiler (SolidWorks "İlişki Ekle") */
   relOptions(): string[] {
-    const np = this.sel.filter((q) => q.k === "p").length, nl = this.sel.filter((q) => q.k === "l").length;
+    const np = this.sel.filter((q) => q.k === "p").length, nl = this.sel.filter((q) => q.k === "l").length, na = this.sel.filter((q) => q.k === "a").length;
     const o: string[] = [];
+    if (na >= 1 && nl + na === 2 && !np) o.push("tan");
+    if (na) return o.concat(np || nl || na ? ["mirXY", "mirYZ", "mirZX"] : []);
     if (nl >= 1 && !np) o.push("x", "y", "z", "parXY", "parYZ", "parZX", "cons");
     if (nl >= 2 && !np) o.push("par", "perp", "equal", "collin");
     if (np >= 1 && !nl) o.push("fix");
     if (np === 2 && !nl) o.push("coinc");
     if (np === 1 && nl === 1) o.push("mid", "on");
+    if (np === 1 && !nl && this.cornerLines(this.sel[0].id)) o.push("fillet");
+    if (np + nl) o.push("mirXY", "mirYZ", "mirZX");
     return o;
+  }
+  /** nokta kimliği (varsa yeniden kullan) */
+  private ptId(p: Vec3, reuse = true): string {
+    const d = this.ctx.draft()!;
+    const q = round3(p);
+    const ex = reuse ? d.xyz.findIndex((z) => Math.hypot(z[0] - q[0], z[1] - q[1], z[2] - q[2]) < 1e-4) : -1;
+    if (ex >= 0) return d.ids[ex];
+    const id = `p${d.seq++}`;
+    d.ids.push(id);
+    d.xyz.push(q);
+    return id;
+  }
+  addArc(A: Cand, B: Cand, M: Cand) {
+    const d = this.ctx.draft();
+    if (!d) return;
+    if (!circum(A.p, M.p, B.p)) return this.ctx.toast?.("Üç nokta aynı doğru üzerinde; yay oluşmaz", true);
+    const a = A.idx >= 0 ? d.ids[A.idx] : this.ptId(A.p), b = B.idx >= 0 ? d.ids[B.idx] : this.ptId(B.p);
+    const m = this.ptId(M.p, false);
+    d.arcs3 = [...(d.arcs3 ?? []), { id: `a${d.seq++}`, a, b, m }];
+    d._act = -1;
+    this.ctx.changed();
+  }
+  /** köşe noktasında tam iki çizgi varsa onları döndürür */
+  cornerLines(pid: string) {
+    const d = this.ctx.draft();
+    if (!d) return null;
+    const ls = d.lines.filter((l) => l.a === pid || l.b === pid);
+    return ls.length === 2 && !(d.arcs3 ?? []).some((a) => a.a === pid || a.b === pid) ? ls : null;
+  }
+  /** eskiz radyüsü: köşeyi R yarıçaplı teğet yayla yuvarla (SolidWorks Sketch Fillet) */
+  fillet(pid: string, R: number) {
+    const d = this.ctx.draft();
+    const ls = this.cornerLines(pid);
+    if (!d || !ls || !(R > 0)) return;
+    const P = new THREE.Vector3(...d.xyz[d.ids.indexOf(pid)]);
+    const far = (l: { a: string; b: string }) => new THREE.Vector3(...d.xyz[d.ids.indexOf(l.a === pid ? l.b : l.a)]);
+    const F1 = far(ls[0]), F2 = far(ls[1]);
+    const u1 = F1.clone().sub(P), u2 = F2.clone().sub(P);
+    const L1 = u1.length(), L2 = u2.length();
+    u1.normalize();
+    u2.normalize();
+    const th = Math.acos(Math.max(-1, Math.min(1, u1.dot(u2))));
+    if (th < 1e-3 || th > Math.PI - 1e-3) return this.ctx.toast?.("Düz devam eden çizgilere radyüs verilemez", true);
+    const T = R / Math.tan(th / 2);
+    if (T >= L1 - 1e-6 || T >= L2 - 1e-6) return this.ctx.toast?.("Yarıçap bu çizgiler için çok büyük", true);
+    const bis = u1.clone().add(u2).normalize();
+    const C = P.clone().addScaledVector(bis, R / Math.sin(th / 2));
+    const M = C.clone().addScaledVector(bis, -R);
+    const t1 = this.ptId(P.clone().addScaledVector(u1, T).toArray() as Vec3, false), t2 = this.ptId(P.clone().addScaledVector(u2, T).toArray() as Vec3, false);
+    const m = this.ptId(M.toArray() as Vec3, false);
+    ls[0].a === pid ? (ls[0].a = t1) : (ls[0].b = t1);
+    ls[1].a === pid ? (ls[1].a = t2) : (ls[1].b = t2);
+    const aid = `a${d.seq++}`;
+    d.arcs3 = [...(d.arcs3 ?? []), { id: aid, a: t1, b: t2, m }];
+    // köşe noktası artık kullanılmıyorsa sil (ona bağlı ilişki/ölçülerle birlikte)
+    const stillUsed = d.lines.some((l) => l.a === pid || l.b === pid);
+    if (!stillUsed) {
+      const k = d.ids.indexOf(pid);
+      d.ids.splice(k, 1);
+      d.xyz.splice(k, 1);
+      d.cons3 = (d.cons3 ?? []).filter((c) => !c.e.includes(pid));
+      d.dims3 = (d.dims3 ?? []).filter((q) => !q.e.includes(pid));
+    }
+    // çizgi boyu ölçüleri artık uca kadar değil: kaldır
+    d.dims3 = (d.dims3 ?? []).filter((q) => !(q.t === "len" && (q.e[0] === ls[0].id || q.e[0] === ls[1].id)));
+    d.cons3 = [...(d.cons3 ?? []), { id: `c${d.seq++}`, t: "tan", e: [ls[0].id, aid] }, { id: `c${d.seq++}`, t: "tan", e: [ls[1].id, aid] }];
+    d.dims3 = [...d.dims3, { id: `d${d.seq++}`, t: "rad", e: [aid], v: R }];
+    this.sel = [];
+    this.resolve();
+    this.ctx.changed();
+  }
+  /** ayna: seçili varlıkları global düzleme (seçili nokta varsa ondan geçen) göre kopyala */
+  mirror(nax: "x" | "y" | "z") {
+    const d = this.ctx.draft();
+    if (!d) return;
+    const k = nax === "x" ? 0 : nax === "y" ? 1 : 2;
+    const ptSel = this.sel.filter((q) => q.k === "p");
+    const ents = this.sel.filter((q) => q.k !== "p");
+    const o = ents.length && ptSel.length === 1 ? d.xyz[d.ids.indexOf(ptSel[0].id)][k] : 0;
+    const map = new Map<string, string>();
+    const mp = (id: string) => {
+      if (map.has(id)) return map.get(id)!;
+      const p = [...d.xyz[d.ids.indexOf(id)]] as Vec3;
+      if (Math.abs(p[k] - o) < 1e-6) return map.set(id, id), id;
+      p[k] = 2 * o - p[k];
+      const nid = this.ptId(p);
+      map.set(id, nid);
+      return nid;
+    };
+    for (const q of ents) {
+      if (q.k === "l") {
+        const l = d.lines.find((z) => z.id === q.id)!;
+        d.lines.push({ id: `l${d.seq++}`, a: mp(l.a), b: mp(l.b), ...(l.ax ? { ax: l.ax } : {}), ...(l.cons ? { cons: true } : {}) } as any);
+      } else {
+        const a = d.arcs3!.find((z) => z.id === q.id)!;
+        d.arcs3!.push({ id: `a${d.seq++}`, a: mp(a.a), b: mp(a.b), m: mp(a.m) });
+      }
+    }
+    if (!ents.length) for (const q of ptSel) mp(q.id);
+    this.sel = [];
+    this.ctx.changed();
+  }
+  /** çizginin diğer çizgilerle kesişim / üzerindeki nokta parametreleri (0..1) */
+  private splits(lid: string): number[] {
+    const d = this.ctx.draft()!;
+    const l = d.lines.find((z) => z.id === lid)!;
+    const A = new THREE.Vector3(...d.xyz[d.ids.indexOf(l.a)]), B = new THREE.Vector3(...d.xyz[d.ids.indexOf(l.b)]);
+    const D = B.clone().sub(A), L = D.length();
+    const u = D.clone().divideScalar(L);
+    const ts: number[] = [];
+    for (const o of d.lines) {
+      if (o === l) continue;
+      const C = new THREE.Vector3(...d.xyz[d.ids.indexOf(o.a)]), E = new THREE.Vector3(...d.xyz[d.ids.indexOf(o.b)]);
+      const w = E.clone().sub(C), Lw = w.length();
+      const v = w.clone().divideScalar(Lw);
+      const r = C.clone().sub(A), dd = u.dot(v);
+      if (Math.abs(1 - dd * dd) < 1e-9) continue;
+      const ta = (r.dot(u) - dd * r.dot(v)) / (1 - dd * dd), tb = (dd * r.dot(u) - r.dot(v)) / (1 - dd * dd);
+      if (tb < -1e-6 || tb > Lw + 1e-6) continue;
+      const PA = A.clone().addScaledVector(u, ta), PB = C.clone().addScaledVector(v, tb);
+      if (PA.distanceTo(PB) < 0.01 && ta > 1e-6 && ta < L - 1e-6) ts.push(ta / L);
+    }
+    for (const p of d.xyz) {
+      const q = new THREE.Vector3(...p);
+      const t = q.clone().sub(A).dot(u);
+      if (t > 1e-6 && t < L - 1e-6 && A.clone().addScaledVector(u, t).distanceTo(q) < 0.01) ts.push(t / L);
+    }
+    return [...new Set(ts.map((t) => Math.round(t * 1e6) / 1e6))].sort((a, b) => a - b);
+  }
+  /** ekrandaki tıklamanın çizgi üzerindeki parametresi */
+  private clickParam(lid: string, x: number, y: number) {
+    const d = this.ctx.draft()!;
+    const l = d.lines.find((z) => z.id === lid)!;
+    const a = this.screenOf(d.xyz[d.ids.indexOf(l.a)]), b = this.screenOf(d.xyz[d.ids.indexOf(l.b)]);
+    const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    return L2 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)) : 0;
+  }
+  /** kırp: tıklanan parça (iki kesişim arası) silinir */
+  trim(lid: string, x: number, y: number) {
+    const d = this.ctx.draft()!;
+    const l = d.lines.find((z) => z.id === lid)!;
+    const ts = [0, ...this.splits(lid), 1];
+    const tc = this.clickParam(lid, x, y);
+    let k = 0;
+    while (k < ts.length - 2 && tc > ts[k + 1]) k++;
+    const [t0, t1] = [ts[k], ts[k + 1]];
+    const A = d.xyz[d.ids.indexOf(l.a)], B = d.xyz[d.ids.indexOf(l.b)];
+    const at = (t: number) => [0, 1, 2].map((c) => A[c] + (B[c] - A[c]) * t) as Vec3;
+    d.dims3 = (d.dims3 ?? []).filter((m) => !m.e.includes(lid));
+    if (t0 === 0 && t1 === 1) {
+      this.sel = [{ k: "l", id: lid }];
+      return this.deleteSel();
+    }
+    if (t0 === 0) l.a = this.ptId(at(t1));
+    else if (t1 === 1) l.b = this.ptId(at(t0));
+    else {
+      const p0 = this.ptId(at(t0)), p1 = this.ptId(at(t1));
+      const ob = l.b;
+      l.b = p0;
+      d.lines.push({ id: `l${d.seq++}`, a: p1, b: ob, ...(l.ax ? { ax: l.ax } : {}), ...(l.cons ? { cons: true } : {}) } as any);
+    }
+    this.ctx.changed();
+  }
+  /** uzat: tıklanan uca en yakın uçtan, ileri doğrultudaki ilk çizgiye kadar uzat */
+  extend(lid: string, x: number, y: number) {
+    const d = this.ctx.draft()!;
+    const l = d.lines.find((z) => z.id === lid)!;
+    const endB = this.clickParam(lid, x, y) > 0.5;
+    const pid = endB ? l.b : l.a, oid = endB ? l.a : l.b;
+    if (d.lines.some((z) => z !== l && (z.a === pid || z.b === pid))) return this.ctx.toast?.("Bu uç başka bir çizgiye bağlı; uzatılamaz", true);
+    const P = new THREE.Vector3(...d.xyz[d.ids.indexOf(pid)]), O = new THREE.Vector3(...d.xyz[d.ids.indexOf(oid)]);
+    const u = P.clone().sub(O).normalize();
+    let best = Infinity;
+    for (const o of d.lines) {
+      if (o === l) continue;
+      const C = new THREE.Vector3(...d.xyz[d.ids.indexOf(o.a)]), E = new THREE.Vector3(...d.xyz[d.ids.indexOf(o.b)]);
+      const w = E.clone().sub(C), Lw = w.length(), v = w.clone().divideScalar(Lw);
+      const r = C.clone().sub(P), dd = u.dot(v);
+      if (Math.abs(1 - dd * dd) < 1e-9) continue;
+      const ta = (r.dot(u) - dd * r.dot(v)) / (1 - dd * dd), tb = (dd * r.dot(u) - r.dot(v)) / (1 - dd * dd);
+      if (ta <= 1e-6 || tb < -1e-6 || tb > Lw + 1e-6) continue;
+      if (P.clone().addScaledVector(u, ta).distanceTo(C.clone().addScaledVector(v, tb)) < 0.01 && ta < best) best = ta;
+    }
+    if (!Number.isFinite(best)) return this.ctx.toast?.("Uzatılacak bir hedef çizgi yok", true);
+    d.xyz[d.ids.indexOf(pid)] = round3(P.clone().addScaledVector(u, best).toArray() as Vec3);
+    d.dims3 = (d.dims3 ?? []).filter((m) => !m.e.includes(lid));
+    this.ctx.changed();
   }
   deleteSel() {
     const d = this.ctx.draft();
     if (!d || !this.sel.length) return;
     const delP = new Set(this.sel.filter((q) => q.k === "p").map((q) => q.id));
-    const delL = new Set(this.sel.filter((q) => q.k === "l").map((q) => q.id));
+    const delL = new Set(this.sel.filter((q) => q.k !== "p").map((q) => q.id));
     for (const l of d.lines) if (delP.has(l.a) || delP.has(l.b)) delL.add(l.id);
+    for (const a of d.arcs3 ?? []) if (delP.has(a.a) || delP.has(a.b) || delP.has(a.m)) delL.add(a.id);
+    // silinen yayın yay-üstü noktası da silinir
+    for (const a of d.arcs3 ?? []) if (delL.has(a.id)) delP.add(a.m);
     d.lines = d.lines.filter((l) => !delL.has(l.id));
+    d.arcs3 = (d.arcs3 ?? []).filter((a) => !delL.has(a.id));
     // artık hiçbir çizgide kullanılmayan noktaları da sil (yalnız çizgiye bağlıydıysa)
-    const used = new Set(d.lines.flatMap((l) => [l.a, l.b]));
+    const used = new Set([...d.lines.flatMap((l) => [l.a, l.b]), ...(d.arcs3 ?? []).flatMap((a) => [a.a, a.b, a.m])]);
     const keep = d.ids.map((id, i) => !delP.has(id) && (used.has(id) || !this.sel.some((q) => q.k === "l")) ? i : -1).filter((i) => i >= 0);
     d.ids = keep.map((i) => d.ids[i]);
     d.xyz = keep.map((i) => d.xyz[i]);
-    const live = (id: string) => d.ids.includes(id) || d.lines.some((l) => l.id === id);
+    const live = (id: string) => d.ids.includes(id) || d.lines.some((l) => l.id === id) || !!d.arcs3?.some((a) => a.id === id);
     d.cons3 = (d.cons3 ?? []).filter((c) => c.e.every(live));
     d.dims3 = (d.dims3 ?? []).filter((m) => m.e.every(live));
     d._act = -1;
@@ -561,6 +788,12 @@ export class Sketch3DTool {
       return X < 0 || Y < 0 || X > r.width || Y > r.height ? null : [r.left + X, r.top + Y];
     };
     for (const m of d.dims3 ?? []) {
+      if (m.t === "rad") {
+        const ar = d.arcs3?.find((z) => z.id === m.e[0]);
+        const s = ar && at(P(ar.m), 0, -16);
+        if (s) out.push(`<span class="s3-dim" data-id="${m.id}" style="left:${s[0]}px;top:${s[1]}px">R${fmt(m.v)}</span>`);
+        continue;
+      }
       const p = m.t === "len" ? mid(m.e[0]) : m.t === "dist" ? (() => { const a = P(m.e[0]), b = P(m.e[1]); return a && b ? ([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2] as Vec3) : null; })() : mid(m.e[0], 0.25);
       const s = at(p, 0, -16);
       if (s) out.push(`<span class="s3-dim" data-id="${m.id}" style="left:${s[0]}px;top:${s[1]}px">${m.t === "ang" ? fmt(m.v) + "°" : fmt(m.v)}</span>`);
@@ -616,7 +849,13 @@ export class Sketch3DTool {
     const all = [...this.sel, ...this.dimPick, ...(this.hov ? [this.hov] : [])];
     for (const q of all) {
       if (q.k === "p") pts.push(...d.xyz[d.ids.indexOf(q.id)]);
-      else {
+      else if (q.k === "a") {
+        const ar = d.arcs3?.find((z) => z.id === q.id);
+        if (ar) {
+          const ps = arcPts(d.xyz[d.ids.indexOf(ar.a)], d.xyz[d.ids.indexOf(ar.m)], d.xyz[d.ids.indexOf(ar.b)]);
+          for (let i = 0; i + 1 < ps.length; i++) lines.push(...ps[i], ...ps[i + 1]);
+        }
+      } else {
         const l = d.lines.find((z) => z.id === q.id);
         if (l) lines.push(...d.xyz[d.ids.indexOf(l.a)], ...d.xyz[d.ids.indexOf(l.b)]);
       }
@@ -632,7 +871,23 @@ export class Sketch3DTool {
       // çift tık: zinciri bitir (ilk tık zaten noktayı ekledi)
       return this.endChain();
     }
+    if (this.mode === "trim" || this.mode === "extend") {
+      const en = this.pickEnt(e.clientX, e.clientY);
+      if (en?.k === "l") this.mode === "trim" ? this.trim(en.id, e.clientX, e.clientY) : this.extend(en.id, e.clientX, e.clientY);
+      else this.ctx.toast?.("Bir çizgiye tıklayın", true);
+      return;
+    }
     const c = this.locate(e.clientX, e.clientY);
+    if (c && this.mode === "arc") {
+      this.arcPick.push(c);
+      if (this.arcPick.length === 3) {
+        const [A, B, M] = this.arcPick;
+        this.arcPick = [];
+        this.addArc(A, B, M);
+      } else this.ctx.hint(this.arcPick.length === 1 ? "Yayın bitiş noktasına tıklayın" : "Yay üzerindeki bir noktaya tıklayın (yay düzlemi ve yarıçap)");
+      this.draw(c, { x: e.clientX, y: e.clientY });
+      return;
+    }
     if (c && this.mode === "point") {
       const d = this.ctx.draft()!;
       d._act = -1;
@@ -687,10 +942,11 @@ export class Sketch3DTool {
       e.preventDefault();
       e.stopPropagation();
       this.deleteSel();
-    } else if (e.key === "Escape" && (this.rectP || this.dimPick.length || this.sel.length)) {
+    } else if (e.key === "Escape" && (this.rectP || this.dimPick.length || this.sel.length || this.arcPick.length)) {
       e.preventDefault();
       e.stopPropagation();
       this.rectP = null;
+      this.arcPick = [];
       this.dimPick = [];
       this.sel = [];
       this.ctx.changed();

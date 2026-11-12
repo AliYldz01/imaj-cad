@@ -3,7 +3,7 @@
 // Sönümlü en küçük kareler, kısıtlanmamış noktaları yerinde bırakır (SolidWorks gibi en az değişiklik).
 import type { Sketch3DFeature, Vec3 } from "../doc/types";
 
-export type Rel3 = "coinc" | "fix" | "par" | "perp" | "equal" | "mid" | "on" | "collin" | "parXY" | "parYZ" | "parZX";
+export type Rel3 = "coinc" | "fix" | "par" | "perp" | "equal" | "mid" | "on" | "collin" | "parXY" | "parYZ" | "parZX" | "tan";
 export const REL3_NAMES: Record<Rel3 | "alongX" | "alongY" | "alongZ", string> = {
   coinc: "Çakışık",
   fix: "Sabitle",
@@ -16,11 +16,12 @@ export const REL3_NAMES: Record<Rel3 | "alongX" | "alongY" | "alongZ", string> =
   parXY: "XY'ye paralel",
   parYZ: "YZ'ye paralel",
   parZX: "ZX'e paralel",
+  tan: "Teğet",
   alongX: "X boyunca",
   alongY: "Y boyunca",
   alongZ: "Z boyunca",
 };
-export const REL3_TAG: Record<string, string> = { coinc: "◎", fix: "⚓", par: "∥", perp: "⊥", equal: "=", mid: "◁▷", on: "∈", collin: "⋯", parXY: "∥XY", parYZ: "∥YZ", parZX: "∥ZX", x: "X", y: "Y", z: "Z" };
+export const REL3_TAG: Record<string, string> = { coinc: "◎", fix: "⚓", par: "∥", perp: "⊥", equal: "=", mid: "◁▷", on: "∈", collin: "⋯", parXY: "∥XY", parYZ: "∥YZ", parZX: "∥ZX", tan: "T", x: "X", y: "Y", z: "Z" };
 
 type F = Sketch3DFeature;
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -34,6 +35,63 @@ function lineEnds(f: F, lid: string): [number, number] | null {
   if (!l) return null;
   const a = f.ids.indexOf(l.a), b = f.ids.indexOf(l.b);
   return a < 0 || b < 0 ? null : [a, b];
+}
+
+/** üç noktadan geçen çemberin merkezi (3B) */
+export function circum(a: number[], m: number[], b: number[]): { c: number[]; r: number; n: number[] } | null {
+  const u = sub(m, a), v = sub(b, a);
+  const n = crs(u, v);
+  const nn = dot(n, n);
+  if (nn < 1e-18) return null;
+  const t1 = crs(n, u).map((q) => q * dot(v, v)), t2 = crs(v, n).map((q) => q * dot(u, u));
+  const off = [0, 1, 2].map((k) => (t1[k] + t2[k]) / (2 * nn));
+  const c = [a[0] + off[0], a[1] + off[1], a[2] + off[2]];
+  return { c, r: len(off), n: n.map((q) => q / Math.sqrt(nn)) };
+}
+/** yay örnek noktaları (a → m → b) */
+export function arcPts(a: number[], m: number[], b: number[], N = 32): Vec3[] {
+  const C = circum(a, m, b);
+  if (!C) return [a as Vec3, b as Vec3];
+  const e1 = sub(a, C.c).map((q) => q / C.r), e2 = crs(C.n, e1);
+  const ang = (p: number[]) => {
+    const w = sub(p, C.c);
+    let t = Math.atan2(dot(w, e2), dot(w, e1));
+    if (t < 0) t += 2 * Math.PI;
+    return t;
+  };
+  let tb = ang(b);
+  const tm = ang(m);
+  if (tm > tb) tb -= 2 * Math.PI; // m b'nin öbür yanında: ters yön
+  const out: Vec3[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = (tb * i) / N;
+    out.push([0, 1, 2].map((k) => C.c[k] + C.r * (Math.cos(t) * e1[k] + Math.sin(t) * e2[k])) as Vec3);
+  }
+  return out;
+}
+/** varlığın ortak noktadaki teğet yönü (çizgi: nokta → diğer uç; yay: çember teğeti) */
+function tangentAt(f: F, X: number[], id: string, pi: number): number[] | null {
+  const P = (i: number) => [X[3 * i], X[3 * i + 1], X[3 * i + 2]];
+  const l = f.lines.find((q) => q.id === id);
+  if (l) {
+    const a = f.ids.indexOf(l.a), b = f.ids.indexOf(l.b);
+    return a === pi ? sub(P(b), P(a)) : b === pi ? sub(P(a), P(b)) : null;
+  }
+  const ar = f.arcs3?.find((q) => q.id === id);
+  if (!ar) return null;
+  const C = circum(P(f.ids.indexOf(ar.a)), P(f.ids.indexOf(ar.m)), P(f.ids.indexOf(ar.b)));
+  if (!C) return null;
+  return crs(C.n, sub(P(pi), C.c));
+}
+/** iki varlığın ortak uç noktası */
+function sharedPt(f: F, e1: string, e2: string): number {
+  const ends = (id: string) => {
+    const l = f.lines.find((q) => q.id === id) ?? f.arcs3?.find((q) => q.id === id);
+    return l ? [l.a, l.b] : [];
+  };
+  const a = ends(e1), b = ends(e2);
+  const s = a.find((q) => b.includes(q));
+  return s ? f.ids.indexOf(s) : -1;
 }
 
 /** artıklar (residuals) — X: nokta koordinatları (düz dizi) */
@@ -76,6 +134,12 @@ function residuals(f: F, X: number[], fixed0: Map<number, Vec3>): number[] {
         const d = sub(B, A);
         r.push(...crs(sub(P(p), A), d).map((v) => v / (len(d) || 1)));
       }
+    } else if (c.t === "tan") {
+      const pi = sharedPt(f, c.e[0], c.e[1]);
+      if (pi < 0) continue;
+      const t1 = tangentAt(f, X, c.e[0], pi), t2 = tangentAt(f, X, c.e[1], pi);
+      if (!t1 || !t2) continue;
+      r.push(...crs(t1, t2).map((v) => v / ((len(t1) || 1) * (len(t2) || 1))));
     } else if (c.t === "parXY" || c.t === "parYZ" || c.t === "parZX") {
       const d = D(c.e[0]);
       if (d) r.push(d[c.t === "parXY" ? 2 : c.t === "parYZ" ? 0 : 1]);
@@ -91,6 +155,11 @@ function residuals(f: F, X: number[], fixed0: Map<number, Vec3>): number[] {
       } else [a, b] = m.e.map((id) => f.ids.indexOf(id));
       if (a < 0 || b < 0) continue;
       r.push(len(sub(P(b), P(a))) - m.v);
+    } else if (m.t === "rad") {
+      const ar = f.arcs3?.find((q) => q.id === m.e[0]);
+      if (!ar) continue;
+      const C = circum(P(f.ids.indexOf(ar.a)), P(f.ids.indexOf(ar.m)), P(f.ids.indexOf(ar.b)));
+      if (C) r.push(C.r - m.v);
     } else if (m.t === "ang") {
       const d1 = D(m.e[0]), d2 = D(m.e[1]);
       if (!d1 || !d2) continue;
@@ -233,8 +302,13 @@ export function dofOf(f: F, fixed0?: Map<number, Vec3>): number {
 }
 
 /** ölçünün güncel değeri */
-export function dimValue(f: F, t: "len" | "dist" | "ang", e: string[]): number {
+export function dimValue(f: F, t: "len" | "dist" | "ang" | "rad", e: string[]): number {
   const P = (id: string) => f.xyz[f.ids.indexOf(id)];
+  if (t === "rad") {
+    const ar = f.arcs3?.find((q) => q.id === e[0]);
+    const C = ar && circum(P(ar.a), P(ar.m), P(ar.b));
+    return C ? C.r : 0;
+  }
   if (t === "len") {
     const le = lineEnds(f, e[0]);
     return le ? len(sub(f.xyz[le[1]], f.xyz[le[0]])) : 0;

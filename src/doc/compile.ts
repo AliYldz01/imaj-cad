@@ -366,15 +366,15 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             cname = cp.name;
           } else if (!PROFILES[std]) throw new Error("Profil türü bulunamadı");
           // SolidWorks grupları: 1. grup = özelliğin kendi alanları, sonra f.groups
-          const groups = [{ segs: f.segs, align: f.align, mirror: f.mirror, rot: f.rot, poff: f.poff, corner: f.corner, gap: f.gap, alignAx: f.alignAx, alignTo: f.alignTo }, ...(f.groups ?? [])];
+          const groups = [{ segs: f.segs, align: f.align, mirror: f.mirror, rot: f.rot, poff: f.poff, corner: f.corner, gap: f.gap, alignAx: f.alignAx, alignTo: f.alignTo, prio: f.prio }, ...(f.groups ?? [])];
           const items: MemberItem[] = [];
-          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean }[] = [];
+          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number }[] = [];
           let gi = 0;
           let pr0: ReturnType<typeof placedProfile> | null = null;
           groups.forEach((G, gk) => {
           const pr = placedProfile(std, f.size, G.align as Align, G.mirror, G.rot, custom, G.poff);
           pr0 ??= pr;
-          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap, auto: !G.rot && !G.mirror && !G.alignTo });
+          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap, auto: !G.rot && !G.mirror && !G.alignTo, prio: G.prio });
           const gItems: MemberItem[] = [];
           // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
           const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];
@@ -382,13 +382,21 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             const key = `${f.id}:${gi++}`;
             const any = feats.find((x) => x.id === sg.sk);
             if (any && any.type === "sketch3d") {
-              const ln = any.lines.find((l) => l.id === sg.ent);
-              if (!ln) throw new Error(`${any.name}: seçili çizgi silinmiş`);
               const P = (id: string) => {
                 const k = any.ids.indexOf(id);
                 if (k < 0) throw new Error(`${any.name}: nokta bulunamadı`);
                 return any.xyz[k];
               };
+              const arc = any.arcs3?.find((q) => q.id === sg.ent);
+              if (arc) {
+                // 3B yay: üç noktalı yay öğesi (profil dikey ekseni = yay düzlemi normali, yukarı)
+                const A = P(arc.a), M = P(arc.m), B = P(arc.b);
+                let bn = n3(v3.cross(v3.sub(M, A), v3.sub(B, A)));
+                if (bn[1] < -1e-9 || (Math.abs(bn[1]) < 1e-9 && bn[2] < 0)) bn = v3.mul(bn, -1);
+                return void gItems.push({ k: "a", a: A, b: B, m: M, n: bn, key });
+              }
+              const ln = any.lines.find((l) => l.id === sg.ent);
+              if (!ln) throw new Error(`${any.name}: seçili çizgi silinmiş`);
               let g = s3.find((x) => x.f === any);
               if (!g) s3.push((g = { f: any, lines: [] }));
               g.lines.push({ a: P(ln.a), b: P(ln.b), key });

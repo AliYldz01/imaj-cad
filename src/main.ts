@@ -25,7 +25,7 @@ import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
 import { Sketch3DTool, PLANES as S3PLANES, setLineLength } from "./sketch/sketch3d";
-import { REL3_NAMES, dofOf as dof3 } from "./sketch/solver3d";
+import { REL3_NAMES, dofOf as dof3, arcPts as arcPts3, solve3d } from "./sketch/solver3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -164,7 +164,13 @@ function applyEquations(): string[] {
     if (v === null) errs.push(`${f.name}: "${ex}" hesaplanamadı`);
     else if (prop.includes("[")) {
       const m = prop.match(/^(\w+)\[(\d+)\]\[(\d+)\]$/);
+      const m2 = k.slice(fid.length + 1).match(/^(\w+)\[(\d+)\]\.(\w+)$/);
       if (m && f[m[1]]?.[+m[2]]) f[m[1]][+m[2]][+m[3]] = v;
+      else if (m2 && f[m2[1]]?.[+m2[2]] && f[m2[1]][+m2[2]][m2[3]] !== v) {
+        // 3B eskiz ölçüsü: değeri yaz, eskizi yeniden çöz
+        f[m2[1]][+m2[2]][m2[3]] = v;
+        if (f.type === "sketch3d") solve3d(f);
+      }
     } else f[prop] = v;
   }
   for (const f of doc.features) {
@@ -400,6 +406,13 @@ function drawSketches() {
     for (const l of f.lines) {
       const a = P(l.a), b = P(l.b);
       if (a && b) (l.cons ? cons : memSel?.has(f.id + ":" + l.id) ? selSegs : memOther?.has(f.id + ":" + l.id) ? othSegs : segs).push(...a, ...b);
+    }
+    for (const ar of f.arcs3 ?? []) {
+      const a = P(ar.a), b = P(ar.b), m = P(ar.m);
+      if (!a || !b || !m) continue;
+      const arr = ar.cons ? cons : memSel?.has(f.id + ":" + ar.id) ? selSegs : memOther?.has(f.id + ":" + ar.id) ? othSegs : segs;
+      const ps = arcPts3(a, m, b);
+      for (let i = 0; i + 1 < ps.length; i++) arr.push(...ps[i], ...ps[i + 1]);
     }
     const col = editing || treeSel === f.id ? 0x0ca5e9 : 0x1f2a37;
     if (segs.length) sketchGroup.push(viewer.fatLines(segs, col, 2));
@@ -993,7 +1006,7 @@ function newFeature(kind: string) {
       if (!skel) return toast("Önce iskelet eskizini çizin (elemanların eksen çizgileri)", true);
       const segs =
         skel.type === "sketch3d"
-          ? skel.lines.filter((l) => !l.cons).map((l) => ({ sk: skel.id, ent: l.id }))
+          ? [...skel.lines.filter((l) => !l.cons), ...(skel.arcs3 ?? []).filter((a) => !a.cons)].map((l) => ({ sk: skel.id, ent: l.id }))
           : (skel as SketchFeature).data.ents.filter((e) => !e.cons && (e.t === "line" || e.t === "arc")).map((e) => ({ sk: skel.id, ent: e.id }));
       const prev = [...doc.features].reverse().find((f) => f.type === "member") as any;
       draft = { id, type: "member", name: "", segs, std: prev?.std ?? "kutu", size: prev?.size ?? "40x40x3", align: "c", mirror: false, rot: 0, corner: "miter", gap: 0, ori: 2 };
@@ -1866,6 +1879,7 @@ function renderFeaturePM(kind: string) {
           numField("Döndürme açısı", g.rot, (v) => ((g.rot = v), upd()), { unit: "°", key: `${d.id}.rot${gi || ""}` }),
           checkField("Profili aynala", g.mirror, (v) => ((g.mirror = v), upd())),
           button("Profili konumlandır (delme noktası seç)…", () => openPierceDialog(d, g), "btn"),
+          ...((d.groups ?? []).length ? [numField("Kırpma önceliği (1 = sürekli kalır, 0 = otomatik)", g.prio ?? 0, (v) => ((g.prio = v > 0 ? Math.round(v) : undefined), upd()), { min: 0 })] : []),
         ),
       );
       if (d.ori === 2) {
@@ -1931,7 +1945,7 @@ function renderFeaturePM(kind: string) {
         });
       }
       for (const s3 of doc.features.slice(0, idx).filter((f) => f.type === "sketch3d") as Sketch3DFeature[]) {
-        const ls = s3.lines.filter((l) => !l.cons);
+        const ls = [...s3.lines.filter((l) => !l.cons), ...(s3.arcs3 ?? []).filter((a) => !a.cons)];
         if (!ls.length) continue;
         const all = ls.every((l) => g.segs.some((x: any) => x.sk === s3.id && x.ent === l.id));
         segBox.appendChild(
@@ -1945,7 +1959,8 @@ function renderFeaturePM(kind: string) {
         ls.forEach((l, j) => {
           const a = s3.xyz[s3.ids.indexOf(l.a)], b = s3.xyz[s3.ids.indexOf(l.b)];
           const on = g.segs.some((x: any) => x.sk === s3.id && x.ent === l.id);
-          const cf = checkField(`Çizgi ${j + 1} · ${fmtNum(dist3(a, b), 1)} mm`, on, (v) => {
+          const isArc = !!s3.arcs3?.some((q) => q.id === l.id);
+          const cf = checkField(`${isArc ? "Yay" : "Çizgi"} ${j + 1} · ${fmtNum(dist3(a, b), 1)} mm`, on, (v) => {
             g.segs = g.segs.filter((x: any) => !(x.sk === s3.id && x.ent === l.id));
             if (v) (memTake(d, s3.id, l.id), g.segs.push({ sk: s3.id, ent: l.id }));
             upd();
@@ -1967,7 +1982,8 @@ function renderFeaturePM(kind: string) {
       // SolidWorks 3B eskiz araçları
       const gt = group(
         "Araç",
-        segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }], s3tool.mode, (v) => s3tool.setMode(v as any)),
+        segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "arc", t: "Yay" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }, { v: "trim", t: "Kırp" }, { v: "extend", t: "Uzat" }], s3tool.mode, (v) => s3tool.setMode(v as any)),
+        h("p", "pm-hint", "Seç ile köşe noktası seçince Eskiz radyüsü; nokta/çizgi/yay seçince Ayna (XY/YZ/ZX; bir nokta da seçiliyse düzlem ondan geçer)."),
       );
       // tanım durumu
       const fdof = dof3(f3);
@@ -1977,10 +1993,10 @@ function renderFeaturePM(kind: string) {
       // seçim → ilişki ekle
       if (s3tool.sel.length) {
         const opts = s3tool.relOptions();
-        const gr = group(`Seçili: ${s3tool.sel.map((q) => (q.k === "p" ? "N" + (f3.ids.indexOf(q.id) + 1) : "Ç" + (f3.lines.findIndex((l) => l.id === q.id) + 1))).join(", ")}`);
+        const gr = group(`Seçili: ${s3tool.sel.map((q) => (q.k === "p" ? "N" + (f3.ids.indexOf(q.id) + 1) : q.k === "a" ? "Y" + ((f3.arcs3 ?? []).findIndex((a) => a.id === q.id) + 1) : "Ç" + (f3.lines.findIndex((l) => l.id === q.id) + 1))).join(", ")}`);
         const row = h("div", "pm-row");
         row.style.flexWrap = "wrap";
-        for (const o of opts) row.appendChild(button(o === "x" ? REL3_NAMES.alongX : o === "y" ? REL3_NAMES.alongY : o === "z" ? REL3_NAMES.alongZ : o === "cons" ? "Yapı çizgisi ↔" : (REL3_NAMES as any)[o], () => s3tool.addRel(o), "btn"));
+        for (const o of opts) row.appendChild(button(o === "x" ? REL3_NAMES.alongX : o === "y" ? REL3_NAMES.alongY : o === "z" ? REL3_NAMES.alongZ : o === "cons" ? "Yapı çizgisi ↔" : o === "fillet" ? "Eskiz radyüsü…" : o.startsWith("mir") ? `Ayna (${o.slice(3)})` : (REL3_NAMES as any)[o], () => s3tool.addRel(o), "btn"));
         row.appendChild(button("Sil", () => s3tool.deleteSel(), "btn danger"));
         gr.appendChild(row);
         if (!opts.length) gr.appendChild(h("p", "pm-hint", "Bu seçim için ilişki yok. 2 nokta, 1–2 çizgi veya nokta + çizgi seçin."));
@@ -1989,7 +2005,7 @@ function renderFeaturePM(kind: string) {
       // ilişkiler ve ölçüler listesi
       {
         const rl = h("div", "pm-feats");
-        const nm = (id: string) => (f3.ids.includes(id) ? "N" + (f3.ids.indexOf(id) + 1) : "Ç" + (f3.lines.findIndex((l) => l.id === id) + 1));
+        const nm = (id: string) => (f3.ids.includes(id) ? "N" + (f3.ids.indexOf(id) + 1) : f3.lines.some((l) => l.id === id) ? "Ç" + (f3.lines.findIndex((l) => l.id === id) + 1) : "Y" + ((f3.arcs3 ?? []).findIndex((a) => a.id === id) + 1));
         f3.lines.forEach((l) => {
           if (!l.ax) return;
           const row = h("div", "pm-row");
@@ -2006,7 +2022,7 @@ function renderFeaturePM(kind: string) {
         (f3.dims3 ?? []).forEach((m, j) => {
           const row = h("div", "pm-row");
           row.append(
-            numField(`${m.t === "len" ? "Boy" : m.t === "dist" ? "Mesafe" : "Açı"} ${m.e.map(nm).join("–")}`, m.v, (v) => s3tool.editDim(m.id, undefined, v), { unit: m.t === "ang" ? "°" : "mm", key: `${f3.id}.dims3[${j}].v` }),
+            numField(`${m.t === "len" ? "Boy" : m.t === "dist" ? "Mesafe" : m.t === "rad" ? "Yarıçap" : "Açı"} ${m.e.map(nm).join("–")}`, m.v, (v) => s3tool.editDim(m.id, undefined, v), { unit: m.t === "ang" ? "°" : "mm", key: `${f3.id}.dims3[${j}].v` }),
             button("✕", () => (f3.dims3!.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"),
           );
           dl.appendChild(row);
@@ -2817,6 +2833,14 @@ function memberSegAt(x: number, y: number): { sk: string; ent: string } | null {
         const d = segDist(S(a), S(b));
         if (d < bd) (bd = d), (best = { sk: f.id, ent: l.id });
       }
+      for (const ar of f.arcs3 ?? []) {
+        if (ar.cons) continue;
+        const ps = arcPts3(f.xyz[f.ids.indexOf(ar.a)], f.xyz[f.ids.indexOf(ar.m)], f.xyz[f.ids.indexOf(ar.b)], 16);
+        for (let i = 0; i + 1 < ps.length; i++) {
+          const d = segDist(S(ps[i]), S(ps[i + 1]));
+          if (d < bd) (bd = d), (best = { sk: f.id, ent: ar.id });
+        }
+      }
     } else if (f.type === "sketch") {
       const fr = resolveFrame(f.plane, doc.features);
       if (!fr) continue;
@@ -2845,7 +2869,7 @@ function memberSegAt(x: number, y: number): { sk: string; ent: string } | null {
 function segDir(sg: { sk: string; ent: string }): Vec3 | null {
   const f = getFeat(sg.sk);
   if (f?.type === "sketch3d") {
-    const l = f.lines.find((q) => q.id === sg.ent);
+    const l = f.lines.find((q) => q.id === sg.ent) ?? f.arcs3?.find((q) => q.id === sg.ent);
     if (!l) return null;
     const a = f.xyz[f.ids.indexOf(l.a)], b = f.xyz[f.ids.indexOf(l.b)];
     return [b[0] - a[0], b[1] - a[1], b[2] - a[2]];

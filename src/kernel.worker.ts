@@ -1372,7 +1372,7 @@ function profileX(n: Vec3, d: Vec3, legacy = false): Vec3 {
   y = vnorm(y);
   return vnorm(vcross(y, d));
 }
-type MemberPart = { keys: string[]; solids: (Shape | null)[]; lines: ({ a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 } | null)[]; chained: Set<number>; loops: Loop[]; g: number; treated: Set<string> };
+type MemberPart = { prio?: number; keys: string[]; solids: (Shape | null)[]; lines: ({ a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 } | null)[]; chained: Set<number>; loops: Loop[]; g: number; treated: Set<string> };
 function memberTool(f: Extract<KFeature, { type: "member" }>) {
   // SolidWorks grupları: her grup kendi profil konumu ve köşe işlemiyle (köşe işlemi grup içinde)
   const parts: MemberPart[] = [];
@@ -1381,7 +1381,7 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
   else
     f.gl.forEach((gp, k) => {
       const items = f.items.filter((it) => (it.g ?? 0) === k);
-      if (items.length) parts.push({ ...memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap }), g: k });
+      if (items.length) parts.push({ ...memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap }), g: k, prio: gp.prio });
     });
   // akıllı birleşimler: T birleşimi, gruplar arası köşe, 3+ elemanlı köşe
   xSplits = [];
@@ -1544,8 +1544,15 @@ function resolveJoints(parts: MemberPart[], gap: number) {
     // birincil (sürekli) eleman: grup içinde zaten köşe işlemi görmüş çift varsa o, yoksa en düşey eleman
     const byPart = new Map<MemberPart, { m: M; end: 0 | 1 }[]>();
     for (const q of list) byPart.set(q.m.p, [...(byPart.get(q.m.p) ?? []), q]);
-    // 1) aynı doğrultuda devam eden iki parça (bölünmüş düz kiriş) sürekli sayılır
+    // 0) kullanıcı kırpma önceliği verdiyse: en küçük öncelikli grubun elemanları sürekli
     let prim: { m: M; end: 0 | 1 }[] | null = null;
+    if (list.some((q) => q.m.p.prio !== undefined) && groups.size > 1) {
+      const pr = (q: { m: M }) => q.m.p.prio ?? 1e9;
+      const mn = Math.min(...list.map(pr));
+      const top = list.filter((q) => pr(q) === mn);
+      if (top.length < list.length) prim = top.slice(0, 2);
+    }
+    // 1) aynı doğrultuda devam eden iki parça (bölünmüş düz kiriş) sürekli sayılır
     for (let u = 0; u < list.length && !prim; u++)
       for (let w = u + 1; w < list.length && !prim; w++)
         if (vdot(away(list[u].m, list[u].end), away(list[w].m, list[w].end)) < -0.9999) prim = [list[u], list[w]];
@@ -1586,7 +1593,10 @@ function resolveJoints(parts: MemberPart[], gap: number) {
       const PA = vadd(A.a, vmul(A.d, ta)), PB = vadd(B.a, vmul(B.d, tb));
       if (vlen(vsub(PA, PB)) > 1e-3) continue;
       // birincil: daha düşey olan, sonra düşük grup / sıra
-      const [P, S] = Math.abs(B.d[1]) > Math.abs(A.d[1]) + 1e-6 || (Math.abs(B.d[1]) >= Math.abs(A.d[1]) - 1e-6 && B.p.g < A.p.g) ? [B, A] : [A, B];
+      const pa = A.p.prio, pb = B.p.prio;
+      const [P, S] = pa !== undefined || pb !== undefined
+        ? ((pb ?? 1e9) < (pa ?? 1e9) ? [B, A] : [A, B])
+        : Math.abs(B.d[1]) > Math.abs(A.d[1]) + 1e-6 || (Math.abs(B.d[1]) >= Math.abs(A.d[1]) - 1e-6 && B.p.g < A.p.g) ? [B, A] : [A, B];
       // sürekli elemanın dış konturu boyunca uzun prizma ile kes (açılı kesişimde de tam oturur)
       const big = bodySize();
       const outer = P.p.loops.filter((l) => l.depth === 0);
