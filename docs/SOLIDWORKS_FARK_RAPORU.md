@@ -73,7 +73,7 @@ Kural: bir madde bitince ✅ işaretle, `SOLIDWORKS_OZELLIKLERI.md`'deki durumu 
 
 | # | Önem | Eksik / hatalı | Yapılacak | Durum |
 |---|---|---|---|---|
-| W1 | Ö | Köşe işlemi tek tip | W1.1 **gruplar** (paralel/bitişik segment) · W1.2 **köşeye tıklayıp köşe başına işlem**: uç gönye / uç alın 1 / uç alın 2, **kırpma sırası**, köşeye özel **kaynak boşluğu** · W1.3 **gönye kırpılmış gövdeleri birleştir** · W1.4 **yay segmentlerini birleştir** | 🟡 |
+| W1 | Ö | Köşe işlemi tek tip | W1.1 **gruplar** (paralel/bitişik segment) · W1.2 **köşeye tıklayıp köşe başına işlem**: uç gönye / uç alın 1 / uç alın 2, **kırpma sırası**, köşeye özel **kaynak boşluğu** · W1.3 **gönye kırpılmış gövdeleri birleştir** · W1.4 **yay segmentlerini birleştir** | 🟡 v0.20 gruplar + otomatik T / gruplar arası / 3+ elemanlı köşe çözümü; köşeye tıklayıp köşe başına işlem yok |
 | W2 | Ö | Delme noktası kısıtlı | **Profili konumlandır**: profil eskizinde herhangi bir noktayı delme noktası seç | ✅ v0.15 delme noktası X/Y öteleme |
 | W3 | Ö | Kesim listesi özellikleri | Özellik penceresi (açıklama, malzeme, UZUNLUK, AÇI1/2, MİKTAR, TOPLAM UZUNLUK, özel alan), malzemeyi profilden aktar | 🟡 |
 | W4 | Ö | 3B eskiz ilişki/ölçü | **X/Y/Z boyunca**, ParallelYZ/ZX, çakışık, **3B akıllı ölçü**, **Tab ile düzlem değiştirerek çizim** | 🟡 v0.18 Tab düzlem, uzay tutamacı, tıklayarak çizim, X/Y/Z çıkarımı, uzunluk; çözücü/ParallelYZ yok (bkz. `docs/3B_ESKIZ_RAPORU.md`) |

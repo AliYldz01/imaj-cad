@@ -295,3 +295,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Özellik | Durum |
 |---|---|
 | Profili konumlandır penceresi duyarlı boyut (telefon/masaüstü), büyük dokunma alanları, geçerli nokta vurgusu | ✅ |
+
+## v0.20 — Akıllı profil birleşimleri
+
+| Özellik | Durum |
+|---|---|
+| Bağlı segmentleri aynı yöne çevirme (L/U kanatları köşede ters dönmez, gönye eşleşir) | ✅ |
+| T birleşimi otomatik kırpma (serbest uç başka elemanın ortasına değince) | ✅ |
+| Gruplar arası köşe ve 3+ elemanlı köşe: sürekli eleman uzar, diğerleri yüzünde biter | ✅ |
+| Bölünmüş düz kiriş (aynı doğrultuda iki parça) sürekli sayılır | ✅ |
+| Köşede ayakların profil yönünü otomatik döndürme, kesişen (X) elemanlar | ⬜ |

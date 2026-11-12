@@ -1372,16 +1372,124 @@ function profileX(n: Vec3, d: Vec3, legacy = false): Vec3 {
   y = vnorm(y);
   return vnorm(vcross(y, d));
 }
+type MemberPart = { solids: (Shape | null)[]; lines: ({ a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 } | null)[]; chained: Set<number>; loops: Loop[]; g: number; treated: Set<string> };
 function memberTool(f: Extract<KFeature, { type: "member" }>) {
-  if (!f.gl || f.gl.length < 2) return memberCore(f);
   // SolidWorks grupları: her grup kendi profil konumu ve köşe işlemiyle (köşe işlemi grup içinde)
-  f.gl.forEach((gp, k) => {
-    const items = f.items.filter((it) => (it.g ?? 0) === k);
-    if (items.length) memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap });
-  });
+  const parts: MemberPart[] = [];
+  if (!f.gl || f.gl.length < 2) parts.push({ ...memberCore(f), g: 0 });
+  else
+    f.gl.forEach((gp, k) => {
+      const items = f.items.filter((it) => (it.g ?? 0) === k);
+      if (items.length) parts.push({ ...memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap }), g: k });
+    });
+  // akıllı birleşimler: T birleşimi, gruplar arası köşe, 3+ elemanlı köşe
+  if (f.ori === 2) resolveJoints(parts, f.gap);
+  for (const p of parts) for (const s of p.solids) if (s) applyTool(s, false, false);
 }
-function memberCore(f: Extract<KFeature, { type: "member" }>) {
-  const items = f.items;
+/** Bağlı segmentleri uç uca aynı yönde akacak şekilde çevirir (profil kanatları köşede ters dönmesin) */
+function orientChains(src: MemberItem[]): MemberItem[] {
+  const items = src.map((it) => ({ ...it }));
+  const kk = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+  const J = new Map<string, { i: number; end: 0 | 1 }[]>();
+  items.forEach((it, i) => ([it.a, it.b] as Vec3[]).forEach((p, e) => {
+    const k = kk(p);
+    if (!J.has(k)) J.set(k, []);
+    J.get(k)!.push({ i, end: e as 0 | 1 });
+  }));
+  const flip = (i: number) => {
+    const it = items[i];
+    [it.a, it.b] = [it.b, it.a];
+  };
+  const seen = new Set<number>();
+  for (let s0 = 0; s0 < items.length; s0++) {
+    if (seen.has(s0)) continue;
+    seen.add(s0);
+    const st = [s0];
+    while (st.length) {
+      const i = st.pop()!;
+      for (const end of [0, 1] as const) {
+        const list = J.get(kk(end === 0 ? items[i].a : items[i].b))!;
+        if (list.length !== 2) continue;
+        const o = list.find((q) => q.i !== i);
+        if (!o || seen.has(o.i)) continue;
+        // i bu uçtan çıkıyorsa (end 0) komşu buraya varmalı (end 1) ve tersi
+        const oEnd = kk(items[o.i].a) === kk(end === 0 ? items[i].a : items[i].b) ? 0 : 1;
+        if (oEnd === end) flip(o.i);
+        seen.add(o.i);
+        st.push(o.i);
+      }
+    }
+  }
+  return items;
+}
+/** T birleşimleri ve gruplar arası / 3+ elemanlı köşeler: elemanları birbirinin yüzünde biter */
+function resolveJoints(parts: MemberPart[], gap: number) {
+  type M = { p: MemberPart; i: number; a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
+  const ms: M[] = [];
+  for (const p of parts) p.lines.forEach((li, i) => li && !p.chained.has(i) && p.solids[i] && ms.push({ p, i, ...li }));
+  const kk = (q: Vec3) => q.map((v) => Math.round(v * 1000)).join(",");
+  const J = new Map<string, { m: M; end: 0 | 1 }[]>();
+  for (const m of ms)
+    ([m.a, m.b] as Vec3[]).forEach((q, e) => {
+      const k = kk(q);
+      if (!J.has(k)) J.set(k, []);
+      J.get(k)!.push({ m, end: e as 0 | 1 });
+    });
+  const away = (m: M, end: 0 | 1) => (end === 0 ? m.d : vmul(m.d, -1));
+  const trimTo = (m: M, end: 0 | 1, V: Vec3, by: M[]) => {
+    const dO = away(m, end);
+    const s = Math.max(...by.map((r) => profileSupport(r.p.loops, r.x, r.d, dO)));
+    m.p.solids[m.i] = keepFar(m.p.solids[m.i]!.cut(halfSpace(vadd(V, vmul(dO, s + gap)), dO)), V, dO);
+  };
+  for (const [k, list] of J) {
+    const V = list[0].end === 0 ? list[0].m.a : list[0].m.b;
+    if (list.length === 1) {
+      // T birleşimi: serbest uç başka bir elemanın orta kısmına değiyor
+      const { m, end } = list[0];
+      const hosts = ms.filter((o) => {
+        if (o === m) return false;
+        const t = vdot(vsub(V, o.a), o.d);
+        if (t < 1e-3 || t > o.L - 1e-3) return false;
+        return vlen(vsub(vadd(o.a, vmul(o.d, t)), V)) < 1e-3;
+      });
+      if (hosts.length) trimTo(m, end, V, hosts);
+      continue;
+    }
+    const groups = new Set(list.map((q) => q.m.p));
+    if (list.length === 2 && groups.size === 1) continue; // grup içi köşe: köşe işlemi uygulandı
+    // birincil (sürekli) eleman: grup içinde zaten köşe işlemi görmüş çift varsa o, yoksa en düşey eleman
+    const byPart = new Map<MemberPart, { m: M; end: 0 | 1 }[]>();
+    for (const q of list) byPart.set(q.m.p, [...(byPart.get(q.m.p) ?? []), q]);
+    // 1) aynı doğrultuda devam eden iki parça (bölünmüş düz kiriş) sürekli sayılır
+    let prim: { m: M; end: 0 | 1 }[] | null = null;
+    for (let u = 0; u < list.length && !prim; u++)
+      for (let w = u + 1; w < list.length && !prim; w++)
+        if (vdot(away(list[u].m, list[u].end), away(list[w].m, list[w].end)) < -0.9999) prim = [list[u], list[w]];
+    // 2) grup içinde köşe işlemi görmüş çift
+    prim ??= [...byPart.values()].find((v) => v.length === 2) ?? null;
+    if (!prim) {
+      const best = [...list].sort((u, w) => Math.abs(w.m.d[1]) - Math.abs(u.m.d[1]) || u.m.p.g - w.m.p.g || u.m.i - w.m.i)[0];
+      prim = [best];
+    }
+    const others = list.filter((q) => !prim!.includes(q));
+    if (!others.length) continue;
+    if (prim.length === 1) {
+      // birincil elemanı diğerlerinin profilini kaplayacak kadar uzat
+      const P = prim[0];
+      const dP = away(P.m, P.end);
+      const e = Math.max(0, ...others.map((o) => profileSupport(o.m.p.loops, o.m.x, o.m.d, vmul(dP, -1))));
+      if (e > 1e-6) {
+        const o = P.end === 0 ? vsub(P.m.a, vmul(P.m.d, e)) : P.m.b;
+        const ext = profile(P.m.p.loops).sketchOnPlane(new Plane(o, P.m.x, P.m.d)).extrude(e);
+        P.m.p.solids[P.m.i] = P.m.p.solids[P.m.i]!.fuse(ext);
+      }
+    }
+    for (const o of others) trimTo(o.m, o.end, V, prim.map((q) => q.m));
+    void k;
+  }
+}
+function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, "g"> {
+  const items = f.ori === 2 ? orientChains(f.items) : f.items;
   type LI = { a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
   const lines: (LI | null)[] = items.map((it) => {
     if (it.k !== "l") return null;
@@ -1544,7 +1652,7 @@ function memberCore(f: Extract<KFeature, { type: "member" }>) {
       solids[T.i] = keepFar(solids[T.i]!.cut(halfSpace(vadd(V, vmul(dT, sR + f.gap)), dT)), V, dT);
     }
   }
-  for (const s of solids) if (s) applyTool(s, false, false);
+  return { solids, lines, chained, loops: f.loops, treated: new Set() };
 }
 
 const segDist = (p: Vec3, a: Vec3, b: Vec3) => {

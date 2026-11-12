@@ -1883,7 +1883,7 @@ function renderFeaturePM(kind: string) {
         segField([{ v: "miter", t: "Gönye" }, { v: "butt1", t: "Alın 1" }, { v: "butt2", t: "Alın 2" }, { v: "none", t: "Yok" }], g.corner, (v) => ((g.corner = v), renderFeaturePM(kind), upd())),
       );
       if (g.corner !== "none") gc.appendChild(numField("Boşluk", g.gap, (v) => ((g.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }));
-      gc.appendChild(h("p", "pm-hint", "Uç uca birleşen iki eleman köşede kesilir. T birleşimleri için Kırp/Uzat kullanın."));
+      gc.appendChild(h("p", "pm-hint", "Uç uca birleşen iki eleman köşede kesilir. T birleşimleri, gruplar arası köşeler ve 3+ elemanlı köşeler (ör. ayak + çerçeve) otomatik çözülür: sürekli eleman uzar, diğerleri onun yüzünde biter. Bağlı çizgiler aynı yöne çevrilir, L/U kanatları köşede ters dönmez."));
       body.appendChild(gc);
       // segmentler
       const segBox = h("div", "pm-feats");
