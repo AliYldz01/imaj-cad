@@ -289,3 +289,9 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | 3B eskiz nokta sürükleme, Along X/Y/Z korunumu | ✅ |
 | Ctrl + yüz ile 3B eksen takımı hizalama | ✅ |
 | 3B tam çözücü, 3B yay/spline, gruplar arası kırpma sırası | ⬜ |
+
+## v0.19.1
+
+| Özellik | Durum |
+|---|---|
+| Profili konumlandır penceresi duyarlı boyut (telefon/masaüstü), büyük dokunma alanları, geçerli nokta vurgusu | ✅ |

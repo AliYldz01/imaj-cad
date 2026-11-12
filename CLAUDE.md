@@ -29,7 +29,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 3. Teknoloji ve mimari
 
-- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v24`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.19**).
+- **Vite + TypeScript** PWA. `public/sw.js` önbellek adı (`imajcad-vNN`) **her yayında artırılır** (şu an `imajcad-v25`). `index.html` yardım penceresindeki başlık sürümü (şu an **v0.19.1**).
 - **Geometri çekirdeği:** OpenCascade WASM — `replicad` (MIT) + `replicad-opencascadejs` (LGPL), **Web Worker**'da (`src/kernel.worker.ts`). Ham OCC `getOC()` ile.
 - **Eskiz çözücü:** PlaneGCS (`@salusoft89/planegcs`, LGPL) ana iş parçacığında (`src/sketch/solver.ts`).
 - **Görüntü:** three.js ortografik kamera, özel `NavControls` (`src/nav.ts`), kalın çizgiler LineSegments2.
@@ -82,6 +82,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - **v0.17 (Paket D devam):** teğet (düz↔silindir) ve limit mesafe eşleşmesi (`vmax`), Ctrl ile iki yüz → eşleşme mini çubuğu (`showMateBar`, `.asm-matebar`), sürüklerken çarpışma algılama (`collide`, `collides`, `worldBox`; adımlı kutu testi), doğrusal 2 yön / dairesel bileşen çoğaltma (`openPattern`).
 - **v0.18 3B eskiz + profil yönü:** rapor `docs/3B_ESKIZ_RAPORU.md`. 3B eskiz grafik alanda çizilir (`src/sketch/sketch3d.ts`); yapı elemanı profil Y ekseni = eskiz normali / dünya yukarısı (`profileX` worker, `sketch3dNormal` compile; yeni elemanlarda `ori: 2`, eski belgeler eski yönde); yapı elemanında segment grafik seçimi (`memberSegAt/memberSegPick`), seçili segment vurgusu.
 - **v0.19:** yapı elemanı grupları (`MemberFeature.groups`, `MemberItem.g`, KFeature `gl`; worker `memberTool` grupları `memberCore`'a böler; PM `d._g`, `memGroup`, `memTake`), Alignment (`alignAx`/`alignTo` → compile'da öğe `n`), profili konumlandır (`openPierceDialog`, `sampleLoop` dışa açık), 3B eskiz nokta sürükleme + `enforceAlong`, Ctrl+yüz eksen hizalama (`Sketch3DTool.alignTo/axes`).
+- **v0.19.1:** profili konumlandır penceresi duyarlı (`.pierce-dialog`, SVG viewBox 1000, %100 genişlik), büyük dokunma alanı (görünmez r=62), çakışan noktalar elenir, geçerli delme noktası turuncu.
 
 ## 5. Sıradaki işler (öncelik sırasıyla)
 
@@ -94,7 +95,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 ## 6. Test altyapısı
 
 - Testler: `tests/e2e/*.py` (Playwright, Python, Chrome `/usr/bin/google-chrome`, swiftshader). Önce yapı: `npx vite build`, sonra `sh tests/e2e/srv.sh` (4173'te `vite preview` başlatır; sunucu turlar arasında ölür, her seferinde çalıştır). Testleri `tests/e2e` içinden çalıştır (`from h import ...`).
-- Testler `import cmdpatch` ile başlar (komut grubu düğmesini otomatik açar; uygulamada `__app.showCmd(başlık)`). `ui1` (gruplar, model kenarı yakalama, imleç), `rc1` (dikdörtgen merkezi, model kenarı üzerinde), `dm1` (Akıllı Ölçü sanal noktalar), `fx1` (ekstrüzyon seçenekleri, konturlar), `pl1` (düzlem türleri), `pa1` (mini çubuk, diğerini seç, kutu seçim), `pb1` (dışa kabuk, dairesel süpürme, örnek atla), `pb2` (Instant3D, görüntü stilleri), `lb1` (huni geçiş parçası + açınım DXF), `as1` (montaj: bileşen, eşleşme çözücü, seçim, girişim, STEP, BOM), `as2` (teğet, limit, mini çubuk, çarpışma, bileşen çoğaltma), `s3d1` (3B eskiz tıklayarak çizim, Tab, eksen çıkarımı, uzunluk; profil yönü; segment grafik seçimi), `s3d2` (gruplar, Alignment, profili konumlandır, nokta sürükleme/Along, Ctrl eksen). `cmdpatch` `:has-text('X')` seçicisini de destekler.
+- Testler `import cmdpatch` ile başlar (komut grubu düğmesini otomatik açar; uygulamada `__app.showCmd(başlık)`). `ui1` (gruplar, model kenarı yakalama, imleç), `rc1` (dikdörtgen merkezi, model kenarı üzerinde), `dm1` (Akıllı Ölçü sanal noktalar), `fx1` (ekstrüzyon seçenekleri, konturlar), `pl1` (düzlem türleri), `pa1` (mini çubuk, diğerini seç, kutu seçim), `pb1` (dışa kabuk, dairesel süpürme, örnek atla), `pb2` (Instant3D, görüntü stilleri), `lb1` (huni geçiş parçası + açınım DXF), `as1` (montaj: bileşen, eşleşme çözücü, seçim, girişim, STEP, BOM), `as2` (teğet, limit, mini çubuk, çarpışma, bileşen çoğaltma), `s3d1` (3B eskiz tıklayarak çizim, Tab, eksen çıkarımı, uzunluk; profil yönü; segment grafik seçimi), `s3d2` (gruplar, Alignment, profili konumlandır, nokta sürükleme/Along, Ctrl eksen), `pp1` (profili konumlandır penceresi telefon/masaüstü boyutları). `cmdpatch` `:has-text('X')` seçicisini de destekler.
 - Önemli testler: `sw1` (SW fare/klavye), `sw3` (çıkarım), `sw4` (yay geçişi, seçim), `mob1` (telefon: CDP ile gerçek parmak/kalem olayları), `tp1` (dokunmatik fare), `wz1` (sihirbaz, sayıyla çizim, öneri), `cube1` (görünüm küpü), `v2`, `t3`–`t10`, `sk1`–`sk5`, `k1`–`k6`, `s1`–`s2`, `w1`–`w8`, `m2`.
 - Kalıplar: kenar tıklama `viewer.toScreen(mesh.edges[i].m)`; eskiz koordinatı → ekran: `sc(x,y)` yardımcıları testlerde var; `window.__app` (mode, viewer, kernel, setDoc…).
 - Mouse ile seçimde artık **tık seçimi değiştirir**, çoklu seçim için Ctrl basılı tutulmalı (testlerde `keyboard.down("Control")`).
