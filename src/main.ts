@@ -21,6 +21,7 @@ import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
 import { ICONS } from "./ui/icons";
+import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -3537,7 +3538,7 @@ function renderViewbar() {
   const bar = $("#viewbar");
   bar.innerHTML = "";
   const btn = (icon: string, title: string, fn: () => void, active = false) => {
-    const b = h("button", active ? "active" : "");
+    const b = h("button", (active ? "active " : "") + (["front", "top", "right", "iso"].includes(icon) ? "orient" : ""));
     b.innerHTML = ICONS[icon];
     b.title = title;
     b.addEventListener("click", fn);
@@ -3586,6 +3587,7 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
       return toast(v ? "Tekerlek: ileri = yakınlaş" : "Tekerlek: ileri = uzaklaş (SolidWorks varsayılanı)");
     }
     if (act === "keys") return ($("#help") as HTMLDialogElement).showModal();
+    if (act === "input") return openInputSettings();
     if (mode.k === "sketch" && act !== "save") exitSketch(true);
     if (mode.k === "pm") cancelFeature();
     if (act === "new") {
@@ -3716,7 +3718,21 @@ window.addEventListener("keydown", (e) => {
   if (k === "z") return done(), viewer.zoomStep(e.shiftKey ? 1.25 : 0.8);
   if (k === "s" && !e.shiftKey) return done(), openShortcutBar();
   if (k === "a" && mode.k === "sketch") return done(), mode.editor.toggleLineArc();
-  if (e.key === "Escape") {
+  if (e.key === "Escape") escAction();
+  else if (e.key === "Delete") {
+    if (mode.k === "sketch") mode.editor.deleteSelection();
+    else if (mode.k === "part") deleteSelectedPart();
+  } else if (e.key === "Enter") {
+    if (mode.k === "pm") return pmOk();
+    if (lastCmd) {
+      done();
+      lastCmd();
+      renderCommands();
+    }
+  }
+});
+function escAction() {
+  {
     closePopups();
     if (mode.k === "sketch") {
       if (mode.editor.isDrawing()) mode.editor.finishChain();
@@ -3732,18 +3748,8 @@ window.addEventListener("keydown", (e) => {
       renderTree();
       refreshHighlight();
     }
-  } else if (e.key === "Delete") {
-    if (mode.k === "sketch") mode.editor.deleteSelection();
-    else if (mode.k === "part") deleteSelectedPart();
-  } else if (e.key === "Enter") {
-    if (mode.k === "pm") return pmOk();
-    if (lastCmd) {
-      done();
-      lastCmd();
-      renderCommands();
-    }
   }
-});
+}
 
 // ---------- Fare hareketleri (sağ sürükle) ve bağlam menüsü (sağ tık) ----------
 type GItem = { label: string; icon: string; run: () => void };
@@ -3886,13 +3892,15 @@ function openOrientation() {
 // sağ tuş: kısa tık = bağlam menüsü, sürükleme = fare hareketi kılavuzu
 {
   const el = viewer.renderer.domElement;
-  let g: { x: number; y: number; guide: HTMLElement | null; dir: string | null } | null = null;
+  let g: { x: number; y: number; guide: HTMLElement | null; dir: string | null; id: number } | null = null;
   const dirOf = (dx: number, dy: number) => (Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   el.addEventListener("pointerdown", (e) => {
-    if (e.pointerType !== "mouse" || e.button !== 2) return;
+    const penBtn = e.pointerType === "pen" && prefs.penButton && (e.button === 2 || (e.buttons & 2) !== 0);
+    if (!(e.pointerType === "mouse" && e.button === 2) && !penBtn) return;
+    e.stopPropagation();
     closePopups();
-    g = { x: e.clientX, y: e.clientY, guide: null, dir: null };
-    el.setPointerCapture(e.pointerId);
+    g = { x: e.clientX, y: e.clientY, guide: null, dir: null, id: e.pointerId };
+    try { el.setPointerCapture(e.pointerId); } catch {}
   });
   el.addEventListener("pointermove", (e) => {
     if (!g) return;
@@ -3920,7 +3928,7 @@ function openOrientation() {
     }
   });
   el.addEventListener("pointerup", (e) => {
-    if (!g || e.button !== 2) return;
+    if (!g || e.pointerId !== g.id) return;
     const st = g;
     g = null;
     st.guide?.remove();
@@ -3935,6 +3943,292 @@ function openOrientation() {
   });
 }
 viewer.controls.addEventListener("fit", () => fitAll());
+
+// =====================================================================
+// Telefon / tablet: kalem ve parmak kontrolleri
+// =====================================================================
+const sketchDrawing = () => mode.k === "sketch" && mode.editor.tool !== "select";
+viewer.touchDrawOk = () => sketchDrawing();
+// çizim aracı açıkken kalem/parmak sabit tutulabilir (büyüteçle bakmak için): uzun basma menüsü yalnız seçimde
+viewer.longPressOk = () => !sketchDrawing();
+viewer.onLongPress = (x, y) => openContextMenu(x, y);
+viewer.loupeOk = () => mode.k === "sketch" || mode.k === "pm";
+viewer.onFingerTap = (n) => {
+  if (n === 2) undo(), toast("Geri alındı");
+  else if (n >= 3) redo(), toast("İleri alındı");
+};
+
+/** araç listesi (S çubuğu ve dairesel menü ortak) */
+function shortcutItems(): [string, string, () => void][] {
+  return mode.k === "sketch"
+    ? [
+        ["Çizgi", "line", () => beginSketchCommand("line")],
+        ["Daire", "circle", () => beginSketchCommand("circle")],
+        ["Dikdörtgen", "rect", () => beginSketchCommand("rect")],
+        ["Teğet Yay", "tarc", () => beginSketchCommand("tarc")],
+        ["Akıllı Ölçü", "dim", () => beginSketchCommand("dim")],
+        ["Kırp", "trim", () => beginSketchCommand("trim")],
+        ["Ötele", "offset", () => beginSketchCommand("offset")],
+        ["Seç", "select", () => beginSketchCommand("select")],
+      ]
+    : [
+        ["Eskiz", "sketch", () => beginSketchCommand()],
+        ["Ekstrüzyon", "extrude", () => newFeature("extrude")],
+        ["Ekst. Kesme", "cutExtrude", () => newFeature("cutExtrude")],
+        ["Döndürme", "revolve", () => newFeature("revolve")],
+        ["Radyüs", "fillet", () => newFeature("fillet")],
+        ["Pah", "chamfer", () => newFeature("chamfer")],
+        ["Delik", "hole", () => newFeature("hole")],
+        ["Kabuk", "shell", () => newFeature("shell")],
+      ];
+}
+/** dairesel araç menüsü */
+function openRadial(x: number, y: number) {
+  closePopups();
+  const items = shortcutItems();
+  const R = 78;
+  const box = h("div", "sw-popup sw-radial");
+  const cx = Math.max(R + 34, Math.min(innerWidth - R - 34, x)), cy = Math.max(R + 34, Math.min(innerHeight - R - 34, y));
+  box.style.left = cx + "px";
+  box.style.top = cy + "px";
+  items.forEach(([label, ic, run], i) => {
+    const a = -Math.PI / 2 + (i / items.length) * Math.PI * 2;
+    const b = h("button", "sw-rb");
+    b.innerHTML = ICONS[ic] ?? "";
+    b.appendChild(h("span", "", label));
+    b.style.left = R * Math.cos(a) + "px";
+    b.style.top = R * Math.sin(a) + "px";
+    b.addEventListener("click", () => {
+      closePopups();
+      lastCmd = run;
+      run();
+      renderCommands();
+    });
+    box.appendChild(b);
+  });
+  const c = h("button", "sw-rb center", "✕");
+  c.addEventListener("click", () => closePopups());
+  box.appendChild(c);
+  box.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+  document.body.appendChild(box);
+}
+
+// ---------- ekran çubuğu (dokunmatik) ----------
+const actbar = h("div", "actbar");
+document.body.appendChild(actbar);
+function actBarOn() {
+  return prefs.actionBar === "on" || (prefs.actionBar === "auto" && isTouchDevice() && effectiveProfile() !== "mouse");
+}
+function renderActBar() {
+  actbar.innerHTML = "";
+  actbar.hidden = !actBarOn();
+  actbar.classList.toggle("left", prefs.leftHanded);
+  if (actbar.hidden) return;
+  const b = (label: string, title: string, fn: () => void, cls = "") => {
+    const x = h("button", cls, label);
+    x.title = title;
+    x.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      fn();
+      renderActBar();
+    });
+    actbar.appendChild(x);
+    return x;
+  };
+  if (mode.k === "sketch") {
+    const ed = mode.editor;
+    b("✓", ed.isDrawing() ? "Bitir" : "Eskizden çık", () => (ed.isDrawing() ? ed.finishChain() : exitSketch(true)), "ok");
+    b("✕", "İptal / Seç", () => escAction());
+    if (ed.tool === "line") b("A", "Çizgi ↔ teğet yay", () => ed.toggleLineArc(), (ed as any).st?.arc ? "on" : "");
+  } else if (mode.k === "pm") {
+    b("✓", "Tamam", () => pmOk(), "ok");
+    b("✕", "İptal", () => pmCancel());
+  } else b("✕", "Seçimi temizle", () => escAction());
+  b("Ctrl", "Ctrl basılı (çoklu seçim / yakalamayı kapat)", () => {
+    viewer.mods.ctrl = !viewer.mods.ctrl;
+  }, viewer.mods.ctrl ? "on small" : "small");
+  b("↶", "Geri al", () => undo());
+  b("↷", "İleri al", () => redo());
+  b("☰", "Araç menüsü", () => {
+    const r = viewer.renderer.domElement.getBoundingClientRect();
+    openRadial(r.left + r.width / 2, r.top + r.height / 2);
+  });
+  b("⤢", "Ekrana sığdır", () => fitAll());
+}
+setInterval(() => {
+  // mod / araç değişince çubuğu güncelle (ucuz karşılaştırma)
+  const key = [mode.k, mode.k === "sketch" ? mode.editor.tool + mode.editor.isDrawing() + !!(mode.editor as any).st?.arc : "", viewer.mods.ctrl, actBarOn(), prefs.leftHanded].join("|");
+  if (key !== (actbar as any)._k) {
+    (actbar as any)._k = key;
+    renderActBar();
+  }
+}, 250);
+
+// ---------- görünüm küpü ----------
+const cubeBox = h("div", "vcube");
+const cube = h("div", "cube");
+cubeBox.appendChild(cube);
+$("#view").appendChild(cubeBox);
+const faces: [string, string, string][] = [
+  ["front", "Ön", "rotateY(0deg)"],
+  ["back", "Arka", "rotateY(180deg)"],
+  ["right", "Sağ", "rotateY(90deg)"],
+  ["left", "Sol", "rotateY(-90deg)"],
+  ["top", "Üst", "rotateX(90deg)"],
+  ["bottom", "Alt", "rotateX(-90deg)"],
+];
+for (const [v, label, tr] of faces) {
+  const f = h("div", "face", label);
+  f.style.transform = `${tr} translateZ(27px)`;
+  f.addEventListener("click", () => viewer.viewStd(v as any));
+  cube.appendChild(f);
+}
+const isoB = h("button", "iso", "İzo");
+isoB.addEventListener("click", () => viewer.viewStd("iso"));
+cubeBox.appendChild(isoB);
+{
+  // küpü sürükleyerek döndür
+  let d: { x: number; y: number; moved: boolean } | null = null;
+  cube.addEventListener("pointerdown", (e) => {
+    d = { x: e.clientX, y: e.clientY, moved: false };
+    cube.setPointerCapture(e.pointerId);
+  });
+  cube.addEventListener("pointermove", (e) => {
+    if (!d) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    d.moved = true;
+    viewer.controls.rotate(dx * 2, dy * 2);
+    d.x = e.clientX;
+    d.y = e.clientY;
+  });
+  cube.addEventListener("pointerup", () => setTimeout(() => (d = null)));
+  cube.addEventListener("click", (e) => {
+    if (d?.moved) e.stopPropagation();
+  }, true);
+}
+function cubeOn() {
+  return prefs.viewCube === "on" || (prefs.viewCube === "auto" && isTouchDevice() && effectiveProfile() !== "mouse");
+}
+viewer.onRender(() => {
+  cubeBox.hidden = !cubeOn();
+  document.body.classList.toggle("has-cube", !cubeBox.hidden);
+  if (cubeBox.hidden) return;
+  const e = viewer.camera.matrixWorldInverse.elements;
+  const S = [1, -1, 1];
+  const m: number[] = [];
+  for (let c = 0; c < 4; c++)
+    for (let r = 0; r < 4; r++) m.push(r < 3 && c < 3 ? S[r] * e[c * 4 + r] * S[c] : r === c ? 1 : 0);
+  cube.style.transform = `matrix3d(${m.map((v) => v.toFixed(5)).join(",")})`;
+});
+
+// ---------- alt paneli küçült (telefon) ----------
+{
+  const minBtn = h("button", "sheet-min", "▾");
+  minBtn.title = "Paneli küçült / büyüt";
+  minBtn.addEventListener("click", () => $("#side").classList.toggle("min"));
+  $("#pm .pm-head").insertBefore(minBtn, $("#pm-ok"));
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (e.target === viewer.renderer.domElement && prefs.autoMinSheet && e.pointerType !== "mouse" && sketchDrawing() && innerWidth <= 820) $("#side").classList.add("min");
+    },
+    true,
+  );
+}
+
+// ---------- giriş ayarları penceresi ----------
+function openInputSettings() {
+  const dlg = document.createElement("dialog");
+  dlg.className = "input-dialog";
+  const render = () => {
+    dlg.innerHTML = "";
+    dlg.appendChild(h("h2", "", "Kalem ve dokunmatik ayarları"));
+    const eff = effectiveProfile();
+    const det = [detected.pen && "kalem", detected.penHover && "havada imleç", detected.penButton && "yan tuş", detected.touch && "dokunmatik", detected.mouse && "fare"].filter(Boolean).join(", ");
+    dlg.appendChild(h("p", "pm-hint", `Algılanan: ${det || "henüz yok — ekrana kalemle dokunun"} · Kullanılan: ${PROFILE_INFO[eff].name}`));
+    dlg.appendChild(h("h3", "", "Kalem tipi"));
+    for (const k of Object.keys(PROFILE_INFO) as PenProfile[]) {
+      const row = h("label", "prof" + (prefs.profile === k ? " on" : ""));
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "prof";
+      r.checked = prefs.profile === k;
+      r.addEventListener("change", () => (savePrefs({ profile: k }), render()));
+      const t = h("div", "");
+      t.appendChild(h("b", "", PROFILE_INFO[k].name));
+      t.appendChild(h("div", "small", PROFILE_INFO[k].desc));
+      row.append(r, t);
+      dlg.appendChild(row);
+    }
+    dlg.appendChild(h("h3", "", "Çizim"));
+    const chk = (label: string, key: keyof typeof prefs) => {
+      const l = h("label", "pm-check");
+      const c = document.createElement("input");
+      c.type = "checkbox";
+      c.checked = !!prefs[key];
+      c.addEventListener("change", () => (savePrefs({ [key]: c.checked } as any), render()));
+      l.append(c, document.createTextNode(" " + label));
+      dlg.appendChild(l);
+    };
+    const sel = (label: string, key: keyof typeof prefs, opts: [any, string][]) => {
+      const l = h("label", "pm-field");
+      l.appendChild(h("span", "", label));
+      const sl = document.createElement("select");
+      sl.innerHTML = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+      sl.value = String(prefs[key]);
+      sl.addEventListener("change", () => {
+        const o = opts.find(([v]) => String(v) === sl.value)!;
+        savePrefs({ [key]: o[0] } as any);
+        render();
+      });
+      l.appendChild(sl);
+      dlg.appendChild(l);
+    };
+    chk("Dokun–ayarla–kaldırınca yerleştir", "placeOnLift");
+    chk("Büyüteç", "loupe");
+    sel("Büyüteç büyütmesi", "loupeZoom", [[2, "2×"], [2.5, "2,5×"], [3, "3×"], [4, "4×"]]);
+    sel("Yakalama yarıçapı", "snapSize", [[0.7, "Küçük"], [1, "Orta"], [1.4, "Büyük"], [1.8, "Çok büyük"]]);
+    sel("Parmakla çizimde imleç kayması", "cursorOffset", [[0, "Yok"], [50, "Az (50 px)"], [70, "Orta (70 px)"], [100, "Çok (100 px)"]]);
+    chk("Yakalamada kısa titreşim", "haptic");
+    dlg.appendChild(h("h3", "", "Kalem ve parmak hareketleri"));
+    chk("Avuç reddi (kalem yakınken parmak dokunuşlarını yok say)", "palmReject");
+    chk("Kalem yan tuşu = sağ tuş (bağlam menüsü, fare hareketleri)", "penButton");
+    chk("Uzun basma: bağlam menüsü", "longPress");
+    chk("İki parmak dokunuşu geri al, üç parmak ileri al", "fingerUndo");
+    chk("İki parmakla çevirerek yuvarla (3B)", "twistRoll");
+    dlg.appendChild(h("h3", "", "Ekran"));
+    sel("Ekran çubuğu", "actionBar", [["auto", "Otomatik (dokunmatikte)"], ["on", "Açık"], ["off", "Kapalı"]]);
+    sel("Görünüm küpü", "viewCube", [["auto", "Otomatik (dokunmatikte)"], ["on", "Açık"], ["off", "Kapalı"]]);
+    chk("Solak kullanım (çubuk ve büyüteç sol tarafta)", "leftHanded");
+    chk("Çizime başlayınca alt paneli küçült", "autoMinSheet");
+    const bar = h("div", "cut-bar");
+    const reset = h("button", "btn", "Varsayılanlar");
+    reset.addEventListener("click", () => (savePrefs({ ...DEFAULTS }), render()));
+    const close = h("button", "btn primary", "Kapat");
+    close.addEventListener("click", () => dlg.close());
+    bar.append(reset, close);
+    dlg.appendChild(bar);
+  };
+  render();
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+// otomatik profilde kalem ilk algılandığında bilgi ver
+{
+  let told = "";
+  onPrefs(() => {
+    renderActBar();
+    viewer.requestRender();
+    const p = effectiveProfile();
+    if (prefs.profile === "auto" && p !== told && (p === "hover" || p === "active")) {
+      if (told) toast(`Kalem algılandı: ${PROFILE_INFO[p].name}. Ayarlardan değiştirebilirsiniz.`);
+      told = p;
+    }
+  });
+  told = effectiveProfile();
+}
 
 // =====================================================================
 // Başlangıç

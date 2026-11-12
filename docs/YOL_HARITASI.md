@@ -168,4 +168,14 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Çıkarım | Uç / orta / merkez / çeyrek / kesişim / üzerinde yakalama; uyandırılan noktalardan mavi hizalama çizgileri; sarı ilişki çizgileri (yatay, dikey, dik, doğrusal, teğet) ve imleç yanında ilişki simgesi; Ctrl ile çıkarımı kapatma; ızgara yakalama varsayılan kapalı | ✅ |
 | Çizim | Uç noktaya geri dönüp çıkınca çizgi→teğet/normal yay geçişi, A tuşu, tıkla-tıkla ve tıkla-sürükle | ✅ |
 | Seçim | Soldan sağa pencere, sağdan sola kesişen seçim; tık seçimi değiştirir, Ctrl/Shift ekler; ölçüde tek tık seç, çift tık Değiştir kutusu (tekerlek / ↑↓ artım, Shift ×10, Alt ×0,1) | ✅ |
-| Telefon kontrolleri | Kaleme ve parmağa özel ayrı çizim mantığı | ⬜ sıradaki |
+| Telefon kontrolleri | v0.10'da tamamlandı (aşağıda) | ✅ |
+
+## v0.10 — Telefon ve tablet kontrolleri
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Kalem profilleri | Otomatik algılama; aktif kalem (havada imleç + yan tuş), aktif kalem (imleçsiz), basit kapasitif kalem, yalnız parmak, fare — Dosya › Kalem ve dokunmatik ayarları | ✅ |
+| Çizim | Dokun–ayarla–kaldırınca yerleştir, büyüteç (2–4×, yakalama etiketiyle), parmakla çizimde imleç kayması, ayarlanabilir yakalama yarıçapı, yakalamada titreşim | ✅ |
+| Hareketler | Avuç reddi, kalem yan tuşu = sağ tuş (menü / fare hareketleri), uzun basma bağlam menüsü, iki parmak geri al / üç parmak ileri al, iki parmakla çevirerek yuvarlama, çizerken ikinci parmak gelince gezinmeye geçiş | ✅ |
+| Ekran | Sağ kenarda ekran çubuğu (✓ ✕ A Ctrl ↶ ↷ ☰ ⤢), dairesel araç menüsü, görünüm küpü (dokun / sürükle), çizerken alt paneli küçültme, ölçü kutusunda − / + düğmeleri, solak düzeni | ✅ |
+| Montaj | Bileşen ekleme, eşleşmeler, patlatma | ⬜ sıradaki |

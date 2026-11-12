@@ -69,13 +69,14 @@
       <hr />
       <button data-act="wheel">Tekerlek yakınlaştırma yönünü ters çevir</button>
       <button data-act="keys">Klavye ve fare kısayolları…</button>
+      <button data-act="input">Kalem ve dokunmatik ayarları…</button>
     </div>
     <input type="file" id="file-input" accept=".icad,.json,application/json" hidden />
 
     <div id="toast" hidden></div>
 
     <dialog id="help">
-      <h2>İmaj CAD — v0.9</h2>
+      <h2>İmaj CAD — v0.10</h2>
       <h3>Çalışma mantığı (SolidWorks gibi)</h3>
       <ol>
         <li><b>Eskiz</b>: Bir düzleme (Ön / Üst / Sağ) veya katının düz bir yüzüne dokunun, sonra <b>Eskiz</b>'e basın. Ya da önce Eskiz'e basıp düzlemi seçin.</li>
@@ -85,7 +86,7 @@
         <li>Ağaçtaki bir adıma dokunup <b>Düzenle</b> veya <b>Eskizi düzenle</b> ile geri dönebilirsiniz.</li>
       </ol>
       <h3>Kalem, parmak ve fare</h3>
-      <p><b>Kalem / sol tık:</b> seçer ve çizer (tıkla-tıkla veya sürükle). <b>Tek parmak:</b> modeli döndürür (eskizde kaydırır). <b>İki parmak:</b> kaydırır ve yakınlaştırır. Parmakla dokunmak da seçim yapar.<br />
+      <p><b>Telefon / tablet:</b> Dosya › <i>Kalem ve dokunmatik ayarları</i> menüsünden kalem tipinizi seçin (otomatik algılanır). Kalem çizer ve seçer; parmak görünümü yönetir (tek parmak döndürür, iki parmak kaydırır / yakınlaştırır / çevirir). Basit kalem veya parmakla çizimde tek dokunuş çizer, iki parmak gezinir. Dokunup kaydırarak noktayı ayarlayın, kaldırınca yerleşir; büyüteç yakalamayı gösterir. İki parmak dokunuşu geri alır, üç parmak ileri alır; uzun basma bağlam menüsünü açar; kalem yan tuşu sağ tuş gibidir. Sağdaki çubukta ✓ / ✕ / A / Ctrl / geri / ileri / araç menüsü / sığdır, sol üstte görünüm küpü vardır.<br />
       <b>Fare (SolidWorks ile aynı):</b> orta tuş döndürür, Ctrl+orta kaydırır, Shift+orta yakınlaştırır, Alt+orta yuvarlar, orta tuşa çift tık ekrana sığdırır. Tekerlek imleçte yakınlaştırır (ileri = uzaklaş). Sağ tık bağlam menüsü, sağ tuşla sürükleme fare hareketleri (eskizde ↑ Akıllı Ölçü, → Daire, ↓ Dikdörtgen, ← Çizgi; parçada görünüm yönleri).</p>
       <h3>Klavye (SolidWorks varsayılanları)</h3>
       <p class="small">Ctrl+1…8 Ön/Arka/Sol/Sağ/Üst/Alt/İzometrik/Normal · Boşluk görünüm yönü · F sığdır · Z / Shift+Z uzaklaş / yakınlaş · oklar 15° döndür, Shift+oklar 90°, Alt+←/→ yuvarla, Ctrl+oklar kaydır · Ctrl+Shift+Z önceki görünüm · S kısayol çubuğu · Enter son komutu tekrarla · A çizgi↔teğet yay · Ctrl+B / Ctrl+Q yeniden oluştur · Ctrl+S kaydet · Ctrl+O aç · Ctrl+N yeni · Ctrl+Z / Ctrl+Y geri / ileri · Ctrl+A tümünü seç · Ctrl+C / Ctrl+V kopyala / yapıştır · Delete sil · Esc iptal.<br />

@@ -4,12 +4,13 @@
 // orta tuşa çift tıklama ekrana sığdırır. Sağ tuş hareket kılavuzu / bağlam menüsü içindir.
 // Parmak: tek parmak döndürür (eskizde kaydırır), iki parmak kaydırır + yakınlaştırır.
 import * as THREE from "three";
+import { prefs } from "./input/prefs";
 
 export class NavControls extends EventTarget {
   target = new THREE.Vector3();
   oneFingerRotate = true;
   private pointers = new Map<number, { x: number; y: number; type: string; button: number }>();
-  private pinch: { d: number; mx: number; my: number } | null = null;
+  private pinch: { d: number; mx: number; my: number; a: number } | null = null;
 
   constructor(private camera: THREE.OrthographicCamera, private el: HTMLElement) {
     super();
@@ -35,7 +36,17 @@ export class NavControls extends EventTarget {
   private lastMid = 0;
   private midMoved = false;
 
+  /** dışarıdan parmak ekle (çizim iptal edilip gezinmeye geçerken) */
+  inject(e: { pointerId: number; clientX: number; clientY: number }) {
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: "touch", button: 0 });
+    try {
+      this.el.setPointerCapture(e.pointerId);
+    } catch {}
+    if (this.touchCount() === 2) this.pinch = this.pinchState();
+  }
+
   private down(e: PointerEvent) {
+    if (e.pointerType === "pen") return; // kalem çizim içindir
     if (e.pointerType === "mouse" && e.button !== 1) return;
     if (e.pointerType === "mouse") {
       e.preventDefault();
@@ -44,7 +55,7 @@ export class NavControls extends EventTarget {
       this.lastMid = now;
       this.midMoved = false;
     }
-    this.el.setPointerCapture(e.pointerId);
+    try { this.el.setPointerCapture(e.pointerId); } catch {}
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
     if (this.touchCount() === 2) this.pinch = this.pinchState();
   }
@@ -56,7 +67,7 @@ export class NavControls extends EventTarget {
   }
   private pinchState() {
     const ps = [...this.pointers.values()].filter((p) => p.type === "touch");
-    return { d: Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y), mx: (ps[0].x + ps[1].x) / 2, my: (ps[0].y + ps[1].y) / 2 };
+    return { d: Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y), mx: (ps[0].x + ps[1].x) / 2, my: (ps[0].y + ps[1].y) / 2, a: Math.atan2(ps[1].y - ps[0].y, ps[1].x - ps[0].x) };
   }
 
   private move(e: PointerEvent) {
@@ -74,6 +85,12 @@ export class NavControls extends EventTarget {
         const s = this.pinchState();
         this.pan(s.mx - this.pinch.mx, s.my - this.pinch.my);
         if (this.pinch.d > 0 && s.d > 0) this.zoomAt(s.d / this.pinch.d, s.mx, s.my);
+        if (this.oneFingerRotate && prefs.twistRoll && s.d > 80) {
+          let da = s.a - this.pinch.a;
+          if (da > Math.PI) da -= 2 * Math.PI;
+          if (da < -Math.PI) da += 2 * Math.PI;
+          if (Math.abs(da) < 0.3) this.roll((-da * 180) / Math.PI);
+        }
         this.pinch = s;
       }
       return;

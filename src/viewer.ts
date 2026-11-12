@@ -6,6 +6,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { Frame, MeshData, Vec3 } from "./doc/types";
 import { frameY } from "./doc/math";
+import { prefs, observe, touchDraws, touchOffset } from "./input/prefs";
 
 export type PickHit =
   | { kind: "face"; index: number; point: Vec3 }
@@ -21,6 +22,8 @@ export interface InputHandler {
   hover?(e: PointerEvent): void; // basılı değilken (kalem/fare)
   /** dokunmatik kısa dokunuş */
   tap?(e: PointerEvent): void;
+  /** basış iptal (ikinci parmak geldi / uzun basma menüsü açıldı) */
+  cancel?(): void;
 }
 
 const COL = {
@@ -114,61 +117,292 @@ export class Viewer {
   }
 
   // ---------- Giriş: kalem/fare araç içindir, parmak gezinme içindir ----------
+  /** ekrandaki Ctrl / Shift düğmeleri (yapışkan) */
+  readonly mods = { ctrl: false, shift: false };
+  /** tek parmak çizebilir mi (eskizde çizim aracı açıkken) */
+  touchDrawOk: (() => boolean) | null = null;
+  /** uzun basma menüsüne izin (çizim sırasında kalem sabit tutulabilir) */
+  longPressOk: ((pointerType: string) => boolean) | null = null;
+  onLongPress: ((x: number, y: number, pointerType: string) => void) | null = null;
+  /** çok parmak dokunuşu (2: geri al, 3: ileri al) */
+  onFingerTap: ((n: number) => void) | null = null;
+  /** büyüteç gösterilsin mi */
+  loupeOk: (() => boolean) | null = null;
+  /** çizim işaretçisinin (kalem/parmak) etkin konumu */
+  private drawPt: { x: number; y: number; type: string } | null = null;
+  private lastPen = 0;
+
+  /** olayı kaydırma ve ekran değiştiricileriyle sar */
+  private wrap(e: PointerEvent, dy = 0): PointerEvent {
+    const m = this.mods;
+    if (!dy && !m.ctrl && !m.shift) return e;
+    return new Proxy(e, {
+      get: (t, k) => {
+        if (k === "clientY") return t.clientY - dy;
+        if (k === "ctrlKey") return t.ctrlKey || m.ctrl;
+        if (k === "shiftKey") return t.shiftKey || m.shift;
+        const v = Reflect.get(t, k, t);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+  }
+
   private setupInput() {
     const el = this.container;
     const canvas = this.renderer.domElement;
     let active: number | null = null;
+    let activeType = "";
+    let activeDy = 0;
     const touches = new Map<number, { x: number; y: number; t: number; moved: boolean }>();
     let multi = false;
+    let gesture: { max: number; t: number; moved: boolean } | null = null;
+    /** parmakla çizim (tek dokunuş araç olarak) */
+    let drawTouch: { id: number; t: number; moved: boolean; x: number; y: number } | null = null;
+    const blocked = new Set<number>();
+    let lp: { timer: number; x: number; y: number; id: number; fired: boolean } | null = null;
+    const clearLp = () => {
+      if (lp) clearTimeout(lp.timer);
+      lp = null;
+    };
+    const startLp = (e: PointerEvent) => {
+      clearLp();
+      if (!prefs.longPress || !this.onLongPress) return;
+      if (this.longPressOk && !this.longPressOk(e.pointerType)) return;
+      const x = e.clientX, y = e.clientY, type = e.pointerType;
+      const st = { timer: 0, x, y, id: e.pointerId, fired: false };
+      st.timer = window.setTimeout(() => {
+        if (lp !== st) return;
+        st.fired = true;
+        navigator.vibrate?.(15);
+        this.handler?.cancel?.();
+        this.setDrawPt(null);
+        this.onLongPress?.(x, y, type);
+      }, 600);
+      lp = st;
+    };
+    const lpMove = (e: PointerEvent) => {
+      if (lp && lp.id === e.pointerId && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 9 && !lp.fired) clearLp();
+    };
+    const penRecent = () => prefs.palmReject && performance.now() - this.lastPen < 450;
 
     el.addEventListener(
       "pointerdown",
       (e) => {
+        observe(e);
         if (e.target !== canvas) return;
+        if (e.pointerType === "pen") this.lastPen = performance.now();
         if (e.pointerType === "touch") {
+          if (penRecent() || blocked.size) {
+            // avuç reddi: kalem kullanılırken parmak/avuç dokunuşları yok sayılır
+            blocked.add(e.pointerId);
+            e.stopPropagation();
+            return;
+          }
+          if (drawTouch) {
+            if (!drawTouch.moved || performance.now() - drawTouch.t < 300) {
+              // ikinci parmak: çizimi bırak, gezinmeye geç
+              this.handler?.cancel?.();
+              this.setDrawPt(null);
+              clearLp();
+              this.controls.inject({ pointerId: drawTouch.id, clientX: drawTouch.x, clientY: drawTouch.y });
+              touches.set(drawTouch.id, { x: drawTouch.x, y: drawTouch.y, t: drawTouch.t, moved: true });
+              active = null;
+              drawTouch = null;
+              multi = true;
+            } else {
+              blocked.add(e.pointerId);
+              e.stopPropagation();
+              return;
+            }
+          }
+          if (!touches.size) gesture = { max: 0, t: performance.now(), moved: false };
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), moved: false });
-          if (touches.size > 1) multi = true;
-          return; // OrbitControls'a bırak
+          if (gesture) gesture.max = Math.max(gesture.max, touches.size);
+          if (touches.size > 1) {
+            multi = true;
+            clearLp();
+            return;
+          }
+          if (touchDraws() && this.touchDrawOk?.()) {
+            // tek parmak araç olarak çizer
+            e.stopPropagation();
+            touches.delete(e.pointerId);
+            drawTouch = { id: e.pointerId, t: performance.now(), moved: false, x: e.clientX, y: e.clientY };
+            active = e.pointerId;
+            activeType = "touch";
+            activeDy = touchOffset();
+            try { canvas.setPointerCapture(e.pointerId); } catch {}
+            const w = this.wrap(e, activeDy);
+            this.setDrawPt(w);
+            this.handler?.down?.(w);
+            startLp(e);
+            return;
+          }
+          startLp(e);
+          return; // gezinmeye bırak
         }
-        if (e.button !== 0) return; // orta/sağ tuş: gezinme
+        if (e.button !== 0 || (e.pointerType === "pen" && (e.buttons & 2) !== 0)) return; // orta/sağ tuş, kalem yan tuşu: gezinme / menü
         e.stopPropagation();
         active = e.pointerId;
-        canvas.setPointerCapture(e.pointerId);
-        this.handler?.down?.(e);
+        activeType = e.pointerType;
+        activeDy = 0;
+        try { canvas.setPointerCapture(e.pointerId); } catch {}
+        const w = this.wrap(e);
+        if (e.pointerType === "pen") {
+          this.setDrawPt(w);
+          startLp(e);
+        }
+        this.handler?.down?.(w);
       },
       true,
     );
     el.addEventListener(
       "pointermove",
       (e) => {
+        observe(e);
+        if (e.pointerType === "pen") this.lastPen = performance.now();
+        lpMove(e);
         if (e.pointerType === "touch") {
+          if (blocked.has(e.pointerId)) return void e.stopPropagation();
+          if (drawTouch && drawTouch.id === e.pointerId) {
+            e.stopPropagation();
+            if (Math.hypot(e.clientX - drawTouch.x, e.clientY - drawTouch.y) > 8) drawTouch.moved = true;
+            drawTouch.x = e.clientX;
+            drawTouch.y = e.clientY;
+            if (lp?.fired) return;
+            const w = this.wrap(e, activeDy);
+            this.setDrawPt(w);
+            this.handler?.move?.(w);
+            return;
+          }
           const t = touches.get(e.pointerId);
-          if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) t.moved = true;
+          if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) {
+            t.moved = true;
+            if (gesture) gesture.moved = true;
+          }
           return;
         }
         if (active === e.pointerId) {
           e.stopPropagation();
-          this.handler?.move?.(e);
-        } else if (e.buttons === 0 && e.target === canvas) this.handler?.hover?.(e);
+          if (lp?.fired) return;
+          const w = this.wrap(e, activeDy);
+          if (activeType === "pen") this.setDrawPt(w);
+          this.handler?.move?.(w);
+        } else if (e.buttons === 0 && e.target === canvas) this.handler?.hover?.(this.wrap(e));
       },
       true,
     );
     const end = (e: PointerEvent, cancel = false) => {
+      if (e.pointerType === "pen") this.lastPen = performance.now();
+      const fired = !!(lp && lp.id === e.pointerId && lp.fired);
+      if (lp && lp.id === e.pointerId) clearLp();
       if (e.pointerType === "touch") {
+        if (blocked.delete(e.pointerId)) return void e.stopPropagation();
+        if (drawTouch && drawTouch.id === e.pointerId) {
+          e.stopPropagation();
+          drawTouch = null;
+          active = null;
+          this.setDrawPt(null);
+          if (!cancel && !fired) this.handler?.up?.(this.wrap(e, activeDy));
+          return;
+        }
         const t = touches.get(e.pointerId);
         touches.delete(e.pointerId);
-        if (!cancel && t && !t.moved && !multi && performance.now() - t.t < 450) this.handler?.tap?.(e);
-        if (touches.size === 0) multi = false;
+        if (!cancel && !fired && t && !t.moved && !multi && performance.now() - t.t < 450) this.handler?.tap?.(e);
+        if (touches.size === 0) {
+          multi = false;
+          const g = gesture;
+          gesture = null;
+          if (!cancel && g && g.max >= 2 && !g.moved && performance.now() - g.t < 400 && prefs.fingerUndo) this.onFingerTap?.(g.max);
+        }
         return;
       }
       if (active === e.pointerId) {
         active = null;
         e.stopPropagation();
-        if (!cancel) this.handler?.up?.(e);
+        this.setDrawPt(null);
+        if (!cancel && !fired) this.handler?.up?.(this.wrap(e, activeDy));
       }
     };
     el.addEventListener("pointerup", (e) => end(e), true);
     el.addEventListener("pointercancel", (e) => end(e, true), true);
+    this.setupLoupe();
+  }
+
+  // ---------- Büyüteç ve kaydırılmış imleç ----------
+  private loupe: HTMLCanvasElement | null = null;
+  private tcursor: HTMLDivElement | null = null;
+  private setDrawPt(e: { clientX: number; clientY: number; pointerType: string } | null) {
+    this.drawPt = e ? { x: e.clientX, y: e.clientY, type: e.pointerType } : null;
+    if (!e) {
+      if (this.loupe) this.loupe.style.display = "none";
+      if (this.tcursor) this.tcursor.style.display = "none";
+      return;
+    }
+    this.requestRender();
+  }
+  private setupLoupe() {
+    const lc = document.createElement("canvas");
+    lc.className = "loupe";
+    lc.width = lc.height = 150 * Math.min(2, devicePixelRatio || 1);
+    document.body.appendChild(lc);
+    this.loupe = lc;
+    const tc = document.createElement("div");
+    tc.className = "touch-cursor";
+    document.body.appendChild(tc);
+    this.tcursor = tc;
+    this.onRender(() => this.drawLoupe());
+  }
+  private drawLoupe() {
+    const d = this.drawPt, lc = this.loupe!, tc = this.tcursor!;
+    if (!d) return;
+    const off = d.type === "touch" && touchOffset() > 0;
+    tc.style.display = off ? "block" : "none";
+    if (off) {
+      tc.style.left = d.x + "px";
+      tc.style.top = d.y + "px";
+    }
+    if (!prefs.loupe || (this.loupeOk && !this.loupeOk())) return void (lc.style.display = "none");
+    const src = this.renderer.domElement;
+    const r = src.getBoundingClientRect();
+    const sx = src.width / r.width;
+    const size = 150, zoom = prefs.loupeZoom;
+    const sw = (size / zoom) * sx;
+    const cx = (d.x - r.left) * sx, cy = (d.y - r.top) * sx;
+    const g = lc.getContext("2d")!;
+    const k = lc.width / size;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = "#f3f5f8";
+    g.fillRect(0, 0, lc.width, lc.height);
+    try {
+      g.drawImage(src, cx - sw / 2, cy - sw / 2, sw, sw, 0, 0, lc.width, lc.height);
+    } catch {}
+    g.setTransform(k, 0, 0, k, 0, 0);
+    g.strokeStyle = "rgba(224,49,49,.9)";
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(size / 2 - 12, size / 2);
+    g.lineTo(size / 2 + 12, size / 2);
+    g.moveTo(size / 2, size / 2 - 12);
+    g.lineTo(size / 2, size / 2 + 12);
+    g.stroke();
+    const b = document.querySelector(".sk-badge") as HTMLElement | null;
+    const txt = b && b.style.display !== "none" ? b.textContent || "" : "";
+    if (txt) {
+      g.font = "600 12px system-ui, sans-serif";
+      const w = g.measureText(txt).width + 10;
+      g.fillStyle = "rgba(255,249,219,.95)";
+      g.fillRect(size / 2 - w / 2, size - 24, w, 18);
+      g.fillStyle = "#222";
+      g.fillText(txt, size / 2 - w / 2 + 5, size - 11);
+    }
+    // konum: el tarafının tersine, yukarıda
+    const left = prefs.leftHanded ? d.x + 40 : d.x - size - 40;
+    let top = d.y - size - (off ? 40 : 70);
+    if (top < 60) top = d.y + 60;
+    lc.style.left = Math.max(4, Math.min(innerWidth - size - 4, left)) + "px";
+    lc.style.top = Math.max(4, top) + "px";
+    lc.style.display = "block";
   }
 
   /** Eskiz modunda tek parmak kaydırır, 3D modunda döndürür */

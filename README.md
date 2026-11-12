@@ -6,6 +6,13 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 
 **Canlı sürüm:** https://aliyldz01.github.io/imaj-cad/
 
+## v0.10 — Telefon ve tablet kontrolleri
+
+- **Kalem profilleri:** otomatik algılama; S Pen / Apple Pencil gibi havada imleç gösteren kalemler, imleçsiz aktif kalemler, basit kapasitif kalem ve yalnız parmak için ayrı davranış (Dosya › Kalem ve dokunmatik ayarları)
+- **Hassas çizim:** dokun–ayarla–kaldırınca yerleştir, büyüteç, parmakla çizimde imleç kayması, yakalamada titreşim
+- **Hareketler:** avuç reddi, kalem yan tuşu = sağ tuş, uzun basma menüsü, iki/üç parmak dokunuşu geri/ileri al, iki parmakla yuvarlama
+- **Ekran:** ekran çubuğu, dairesel araç menüsü, görünüm küpü, küçültülebilir alt panel, solak düzeni
+
 ## v0.9 — Bilgisayarda SolidWorks ile aynı kullanım
 
 - **Fare ve klavye:** SolidWorks varsayılan fare tuşları, tekerlek yönü, fare hareketleri, bağlam menüsü ve kısayollar (Ctrl+1…8, Boşluk, F, Z, S, Enter, A, Ctrl+B …)

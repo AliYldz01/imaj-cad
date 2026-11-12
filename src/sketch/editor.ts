@@ -7,6 +7,7 @@ import { evalNum, fmtNum, toLocal, toWorld, dot, sub } from "../doc/math";
 import type { InputHandler, Viewer } from "../viewer";
 import { solve, analyze, type SolveResult } from "./solver";
 import { pictureMesh } from "./picture";
+import { prefs } from "../input/prefs";
 import { offsetEnts, mirrorEnts, linearPattern, circularPattern, moveEnts, centroid } from "./ops";
 import {
   P, addArc, addCircle, addLine, addPointEnt, addPt, addRel, applicableRelations, arcAngles, cleanup, deleteIds,
@@ -710,14 +711,36 @@ export class SketchEditor implements InputHandler {
   down = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p) return;
-    this.tolPx = e.pointerType === "touch" ? 20 : e.pointerType === "pen" ? 12 : 10;
+    this.tolPx = (e.pointerType === "touch" ? 20 : e.pointerType === "pen" ? 12 : 10) * prefs.snapSize;
     this.press = { x: e.clientX, y: e.clientY, local: p, hit: this.hitTest(p), moved: false };
     this.mods = { add: e.ctrlKey || e.shiftKey || e.metaKey, mouse: e.pointerType === "mouse" };
     this.noInfer = e.ctrlKey && this.tool !== "select";
+    this.lift = this.liftMode(e);
+    if (this.lift) this.preview(p, e);
+  };
+  /** kaldırınca yerleştir: kalem/parmakla çizim araçlarında */
+  private lift = false;
+  private liftMode(e: { pointerType: string }) {
+    return e.pointerType !== "mouse" && prefs.placeOnLift && this.tool !== "select" && this.tool !== "dim";
+  }
+  /** basış iptal (ikinci parmak / uzun basma) */
+  cancel = () => {
+    this.press = null;
+    this.lift = false;
+    if (this.boxSel) {
+      this.boxSel.el.remove();
+      this.boxSel = null;
+    }
+    this.hideBadge();
+    this.render();
   };
   move = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p || !this.press) return;
+    if (this.lift) {
+      this.press.moved = true;
+      return this.preview(p, e);
+    }
     if (!this.press.moved && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 7) {
       this.press.moved = true;
       if (this.tool === "select" && (!this.press.hit || this.press.hit.id === ORIGIN) && e.pointerType !== "touch") this.startBox(this.press.x, this.press.y);
@@ -736,6 +759,12 @@ export class SketchEditor implements InputHandler {
     this.press = null;
     if (this.boxSel) return this.endBox();
     if (!p || !d) return;
+    if (this.lift) {
+      this.lift = false;
+      this.preview(p, e);
+      this.hideBadge();
+      return this.click(p, e);
+    }
     if (this.tool === "select" && d.moved) return this.endDrag();
     if (d.moved && !this.dragCreates()) return;
     this.click(p, e);
@@ -743,13 +772,13 @@ export class SketchEditor implements InputHandler {
   hover = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p) return;
-    this.tolPx = e.pointerType === "pen" ? 12 : 10;
+    this.tolPx = (e.pointerType === "pen" ? 12 : 10) * prefs.snapSize;
     this.preview(p, e);
   };
   tap = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p) return;
-    this.tolPx = 20;
+    this.tolPx = 20 * prefs.snapSize;
     this.preview(p, e);
     this.click(p, e);
   };
@@ -790,7 +819,9 @@ export class SketchEditor implements InputHandler {
     if (!this.noInfer) this.trackWake(p);
     const lineLike = t === "line" || t === "centerline" || ((t === "slot" || t === "cslot" || t === "rect3" || t === "para") && !this.st.bPos);
     const inf = this.infer(p, lineLike ? from : null);
+    const prevLabel = (this.st.inf as Inference | undefined)?.label;
     this.st.inf = inf;
+    if (inf.label && inf.label !== prevLabel && (e as any).pointerType && (e as any).pointerType !== "mouse" && prefs.haptic) navigator.vibrate?.(6);
     this.render();
     const text = this.liveText(inf.p);
     if (inf.glyph || inf.label || text) this.showBadge(e.clientX, e.clientY, [inf.glyph, text || inf.label].filter(Boolean).join("  "), inf.label);
@@ -2595,7 +2626,7 @@ export class SketchEditor implements InputHandler {
     document.querySelector(".dim-prompt")?.remove();
     const box = document.createElement("div");
     box.className = "dim-prompt";
-    box.innerHTML = `<input inputmode="decimal" autocomplete="off" /><span>${unit}</span><button class="ok" aria-label="Tamam">✓</button><button class="no" aria-label="İptal">✕</button>`;
+    box.innerHTML = `<button class="dec" aria-label="Azalt">−</button><input inputmode="decimal" autocomplete="off" /><button class="inc" aria-label="Artır">+</button><span>${unit}</span><button class="ok" aria-label="Tamam">✓</button><button class="no" aria-label="İptal">✕</button>`;
     const inp = box.querySelector("input")!;
     inp.value = fmtNum(cur, 3);
     document.body.appendChild(box);
@@ -2626,6 +2657,8 @@ export class SketchEditor implements InputHandler {
       inp.value = fmtNum(Math.round((v + dir * step) * 1e6) / 1e6, 3);
       inp.classList.remove("bad");
     };
+    box.querySelector(".dec")!.addEventListener("click", () => bump(-1, { shiftKey: false, altKey: false }));
+    box.querySelector(".inc")!.addEventListener("click", () => bump(1, { shiftKey: false, altKey: false }));
     inp.addEventListener("wheel", (ev) => {
       ev.preventDefault();
       bump(ev.deltaY < 0 ? 1 : -1, ev);
