@@ -21,6 +21,11 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - **Token tasarrufu iste**: dosyaları gereksiz okuma, kısa yanıt ver, hedefli `grep`/`sed -n` kullan.
 - Uygulama telefonda bile kalemle kullanılıyor; kullanıcının şu an kalemi **yanında değil** (bkz. §8 bekleyenler).
 - Yanıtı bitirirken: ne yapıldı (kısa), canlı sürüm, sıradaki adım.
+- **KAYIT KURALI (her değişiklikte zorunlu):** Kod değişikliğiyle aynı commit'te kayıt dosyalarını güncelle:
+  - `CLAUDE.md` → §3 dosya haritası (yeni dosya/modül), §4 durum (yeni sürüm satırı), §5 sıradaki işler (biten işi çıkar, yeni işleri ekle), §8 bekleyenler, `sw.js`/sürüm numaraları.
+  - `docs/YOL_HARITASI.md` → sürüm tablosu (özellik + ✅/⬜).
+  - `README.md` → kısa sürüm notu.
+  - Yeni testleri `tests/e2e/` içine koy ve §6'ya ekle.
 
 ## 3. Teknoloji ve mimari
 
