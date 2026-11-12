@@ -1,7 +1,7 @@
 // Belge özelliklerini çekirdeğin anlayacağı çözülmüş tanımlara çevirir.
 import type { Feature, Frame, KFeature, KPlane, Loop, PlaneRef, SketchFeature, Vec3 } from "./types";
 import { AXES, STD_FRAMES, offsetFrame } from "./math";
-import { extractLoops, extractPath, extractChains, pointPos, thinRegion } from "../sketch/profile";
+import { extractLoops, extractPath, extractChains, pointPos, thinRegion, segPoints } from "../sketch/profile";
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
 import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } from "../weld/profiles";
 import type { MemberItem, Sketch3DFeature } from "./types";
@@ -55,13 +55,85 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
       switch (f.type) {
         case "sketch3d":
           break;
+        case "combine":
+          if (!f.main || !f.tools.length) throw new Error("Ana gövdeyi ve araç gövde(ler)ini seçin");
+          kfeats.push({ id: f.id, type: "combine", op: f.op, main: f.main, tools: f.tools });
+          break;
+        case "splitbody": {
+          if (!f.body) throw new Error("Bölünecek gövdeyi seçin");
+          const frame = resolveFrame(f.plane, feats);
+          if (!frame) throw new Error("Bölme düzlemi bulunamadı");
+          kfeats.push({ id: f.id, type: "splitbody", body: f.body, frame });
+          break;
+        }
+        case "movebody":
+          if (!f.body) throw new Error("Taşınacak gövdeyi seçin");
+          kfeats.push({ id: f.id, type: "movebody", body: f.body, copy: f.copy, d: f.d, axis: AXES[f.axis], angle: f.angle });
+          break;
+        case "delbody":
+          if (!f.bodies.length) throw new Error("Gövde seçin");
+          kfeats.push({ id: f.id, type: "delbody", bodies: f.bodies, keep: f.keep });
+          break;
+        case "indent":
+          if (!f.target || !f.tool) throw new Error("Hedef gövdeyi ve girinti aracını seçin");
+          kfeats.push({ id: f.id, type: "indent", target: f.target, tool: f.tool, clearance: f.clearance, keepTool: f.keepTool });
+          break;
+        case "spattern": {
+          if (!f.feats.length) throw new Error("Çoğaltılacak özelliği seçin");
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Nokta eskizini seçin");
+          const fr = resolveFrame(sk.plane, feats);
+          if (!fr) throw new Error("Eskiz düzlemi bulunamadı");
+          let ids = sk.data.ents.filter((e) => e.t === "point").map((e) => (e as any).p as string);
+          if (!ids.length) ids = [...new Set(sk.data.ents.filter((e) => e.t === "line" && !e.cons).flatMap((e: any) => [e.p1, e.p2]))];
+          if (!ids.length) throw new Error(`${sk.name}: eskizde nokta yok`);
+          kfeats.push({ id: f.id, type: "spattern", feats: f.feats, pts: ids.map((id) => toWorld(fr, pointPos(sk.data, id))), n: fr.n });
+          break;
+        }
+        case "tpattern":
+          if (!f.feats.length) throw new Error("Çoğaltılacak özelliği seçin");
+          kfeats.push({ id: f.id, type: "tpattern", feats: f.feats, rows: f.rows });
+          break;
+        case "cvpattern": {
+          if (!f.feats.length) throw new Error("Çoğaltılacak özelliği seçin");
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Eğri eskizini seçin");
+          const fr = resolveFrame(sk.plane, feats);
+          if (!fr) throw new Error("Eskiz düzlemi bulunamadı");
+          const path = extractPath(sk.data);
+          if (path.error) throw new Error(`${sk.name}: ${path.error}`);
+          const pts: Vec3[] = [];
+          path.segs.forEach((sg, i) => segPoints(sg, 24).slice(i ? 1 : 0).forEach((q) => pts.push(toWorld(fr, q))));
+          kfeats.push({ id: f.id, type: "cvpattern", feats: f.feats, path: pts, n: fr.n, count: f.count, spacing: f.spacing, equal: f.equal, align: f.align });
+          break;
+        }
+        case "fpattern":
+          if (!f.feats.length) throw new Error("Çoğaltılacak özelliği seçin");
+          if (!f.face) throw new Error("Doldurulacak düz yüzü seçin");
+          if (!(f.spacing > 0)) throw new Error("Aralık sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "fpattern", feats: f.feats, face: f.face, spacing: f.spacing, layout: f.layout, margin: f.margin, angle: f.angle });
+          break;
+        case "thread":
+          if (!f.face) throw new Error("Diş açılacak silindirik yüzü seçin");
+          if (!(f.pitch > 0)) throw new Error("Hatve sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "thread", face: f.face, pitch: f.pitch, length: f.length, left: f.left, fromEnd: f.fromEnd });
+          break;
+        case "flex":
+          if (!f.body) throw new Error("Esnetilecek gövdeyi seçin");
+          kfeats.push({ id: f.id, type: "flex", body: f.body, mode: f.mode, axis: AXES[f.axis], value: f.value, dir: AXES[f.dir] });
+          break;
+        case "vchamfer":
+          if (!f.v) throw new Error("Köşeyi seçin (kenarın ucuna yakın dokunun)");
+          if (!(f.d > 0)) throw new Error("Mesafe sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "vchamfer", v: f.v, d: f.d });
+          break;
         case "sketch":
         case "plane":
           if (!resolveFrame(f.type === "sketch" ? f.plane : f.base, feats)) throw new Error("Düzlem referansı bulunamadı");
           break;
         case "extrude": {
           const pr = f.thin ? { ...thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one"), texts: [] } : profileOf(f.sketch);
-          kfeats.push({ id: f.id, type: "extrude", cut: f.cut, pl: pr.pl, loops: pr.loops, texts: pr.texts, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut, twist: f.twist, merge: f.merge });
+          kfeats.push({ id: f.id, type: "extrude", startOff: f.startOff, cut: f.cut, pl: pr.pl, loops: pr.loops, texts: pr.texts, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut, twist: f.twist, merge: f.merge });
           break;
         }
         case "revolve": {
@@ -372,6 +444,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
       ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId) ||
-      (f.type === "member" && (f.segs.some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))),
+      (f.type === "member" && (f.segs.some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
+      ((f.type === "spattern" || f.type === "cvpattern") && f.sketch === sketchId),
   );
 }

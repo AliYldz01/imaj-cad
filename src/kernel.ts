@@ -60,6 +60,12 @@ export class Kernel {
     return { items: r.items, welds: r.welds ?? [] };
   }
 
+  async interfere(): Promise<{ a: number; b: number; vol: number }[]> {
+    await this.ready;
+    const r = await this.request<{ pairs: { a: number; b: number; vol: number }[] }>({ type: "interfere" } as any);
+    return r.pairs;
+  }
+
   async drawing(body: number): Promise<DrawData> {
     await this.ready;
     return this.request<DrawData>({ type: "drawing", body } as any);

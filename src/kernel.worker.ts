@@ -6,7 +6,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
@@ -246,7 +246,8 @@ function touching(pieces: Shape[], ref: Shape) {
 }
 
 function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false): Shape {
-  const frame = resolvePlane(f.pl);
+  const frame0 = resolvePlane(f.pl);
+  const frame = f.startOff ? { ...frame0, o: vadd(frame0.o, vmul(frame0.n, f.startOff)) } : frame0;
   const sign = (f.rev ? -1 : 1) * (f.cut ? -1 : 1) * (flipped ? -1 : 1);
   const through = bodySize();
   const sk = (shift: number) => profile(f.loops, f.texts).sketchOnPlane(makePlane(frame, shift));
@@ -533,6 +534,361 @@ function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number }
     }
   if (!best) throw new Error("Seçili yüzde paralel iki kenar bulunamadı");
   return { edges: new Set([best.a.hashCode, best.b.hashCode]), r: (best.d / 2) * 0.995 };
+}
+
+// ---------- Gövde işlemleri ----------
+
+/** Yüz referansının ait olduğu gövde sırası */
+function bodyIdxOf(ref: FaceRef): number {
+  const h = [...matchFaces([ref])][0];
+  const i = h === undefined ? -1 : bodies.findIndex((b) => (b.faces as any[]).some((x) => x.hashCode === h));
+  if (i < 0) throw new Error("Seçili gövde modelde bulunamadı");
+  return i;
+}
+
+function combineTool(f: Extract<KFeature, { type: "combine" }>) {
+  const mi = bodyIdxOf(f.main);
+  const ti = [...new Set(f.tools.map(bodyIdxOf))].filter((i) => i !== mi);
+  if (!ti.length) throw new Error("Ana gövdeden farklı araç gövdesi seçin");
+  let m = bodies[mi];
+  for (const i of ti) m = f.op === "add" ? m.fuse(bodies[i]) : f.op === "sub" ? m.cut(bodies[i]) : m.intersect(bodies[i]);
+  if (volOf(m) < 1e-9) throw new Error("Sonuç boş (gövdeler kesişmiyor)");
+  bodies = [...bodies.filter((_, i) => i !== mi && !ti.includes(i)), ...solidsOf(m)];
+}
+
+function splitBodyTool(f: Extract<KFeature, { type: "splitbody" }>) {
+  const i = bodyIdxOf(f.body);
+  const b = bodies[i];
+  const a1 = b.cut(halfSpace(f.frame.o, f.frame.n));
+  const a2 = b.cut(halfSpace(f.frame.o, vmul(f.frame.n, -1)));
+  const parts = [...solidsOf(a1), ...solidsOf(a2)].filter((x) => volOf(x) > 1e-9);
+  if (parts.length < 2) throw new Error("Düzlem gövdeyi kesmiyor");
+  bodies.splice(i, 1, ...parts);
+}
+
+function moveBodyTool(f: Extract<KFeature, { type: "movebody" }>) {
+  const i = bodyIdxOf(f.body);
+  let b = bodies[i].clone();
+  if (f.angle) b = b.rotate(f.angle, centroid(bodies[i]), f.axis);
+  if (vlen(f.d) > 0) b = b.translate(f.d);
+  if (f.copy) bodies.push(b);
+  else bodies[i] = b;
+}
+
+function delBodyTool(f: Extract<KFeature, { type: "delbody" }>) {
+  const sel = new Set(f.bodies.map(bodyIdxOf));
+  bodies = bodies.filter((_, i) => (f.keep ? sel.has(i) : !sel.has(i)));
+}
+
+function indentTool(f: Extract<KFeature, { type: "indent" }>) {
+  const ti = bodyIdxOf(f.target), ki = bodyIdxOf(f.tool);
+  if (ti === ki) throw new Error("Hedef ve araç farklı gövdeler olmalı");
+  const tool = f.clearance > 0 ? makeOffset(bodies[ki].clone(), f.clearance) : bodies[ki];
+  const res = solidsOf(bodies[ti].cut(tool));
+  const keep = bodies[ki];
+  bodies = bodies.filter((_, i) => i !== ti && i !== ki);
+  bodies.push(...res);
+  if (f.keepTool) bodies.push(keep);
+}
+
+// ---------- Ek çoğaltmalar ----------
+
+type ToolItem = { solid: Shape; cut: boolean; merge: boolean };
+const toolItems = (ids: string[]) => {
+  const items = ids.map((id) => tools.get(id)).filter(Boolean) as ToolItem[];
+  if (!items.length) throw new Error("Çoğaltılacak özellik bulunamadı");
+  return items;
+};
+
+function patternAt(items: ToolItem[], offsets: Vec3[], rot?: (it: ToolItem, k: number) => Shape) {
+  for (const it of items)
+    offsets.forEach((o, k) => {
+      let s = rot ? rot(it, k) : it.solid.clone();
+      s = s.translate(o);
+      applyTool(s, it.cut, it.merge);
+    });
+}
+
+function curvePattern(f: Extract<KFeature, { type: "cvpattern" }>) {
+  const items = toolItems(f.feats);
+  const P = f.path;
+  const cum = [0];
+  for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + vlen(vsub(P[i], P[i - 1])));
+  const total = cum[cum.length - 1];
+  const at = (s: number): { p: Vec3; t: Vec3 } => {
+    s = Math.max(0, Math.min(total, s));
+    let i = cum.findIndex((c) => c >= s);
+    if (i <= 0) i = 1;
+    const k = (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
+    const t = vnorm(vsub(P[i], P[i - 1]));
+    return { p: vadd(P[i - 1], vmul(vsub(P[i], P[i - 1]), k)), t };
+  };
+  for (const it of items) {
+    const c = centroid(it.solid);
+    // tohumun eğri üzerindeki yeri
+    let s0 = 0, bd = Infinity;
+    for (let i = 0; i < P.length; i++) {
+      const d = vlen(vsub(P[i], c));
+      if (d < bd) [bd, s0] = [d, cum[i]];
+    }
+    const base = at(s0);
+    const step = f.equal ? (total - s0) / Math.max(1, f.count - 1) : f.spacing;
+    for (let k = 1; k < f.count; k++) {
+      const sk = s0 + k * step;
+      if (sk > total + 1e-6) break;
+      const q = at(sk);
+      let sh = it.solid.clone();
+      if (f.align) {
+        const ang = (Math.atan2(vdot(vcross(base.t, q.t), f.n), vdot(base.t, q.t)) * 180) / Math.PI;
+        if (Math.abs(ang) > 1e-9) sh = sh.rotate(ang, base.p, f.n);
+      }
+      applyTool(sh.translate(vsub(q.p, base.p)), it.cut, it.merge);
+    }
+  }
+}
+
+function fillPattern(f: Extract<KFeature, { type: "fpattern" }>) {
+  const items = toolItems(f.feats);
+  const pf = planarFace(f.face);
+  if (!pf || String(pf.face.geomType) !== "PLANE") throw new Error("Doldurma için düz bir yüz seçin");
+  const n = pf.n;
+  const ax0 = vnorm(Math.abs(n[2]) < 0.9 ? vcross(n, [0, 0, 1]) : vcross(n, [1, 0, 0]));
+  const a = (f.angle * Math.PI) / 180;
+  const u = vnorm(vadd(vmul(ax0, Math.cos(a)), vmul(vcross(n, ax0), Math.sin(a)))), v = vcross(n, u);
+  const pts = (pf.face.edges as any[]).flatMap((e) => [0, 0.5, 1].map((q) => tup(e.pointAt(q))));
+  const edges = pf.face.edges as any[];
+  for (const it of items) {
+    const c0 = centroid(it.solid);
+    const seed = vsub(c0, vmul(n, vdot(vsub(c0, pf.c), n)));
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const p of pts) {
+      const r = vsub(p, seed);
+      u0 = Math.min(u0, vdot(r, u)); u1 = Math.max(u1, vdot(r, u));
+      v0 = Math.min(v0, vdot(r, v)); v1 = Math.max(v1, vdot(r, v));
+    }
+    const sp = f.spacing;
+    const rowH = f.layout === "stagger" ? sp * Math.sqrt(3) / 2 : sp;
+    const offs: Vec3[] = [];
+    for (let j = Math.ceil(v0 / rowH); j <= Math.floor(v1 / rowH); j++) {
+      const shift = f.layout === "stagger" && j % 2 !== 0 ? sp / 2 : 0;
+      for (let i = Math.ceil((u0 - shift) / sp); i <= Math.floor((u1 - shift) / sp); i++) {
+        if (i === 0 && j === 0) continue;
+        const o = vadd(vmul(u, i * sp + shift), vmul(v, j * rowH));
+        const p = vadd(seed, o);
+        const vx = makeVertex(p);
+        try {
+          if (measureDistanceBetween(pf.face, vx) > 1e-4) continue;
+          if (f.margin > 0 && Math.min(...edges.map((e) => measureDistanceBetween(e, vx))) < f.margin) continue;
+        } catch {
+          continue;
+        }
+        offs.push(o);
+        if (offs.length > 2000) throw new Error("Çok fazla kopya; aralığı büyütün");
+      }
+    }
+    patternAt([it], offs);
+  }
+}
+
+// ---------- Diş ----------
+// Helisel oluk, dişin eksene dik kesitinin hatve başına 360° burularak ekstrüzyonuyla oluşturulur
+// (helis boyunca profil süpürmeye göre Boolean işlemlerinde çok daha sağlamdır).
+function threadTool(f: Extract<KFeature, { type: "thread" }>) {
+  const pf = planarFace(f.face);
+  if (!pf || String(pf.face.geomType) !== "CYLINDRE") throw new Error("Diş için silindirik bir yüz seçin");
+  const cy = cylinderParams(pf.face);
+  const a = cy.a;
+  let lo = Infinity, hi = -Infinity;
+  for (const e of pf.face.edges as any[])
+    for (const q of [0, 0.5, 1]) {
+      const t = vdot(vsub(tup(e.pointAt(q)), cy.L), a);
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+  const L = f.length > 0 ? Math.min(f.length, hi - lo) : hi - lo;
+  const P = f.pitch;
+  if (L / P > 300) throw new Error("Diş çok uzun (300 turdan fazla)");
+  const c0 = tup(pf.face.center);
+  const radial0 = vsub(vsub(c0, cy.L), vmul(a, vdot(vsub(c0, cy.L), a)));
+  const internal = vdot(vnorm(tup(pf.face.normalAt(c0))), vnorm(radial0)) < 0;
+  const depth = (internal ? 0.5413 : 0.6134) * P;
+  const startT = f.fromEnd ? hi - L : lo;
+  const endT = startT + L;
+  const R = cy.rho, m = 0.3 * P;
+  const cot30 = Math.sqrt(3);
+  const N = 48;
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= N; i++) {
+    const th = (i / N) * 2 * Math.PI;
+    let d = -(P * th) / (2 * Math.PI);
+    d = d - P * Math.round(d / P);
+    const dep = Math.max(0, depth - cot30 * Math.abs(d));
+    const r = internal ? R + dep : R - dep;
+    pts.push([r * Math.cos(th), r * Math.sin(th)]);
+  }
+  pts[N] = pts[0];
+  const curve = drawPointsInterpolation(pts as any, {}, { closeShape: true });
+  const base = vadd(cy.L, vmul(a, startT));
+  const u0 = vnorm(Math.abs(a[2]) < 0.9 ? vcross(a, [0, 0, 1]) : vcross(a, [1, 0, 0]));
+  const len = endT - startT;
+  const twist = (f.left ? -1 : 1) * 360 * (len / P);
+  // dişli bölge: kesiti diş profili olan burulmuş çubuk (Boolean'da burulmuş yüzey başka yüzeyi kesmez)
+  const core = (curve as any).sketchOnPlane(new Plane(base, u0, a)).extrude(len, { twistAngle: twist });
+  const h = [...matchFaces([f.face])][0];
+  onOwner(new Set([h]), "faces", (b) => {
+    const v0 = volOf(b);
+    let r: Shape;
+    if (!internal) {
+      // dış diş: diş boyundaki silindiri (R + pay) çıkar, burulmuş çubuğu ekle
+      const slab = makeCylinder(R + m, len, base, a);
+      const rest = b.cut(slab);
+      const keep = b.intersect(makeCylinder(R + m, len, base, a));
+      // diş bölgesinde gövde silindir dışında malzeme varsa (ör. omuz) korunur
+      const outside = keep.cut(makeCylinder(R + 1e-3, len, base, a));
+      r = volOf(rest) > 1e-6 ? rest.fuse(core) : core;
+      if (volOf(outside) > 1e-6) r = r.fuse(outside);
+    } else {
+      // iç diş: deliği doldur, burulmuş çekirdeği çıkar
+      const fill = makeCylinder(R, len, base, a);
+      r = b.fuse(fill).cut(core);
+    }
+    if (Math.abs(volOf(r) - v0) < 1e-6) throw new Error("Diş gövdeye uygulanamadı");
+    return r;
+  });
+}
+
+/** Toleranslı (bulanık) Boolean kesme: helis gibi zor geometrilerde sağlam sonuç verir */
+function fuzzyCut(a: Shape, b: Shape, fuzz = 1e-4): Shape {
+  const oc = getOC() as any;
+  const op = new oc.BRepAlgoAPI_Cut();
+  const args = new oc.NCollection_List_TopoDS_Shape();
+  args.Append(a.wrapped);
+  const tl = new oc.NCollection_List_TopoDS_Shape();
+  tl.Append(b.wrapped);
+  op.SetArguments(args);
+  op.SetTools(tl);
+  op.SetFuzzyValue(fuzz);
+  op.SetNonDestructive?.(true);
+  op.Build(new oc.Message_ProgressRange());
+  if (op.HasErrors()) {
+    op.delete();
+    throw new Error("Boolean kesme başarısız");
+  }
+  const r = cast(op.Shape());
+  op.delete();
+  return r;
+}
+
+// ---------- Esnet (kesitlerden yeniden örme) ----------
+function sectionLoops(body: Shape, o: Vec3, n: Vec3): any[] {
+  const oc = getOC() as any;
+  const pln = new oc.gp_Pln(new oc.gp_Pnt(...o), new oc.gp_Dir(...n));
+  const sec = new oc.BRepAlgoAPI_Section(body.wrapped, pln, true);
+  const edges = [...(cast(sec.Shape()) as any).edges];
+  sec.delete();
+  const loops: any[] = [];
+  const used = new Set<number>();
+  const key = (p: Vec3) => p;
+  void key;
+  for (let i = 0; i < edges.length; i++) {
+    if (used.has(i)) continue;
+    used.add(i);
+    const chain = [edges[i]];
+    const start = tup(edges[i].startPoint);
+    let cur = tup(edges[i].endPoint);
+    let guard = 0;
+    while (vlen(vsub(cur, start)) > 1e-5 && guard++ < edges.length) {
+      const j = edges.findIndex((e, k) => !used.has(k) && (vlen(vsub(tup(e.startPoint), cur)) < 1e-5 || vlen(vsub(tup(e.endPoint), cur)) < 1e-5));
+      if (j < 0) break;
+      used.add(j);
+      chain.push(edges[j]);
+      cur = vlen(vsub(tup(edges[j].startPoint), cur)) < 1e-5 ? tup(edges[j].endPoint) : tup(edges[j].startPoint);
+    }
+    const w = assembleWire(chain);
+    loops.push({ w, area: measureArea(makeFace(w.clone())) });
+  }
+  return loops.sort((x, y) => y.area - x.area).map((x) => x.w);
+}
+
+function flexTool(f: Extract<KFeature, { type: "flex" }>) {
+  const bi = bodyIdxOf(f.body);
+  const body = bodies[bi];
+  const a = vnorm(f.axis);
+  const bb = body.boundingBox.bounds as [Vec3, Vec3];
+  const cc = vmul(vadd(bb[0], bb[1]), 0.5);
+  let t0 = Infinity, t1 = -Infinity;
+  for (const e of body.edges as any[])
+    for (const q of [0, 0.5, 1]) {
+      const t = vdot(tup(e.pointAt(q)), a);
+      t0 = Math.min(t0, t);
+      t1 = Math.max(t1, t);
+    }
+  const Lt = t1 - t0;
+  if (Lt < 1e-6) throw new Error("Gövde bu eksende uzunluğa sahip değil");
+  const P0 = vadd(cc, vmul(a, t0 - vdot(cc, a)));
+  const N = f.mode === "bend" || f.mode === "twist" ? 24 : 6;
+  const eps = Lt * 1e-4;
+  const sections: any[][] = [];
+  for (let i = 0; i <= N; i++) {
+    const s = i === 0 ? eps : i === N ? Lt - eps : (Lt * i) / N;
+    const o = vadd(P0, vmul(a, s));
+    let loops = sectionLoops(body, o, a);
+    if (!loops.length) throw new Error("Kesit alınamadı");
+    if (sections.length && loops.length !== sections[0].length) throw new Error("Gövdenin kesiti boyunca değişiyor (delik / çıkıntı var); esnet yalnızca kesiti sabit gövdelerde (çubuk, profil, mil) çalışır");
+    const ax = vadd(P0, vmul(a, s));
+    loops = loops.map((w: any) => {
+      if (f.mode === "twist") return w.rotate((f.value * s) / Lt, ax, a);
+      if (f.mode === "taper") return w.scale(1 + ((f.value - 1) * s) / Lt, ax);
+      if (f.mode === "stretch") return w.translate(vmul(a, (s * (f.value - 1)))) ;
+      // bük: kesit başlangıç düzlemine alınıp büküm ekseni etrafında döndürülür
+      const th = (f.value * Math.PI) / 180;
+      if (Math.abs(th) < 1e-9) return w;
+      const b = vnorm(vsub(f.dir, vmul(a, vdot(f.dir, a))));
+      if (vlen(b) < 0.5) throw new Error("Büküm yönü eksene dik olmalı");
+      const R = Lt / th;
+      const O = vadd(P0, vmul(b, R));
+      const k = vcross(a, b);
+      return w.translate(vmul(a, -s)).rotate((f.value * s) / Lt, O, k);
+    });
+    sections.push(loops);
+  }
+  let res: Shape | null = null;
+  for (let k = 0; k < sections[0].length; k++) {
+    const solid = loft(sections.map((sc) => sc[k]), { ruled: false });
+    res = !res ? solid : res.cut(solid);
+  }
+  bodies[bi] = res;
+}
+
+// ---------- Köşe pahı ----------
+function vertexChamferTool(f: Extract<KFeature, { type: "vchamfer" }>) {
+  const near = (p: Vec3) => vlen(vsub(p, f.v)) < 1e-4;
+  const bi = bodies.findIndex((b) => (b.edges as any[]).some((e) => near(tup(e.startPoint)) || near(tup(e.endPoint))));
+  if (bi < 0) throw new Error("Köşe modelde bulunamadı");
+  const es = (bodies[bi].edges as any[]).filter((e) => near(tup(e.startPoint)) || near(tup(e.endPoint)));
+  if (es.length !== 3) throw new Error("Köşe pahı üç kenarın birleştiği köşelerde uygulanır");
+  const pts = es.map((e) => {
+    const L = measureLength(e);
+    if (f.d >= L) throw new Error("Pah mesafesi kenar boyundan büyük");
+    const fromStart = near(tup(e.startPoint));
+    return tup(e.pointAt(fromStart ? f.d / L : 1 - f.d / L));
+  });
+  let n = vnorm(vcross(vsub(pts[1], pts[0]), vsub(pts[2], pts[0])));
+  if (vdot(vsub(f.v, pts[0]), n) > 0) n = vmul(n, -1);
+  bodies[bi] = bodies[bi].cut(halfSpace(pts[0], n));
+}
+
+function interfere(id: number) {
+  const pairs: { a: number; b: number; vol: number }[] = [];
+  for (let i = 0; i < bodies.length; i++)
+    for (let j = i + 1; j < bodies.length; j++) {
+      if (!bbOverlapStrict(bodies[i], bodies[j])) continue;
+      try {
+        const v = volOf(bodies[i].intersect(bodies[j]));
+        if (v > 1e-6) pairs.push({ a: i, b: j, vol: v });
+      } catch {}
+    }
+  post({ id, type: "interfere", pairs });
 }
 
 // ---------- Kaynaklı yapı ----------
@@ -1419,6 +1775,40 @@ function flatPattern(id: number, bodyIdx: number, t: number, k: number) {
 
 async function buildFeature(f: KFeature) {
   switch (f.type) {
+    case "combine":
+      return combineTool(f);
+    case "splitbody":
+      return splitBodyTool(f);
+    case "movebody":
+      return moveBodyTool(f);
+    case "delbody":
+      return delBodyTool(f);
+    case "indent":
+      return indentTool(f);
+    case "spattern": {
+      const items = toolItems(f.feats);
+      for (const it of items) {
+        const c = centroid(it.solid);
+        const offs = f.pts.map((p) => {
+          const d = vsub(p, c);
+          return vsub(d, vmul(f.n, vdot(d, f.n)));
+        }).filter((o) => vlen(o) > 1e-6);
+        patternAt([it], offs);
+      }
+      return;
+    }
+    case "tpattern":
+      return patternAt(toolItems(f.feats), f.rows.filter((r) => vlen(r) > 1e-9));
+    case "cvpattern":
+      return curvePattern(f);
+    case "fpattern":
+      return fillPattern(f);
+    case "thread":
+      return threadTool(f);
+    case "flex":
+      return flexTool(f);
+    case "vchamfer":
+      return vertexChamferTool(f);
     case "member":
       memberTool(f);
       return;
@@ -1826,6 +2216,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);
+    else if (req.type === "interfere") interfere(req.id);
    } catch (e) {
     // Hata kuyruğu kilitlemesin; isteği yanıtsız bırakma
     const t = req.type === "build" ? "built" : req.type === "export" ? "exported" : req.type === "measure" ? "measured" : req.type;

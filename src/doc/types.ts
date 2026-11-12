@@ -156,6 +156,8 @@ export interface ExtrudeFeature extends FeatBase {
   twist?: number;
   /** false: ayrı gövde oluştur (çoklu gövde) */
   merge?: boolean;
+  /** başlangıç: eskiz düzleminden öteleme */
+  startOff?: number;
 }
 
 export interface RevolveFeature extends FeatBase {
@@ -316,6 +318,28 @@ export interface PlaneFeature extends FeatBase {
   flip: boolean;
 }
 
+// ---------------- Gövde işlemleri, ek çoğaltmalar, diş, esnet ----------------
+
+export interface CombineFeature extends FeatBase { type: "combine"; op: "add" | "sub" | "common"; main: FaceRef | null; tools: FaceRef[] }
+export interface SplitBodyFeature extends FeatBase { type: "splitbody"; body: FaceRef | null; plane: PlaneRef }
+export interface MoveBodyFeature extends FeatBase { type: "movebody"; body: FaceRef | null; copy: boolean; d: Vec3; axis: "x" | "y" | "z"; angle: number }
+export interface DeleteBodyFeature extends FeatBase { type: "delbody"; bodies: FaceRef[]; keep: boolean }
+export interface IndentFeature extends FeatBase { type: "indent"; target: FaceRef | null; tool: FaceRef | null; clearance: number; keepTool: boolean }
+/** Eskize bağlı çoğaltma: kopyalar eskiz noktalarına yerleşir */
+export interface SketchPatternFeature extends FeatBase { type: "spattern"; feats: string[]; sketch: string }
+/** Tabloya bağlı çoğaltma: her satır bir öteleme */
+export interface TablePatternFeature extends FeatBase { type: "tpattern"; feats: string[]; rows: Vec3[] }
+/** Eğriye bağlı çoğaltma */
+export interface CurvePatternFeature extends FeatBase { type: "cvpattern"; feats: string[]; sketch: string; count: number; spacing: number; equal: boolean; align: boolean }
+/** Doldurma çoğaltması: düz yüz içinde ızgara */
+export interface FillPatternFeature extends FeatBase { type: "fpattern"; feats: string[]; face: FaceRef | null; spacing: number; layout: "square" | "stagger"; margin: number; angle: number }
+/** Helisel diş */
+export interface ThreadFeature extends FeatBase { type: "thread"; face: FaceRef | null; pitch: number; length: number; left: boolean; fromEnd: boolean }
+/** Esnet: bük / bur / daralt / uzat (kesitlerden yeniden örme) */
+export interface FlexFeature extends FeatBase { type: "flex"; body: FaceRef | null; mode: "bend" | "twist" | "taper" | "stretch"; axis: "x" | "y" | "z"; value: number; dir: "x" | "y" | "z" }
+/** Köşe pahı: köşe noktasında üç kenarı keser */
+export interface VertexChamferFeature extends FeatBase { type: "vchamfer"; v: Vec3 | null; d: number }
+
 // ---------------- Sac metal ----------------
 
 /** Taban flanş: kapalı eskizden düz levha, açık eskizden bükümlü profil. Sac parametrelerini taşır. */
@@ -447,6 +471,18 @@ export interface GussetFeature extends FeatBase {
 }
 
 export type Feature =
+  | CombineFeature
+  | SplitBodyFeature
+  | MoveBodyFeature
+  | DeleteBodyFeature
+  | IndentFeature
+  | SketchPatternFeature
+  | TablePatternFeature
+  | CurvePatternFeature
+  | FillPatternFeature
+  | ThreadFeature
+  | FlexFeature
+  | VertexChamferFeature
   | Sketch3DFeature
   | MemberFeature
   | WeldFeature
@@ -517,7 +553,7 @@ export interface TextItem { text: string; x: number; y: number; size: number; an
 export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 
 export type KFeature =
-  | { id: string; type: "extrude"; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
+  | { id: string; type: "extrude"; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
   | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
   | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full"; r2?: number }
   | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da"; d2?: number; angle?: number; flip?: boolean }
@@ -536,6 +572,18 @@ export type KFeature =
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame }
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
   | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
+  | { id: string; type: "combine"; op: "add" | "sub" | "common"; main: FaceRef; tools: FaceRef[] }
+  | { id: string; type: "splitbody"; body: FaceRef; frame: Frame }
+  | { id: string; type: "movebody"; body: FaceRef; copy: boolean; d: Vec3; axis: Vec3; angle: number }
+  | { id: string; type: "delbody"; bodies: FaceRef[]; keep: boolean }
+  | { id: string; type: "indent"; target: FaceRef; tool: FaceRef; clearance: number; keepTool: boolean }
+  | { id: string; type: "spattern"; feats: string[]; pts: Vec3[]; n: Vec3 }
+  | { id: string; type: "tpattern"; feats: string[]; rows: Vec3[] }
+  | { id: string; type: "cvpattern"; feats: string[]; path: Vec3[]; n: Vec3; count: number; spacing: number; equal: boolean; align: boolean }
+  | { id: string; type: "fpattern"; feats: string[]; face: FaceRef; spacing: number; layout: "square" | "stagger"; margin: number; angle: number }
+  | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
+  | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
+  | { id: string; type: "vchamfer"; v: Vec3; d: number }
   | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
@@ -659,7 +707,8 @@ export type KernelRequest =
   | { id: number; type: "flat"; body: number; t: number; k: number }
   | { id: number; type: "cutlist" }
   | { id: number; type: "exportBody"; body: number }
-  | { id: number; type: "drawing"; body: number };
+  | { id: number; type: "drawing"; body: number }
+  | { id: number; type: "interfere" };
 
 export type KernelResponse =
   | { type: "ready" }
@@ -671,4 +720,5 @@ export type KernelResponse =
   | { id: number; type: "exported"; blob: Blob | null; message?: string }
   | ({ id: number; type: "flat" } & FlatResult)
   | { id: number; type: "cutlist"; items: CutItem[]; welds: WeldItem[] }
-  | ({ id: number; type: "drawing" } & DrawData);
+  | ({ id: number; type: "drawing" } & DrawData)
+  | { id: number; type: "interfere"; pairs: { a: number; b: number; vol: number }[] };
