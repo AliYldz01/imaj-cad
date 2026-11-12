@@ -472,7 +472,20 @@ export interface GussetFeature extends FeatBase {
   offset: number;
 }
 
+/** Kademe (jog): sacın düz yüzündeki çizgiden iki bükümlü ötelenmiş kademe */
+export interface SheetJogFeature extends FeatBase { type: "sheetjog"; sketch: string; H: number; side: boolean; flip: boolean; useDef: boolean; r: number }
+/** Gönye flanş: açık profil eskizi, seçilen kenar zinciri boyunca köşeleri gönyelenerek */
+export interface MiterFlangeFeature extends FeatBase { type: "miterflange"; sketch: string; edges: EdgeRef[]; rev: boolean; gap: number }
+/** Köşe kapatma: flanş uç yüzünü komşu flanşa kadar uzatır */
+export interface CloseCornerFeature extends FeatBase { type: "closecorner"; faces: FaceRef[]; overlap: boolean; gap: number }
+/** Katıdan saca dönüştür: büküm kenarlarına yarıçap, köşe kenarlarına yarık */
+export interface ToSheetFeature extends FeatBase { type: "tosheet"; bends: EdgeRef[]; rips: EdgeRef[]; t: number; r: number; k: number; relief: number; gap: number }
+
 export type Feature =
+  | SheetJogFeature
+  | MiterFlangeFeature
+  | CloseCornerFeature
+  | ToSheetFeature
   | CombineFeature
   | SplitBodyFeature
   | MoveBodyFeature
@@ -574,6 +587,10 @@ export type KFeature =
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame }
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
   | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
+  | { id: string; type: "sheetjog"; pl: KPlane; line: [Vec2, Vec2]; H: number; side: boolean; flip: boolean; r: number; t: number }
+  | { id: string; type: "miterflange"; skFrame: Frame; chain: Seg[]; edges: EdgeRef[]; t: number; r: number; gap: number; rev: boolean }
+  | { id: string; type: "closecorner"; faces: FaceRef[]; overlap: boolean; gap: number; t: number; r: number }
+  | { id: string; type: "tosheet"; bends: EdgeRef[]; rips: EdgeRef[]; t: number; r: number; gap: number }
   | { id: string; type: "combine"; op: "add" | "sub" | "common"; main: FaceRef; tools: FaceRef[] }
   | { id: string; type: "splitbody"; body: FaceRef; frame: Frame }
   | { id: string; type: "movebody"; body: FaceRef; copy: boolean; d: Vec3; axis: Vec3; angle: number }

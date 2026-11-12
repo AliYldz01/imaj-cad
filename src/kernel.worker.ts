@@ -12,7 +12,8 @@ import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
   Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData,
 } from "./doc/types";
-import { thinRegion, segPoints } from "./sketch/profile";
+import { thinRegion, segPoints, revSeg } from "./sketch/profile";
+import { sheetOpenRegion } from "./sheet/sheet";
 import { unfold, cylinderParams } from "./sheet/unfold";
 
 type Shape = any;
@@ -999,6 +1000,240 @@ function interfere(id: number) {
   post({ id, type: "interfere", pairs });
 }
 
+// ---------- Sac metal: kademe, gönye flanş, köşe kapatma, saca dönüştür ----------
+
+function mapLoop2(l: Loop, f: (p: Vec2) => Vec2): Loop {
+  if ("circle" in l) return { circle: { c: f(l.circle.c), r: l.circle.r }, depth: l.depth };
+  if ("ellipse" in l) return l;
+  return { segs: l.segs.map((s) => (s.t === "a" ? { t: "a", a: f(s.a), b: f(s.b), m: f(s.m) } : { ...s, a: f(s.a), b: f(s.b) }) as Seg), depth: l.depth };
+}
+
+function sheetJog(f: Extract<KFeature, { type: "sheetjog" }>) {
+  if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
+  const frame = resolvePlane(f.pl);
+  const P0 = toWorld(frame, f.line[0]), Q0 = toWorld(frame, f.line[1]);
+  const e = vnorm(vsub(Q0, P0));
+  const nF = frame.n;
+  const hs = f.pl.face ? matchFaces([f.pl.face]) : new Set<number>();
+  let bi = bodies.findIndex((b) => (b.faces as any[]).some((x) => hs.has(x.hashCode)));
+  if (bi < 0) bi = 0;
+  const body = bodies[bi];
+  const t = f.t, r = Math.max(0.01, f.r);
+  if (f.H < 2 * r + t + 0.01) throw new Error(`Kademe yüksekliği en az ${Math.round((2 * r + t + 0.01) * 100) / 100} mm olmalı (2 × büküm yarıçapı + kalınlık)`);
+  const left = vcross(nF, e);
+  const m = f.side ? left : vmul(left, -1);
+  const u = f.flip ? vmul(nF, -1) : nF;
+  const O = f.flip ? vsub(P0, vmul(nF, t)) : P0;
+  const Ls = r + t + 0.5;
+  const segs: Seg[] = [
+    { t: "l", a: [-Ls, 0], b: [0, 0] },
+    { t: "l", a: [0, 0], b: [0, f.H] },
+    { t: "l", a: [0, f.H], b: [Ls, f.H] },
+  ];
+  const loops = sheetOpenRegion(segs, t, r, true);
+  let lo = Infinity, hi = -Infinity;
+  for (const ed of body.edges as any[])
+    for (const q of [0, 1]) {
+      const d = vdot(vsub(tup(q ? ed.endPoint : ed.startPoint), O), e);
+      lo = Math.min(lo, d);
+      hi = Math.max(hi, d);
+    }
+  const pn = vcross(m, u);
+  const sign = vdot(pn, e) > 0 ? 1 : -1;
+  const jog = profile(loops).sketchOnPlane(new Plane(vadd(O, vmul(e, lo)), m, pn)).extrude(sign * (hi - lo));
+  const big = bodySize();
+  const A = body.cut(boxIn(O, m, u, e, -Ls, big, -big, big, -big, big));
+  const B = body.cut(boxIn(O, m, u, e, -big, Ls, -big, big, -big, big));
+  if (volOf(A) < 1e-9 || volOf(B) < 1e-9) throw new Error("Kademe çizgisinin iki yanında da malzeme olmalı");
+  bodies[bi] = A.fuse(jog).fuse(B.translate(vmul(u, f.H)));
+  bodies = bodies.flatMap(solidsOf);
+}
+
+function miterFlange(f: Extract<KFeature, { type: "miterflange" }>) {
+  if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
+  const infos = f.edges.map((ref) => flangeEdgeInfo(ref, f.t));
+  const g0 = infos[0];
+  const map = (q: Vec2): Vec2 => {
+    const W = toWorld(f.skFrame, q);
+    const rr = vsub(W, g0.A);
+    return [vdot(rr, g0.s), vdot(rr, g0.nF)];
+  };
+  // profil zinciri kenar koordinatlarına (s: dışa, u: yüz normali) taşınır; başı kenara yakın uç olur
+  let chain: Seg[] = f.chain.map((sg) => mapLoop2({ segs: [sg], depth: 0 }, map) as any).map((l: any) => l.segs[0]);
+  const len2v = (p: Vec2) => Math.hypot(p[0], p[1]);
+  if (len2v(chain[chain.length - 1].b) < len2v(chain[0].a)) chain = [...chain].reverse().map(revSeg);
+  if (len2v(chain[0].a) > Math.max(1, f.t * 2)) throw new Error("Profil eskizi seçilen ilk kenarın ucundan başlamalı");
+  // taban ile profil arası büküm: tabanda bir saplama eklenir, taban o kadar kırpılır
+  const Ls = f.r + f.t + 0.5;
+  const st = chain[0].a;
+  const full: Seg[] = [{ t: "l", a: [st[0] - Ls, st[1]], b: st }, ...chain];
+  const loops = sheetOpenRegion(full, f.t, f.r, !f.rev);
+  const R = profileSupport(loops, [1, 0, 0], [0, 0, 1], [1, 0, 0]) + profileSupport(loops, [1, 0, 0], [0, 0, 1], [0, 1, 0]) + f.t;
+  const ext = infos.map(() => [0, 0]);
+  type J = { V: Vec3; i: number; j: number; ei: 0 | 1; ej: 0 | 1 };
+  const joints: J[] = [];
+  infos.forEach((g, i) =>
+    infos.forEach((h, j) => {
+      if (j <= i) return;
+      const gE = [g.A, vadd(g.A, vmul(g.e, g.Le))], hE = [h.A, vadd(h.A, vmul(h.e, h.Le))];
+      gE.forEach((V, ei) =>
+        hE.forEach((W, ej) => {
+          if (vlen(vsub(V, W)) < 1e-3) {
+            joints.push({ V, i, j, ei: ei as 0 | 1, ej: ej as 0 | 1 });
+            ext[i][ei] = 2 * R + f.gap + 1;
+            ext[j][ej] = 2 * R + f.gap + 1;
+          }
+        }),
+      );
+    }),
+  );
+  const solids = infos.map((g, i) => {
+    const u = g.nF;
+    const pn = vcross(g.s, u);
+    const sign = vdot(pn, g.e) > 0 ? 1 : -1;
+    const o = vsub(g.A, vmul(g.e, ext[i][0]));
+    return profile(loops).sketchOnPlane(new Plane(o, g.s, pn)).extrude(sign * (g.Le + ext[i][0] + ext[i][1]));
+  });
+  for (const jn of joints) {
+    const gi = infos[jn.i], gj = infos[jn.j];
+    const dA = jn.ei === 0 ? gi.e : vmul(gi.e, -1);
+    const dB = jn.ej === 0 ? gj.e : vmul(gj.e, -1);
+    const nm = vnorm(vsub(dA, dB));
+    solids[jn.i] = solids[jn.i].cut(halfSpace(vadd(jn.V, vmul(nm, f.gap / 2)), nm));
+    solids[jn.j] = solids[jn.j].cut(halfSpace(vsub(jn.V, vmul(nm, f.gap / 2)), vmul(nm, -1)));
+  }
+  let b = bodies[g0.bi];
+  infos.forEach((g) => {
+    const z0 = ext[infos.indexOf(g)][0] > 0 ? -f.t : 0, z1 = g.Le + (ext[infos.indexOf(g)][1] > 0 ? f.t : 0);
+    b = b.cut(boxIn(g.A, g.s, g.nF, g.e, -Ls, 0.01, -f.t - 0.01, 0.01, z0, z1));
+  });
+  for (const sld of solids) b = b.fuse(sld);
+  bodies[g0.bi] = b;
+  bodies = bodies.flatMap(solidsOf);
+}
+
+function closeCorner(f: Extract<KFeature, { type: "closecorner" }>) {
+  for (const ref of f.faces) {
+    const pf = planarFace(ref);
+    if (!pf || String(pf.face.geomType) !== "PLANE") throw new Error("Flanşın düz uç yüzünü seçin");
+    const bi = bodyIdxOf(ref);
+    const body = bodies[bi];
+    const n = pf.n, c = pf.c;
+    let best = Infinity;
+    for (const fc of body.faces as any[]) {
+      if (String(fc.geomType) !== "PLANE") continue;
+      const fcc = tup(fc.center);
+      const nn = vnorm(tup(fc.normalAt(fcc)));
+      const dd = vdot(nn, n);
+      if (f.overlap ? dd < 0.999 : dd > -0.999) continue;
+      const d = vdot(vsub(fcc, c), n);
+      if (d > 1e-6 && d < best) best = d;
+    }
+    if (!isFinite(best)) throw new Error("Uç yüzün karşısında komşu flanş bulunamadı");
+    const dist = best - (f.overlap ? 0 : f.gap);
+    if (dist <= 1e-6) continue;
+    let prism = basicFaceExtrusion(pf.face.clone(), new Vector(vmul(n, dist)));
+    // yalnızca düz flanş kısmı uzatılır: tabandan büküm (r + t) yüksekliğinin altı kırpılır
+    let base: any = null, ba = 0;
+    for (const fc of body.faces as any[]) {
+      if (String(fc.geomType) !== "PLANE") continue;
+      const nn = vnorm(tup(fc.normalAt(tup(fc.center))));
+      if (Math.abs(vdot(nn, n)) > 0.01) continue;
+      const ar = measureArea(fc);
+      if (ar > ba) [ba, base] = [ar, fc];
+    }
+    if (base) {
+      const cb = tup(base.center);
+      let ub = vnorm(tup(base.normalAt(cb)));
+      if (vdot(vsub(c, cb), ub) < 0) ub = vmul(ub, -1);
+      let umin = Infinity;
+      for (const ed of body.edges as any[]) umin = Math.min(umin, vdot(vsub(tup(ed.startPoint), cb), ub), vdot(vsub(tup(ed.endPoint), cb), ub));
+      prism = prism.cut(halfSpace(vadd(cb, vmul(ub, umin + f.r + f.t)), ub));
+    }
+    if (volOf(prism) > 1e-9) bodies[bi] = bodies[bi].fuse(prism);
+  }
+  bodies = bodies.flatMap(solidsOf);
+}
+
+function toSheet(f: Extract<KFeature, { type: "tosheet" }>) {
+  if (!bodies.length) throw new Error("Dönüştürülecek katı yok");
+  const t = f.t;
+  // yarıklar
+  for (const ref of f.rips) {
+    const h = [...matchEdges([ref])][0];
+    const bi = bodies.findIndex((b) => (b.edges as any[]).some((x) => x.hashCode === h));
+    if (bi < 0) throw new Error("Yarık kenarı bulunamadı");
+    const E = (bodies[bi].edges as any[]).find((x) => x.hashCode === h);
+    if (String(E.geomType) !== "LINE") throw new Error("Yarık için düz bir köşe kenarı seçin");
+    const A = tup(E.startPoint), B = tup(E.endPoint);
+    const e = vnorm(vsub(B, A)), L = vlen(vsub(B, A));
+    const fs = facesOfEdge(bodies[bi], h).filter((x) => String(x.geomType) === "PLANE");
+    if (fs.length !== 2) throw new Error("Yarık kenarı iki düz yüz arasında olmalı");
+    const mid = vmul(vadd(A, B), 0.5);
+    const n1 = vnorm(tup(fs[0].normalAt(mid))), n2 = vnorm(tup(fs[1].normalAt(mid)));
+    const nb = vnorm(vsub(n1, n2)), dg = vnorm(vadd(n1, n2));
+    bodies[bi] = bodies[bi].cut(boxIn(A, nb, dg, e, -f.gap / 2, f.gap / 2, -3 * t, 3 * t, 0, L));
+    // köşe boşaltması: yarığın büküm kenarlarına değen ucunda (r + t) kare boşaltma
+    const bendRefs = f.bends.map((r) => r.m);
+    const rt = f.r + t;
+    for (const [V, dir] of [[A, e], [B, vmul(e, -1)]] as [Vec3, Vec3][]) {
+      const nearBend = bendRefs.some((bm) => {
+        const bh = [...matchEdges([{ m: bm }])][0];
+        const be = (bodies[bi].edges as any[]).find((x) => x.hashCode === bh);
+        if (!be) return false;
+        try {
+          return measureDistanceBetween(be, makeVertex(V)) < rt + 1;
+        } catch {
+          return false;
+        }
+      });
+      if (!nearBend) continue;
+      bodies[bi] = bodies[bi].cut(boxIn(V, n1, n2, dir, -rt, 1, -rt, 1, -1, rt));
+    }
+  }
+  // bükümler: dış kenar r+t, karşılık gelen iç kenar r
+  const outer = matchEdges(f.bends);
+  const innerRefs: EdgeRef[] = [];
+  for (const h of outer) {
+    const b = bodies.find((x) => (x.edges as any[]).some((e) => e.hashCode === h))!;
+    const E = (b.edges as any[]).find((e) => e.hashCode === h);
+    if (String(E.geomType) !== "LINE") throw new Error("Büküm için düz bir dış kenar seçin");
+    const A = tup(E.startPoint), dE = vnorm(vsub(tup(E.endPoint), A)), M = tup(E.pointAt(0.5));
+    let best: any = null, bd = Infinity;
+    for (const c of b.edges as any[]) {
+      if (c.hashCode === h || String(c.geomType) !== "LINE") continue;
+      const dC = vnorm(vsub(tup(c.endPoint), tup(c.startPoint)));
+      if (Math.abs(vdot(dC, dE)) < 0.999) continue;
+      const w = vsub(tup(c.pointAt(0.5)), M);
+      const perpD = vlen(vsub(w, vmul(dE, vdot(w, dE))));
+      if (perpD < t * 0.9 || perpD > t * 2.1) continue;
+      if (perpD < bd) [bd, best] = [perpD, c];
+    }
+    if (!best) throw new Error("Büküm kenarına karşılık gelen iç kenar bulunamadı (kalınlığı kontrol edin)");
+    innerRefs.push({ m: tup(best.pointAt(0.5)), d: vnorm(vsub(tup(best.endPoint), tup(best.startPoint))) });
+  }
+  const outerRefs = [...outer].map((h) => {
+    const E = allEdges().find((e) => e.hashCode === h)!;
+    return { m: tup(E.pointAt(0.5)) } as EdgeRef;
+  });
+  const doFillet = (refs: EdgeRef[], rad: number) => {
+    const set = matchEdges(refs);
+    if (!set.size) return;
+    try {
+      onOwner(set, "edges", (b) => b.fillet((e: any) => (set.has(e.hashCode) ? rad : null)));
+    } catch {
+      // toplu yuvarlatma başarısızsa tek tek dene
+      for (const r of refs) {
+        const one = matchEdges([r]);
+        if (!one.size) continue;
+        onOwner(one, "edges", (b) => b.fillet((e: any) => (one.has(e.hashCode) ? rad : null)));
+      }
+    }
+  };
+  doFillet(outerRefs, f.r + t);
+  if (f.r > 1e-6) doFillet(innerRefs, f.r);
+}
+
 // ---------- Kaynaklı yapı ----------
 
 interface MemberReg {
@@ -1883,6 +2118,14 @@ function flatPattern(id: number, bodyIdx: number, t: number, k: number) {
 
 async function buildFeature(f: KFeature) {
   switch (f.type) {
+    case "sheetjog":
+      return sheetJog(f);
+    case "miterflange":
+      return miterFlange(f);
+    case "closecorner":
+      return closeCorner(f);
+    case "tosheet":
+      return toSheet(f);
     case "combine":
       return combineTool(f);
     case "splitbody":

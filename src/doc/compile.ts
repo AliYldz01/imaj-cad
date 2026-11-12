@@ -315,6 +315,46 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           if (!(f.t > 0 && f.d1 > 0 && f.d2 > 0)) throw new Error("Ölçüler sıfırdan büyük olmalı");
           kfeats.push({ id: f.id, type: "gusset", f1: f.f1, f2: f.f2, d1: f.d1, d2: f.d2, t: f.t, chamfer: f.chamfer, offset: f.offset });
           break;
+        case "sheetjog": {
+          const sp = sheetParamsBefore(feats, f.id);
+          if (!sp) throw new Error("Önce bir taban flanş oluşturun");
+          const sk = sketchOf(f.sketch);
+          if (!sk || sk.plane.k !== "face") throw new Error("Kademe çizgisi sacın düz yüzündeki bir eskizde olmalı");
+          const pl = kplane(sk.plane, feats, sk.id);
+          if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+          const lines = sk.data.ents.filter((e) => e.t === "line" && !e.cons) as any[];
+          if (lines.length !== 1) throw new Error("Eskizde tek bir kademe çizgisi olmalı");
+          if (!(f.H > 0)) throw new Error("Kademe yüksekliği sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "sheetjog", pl, line: [pointPos(sk.data, lines[0].p1), pointPos(sk.data, lines[0].p2)], H: f.H, side: f.side, flip: f.flip, r: f.useDef ? sp.r : f.r, t: sp.t });
+          break;
+        }
+        case "miterflange": {
+          const sp = sheetParamsBefore(feats, f.id);
+          if (!sp) throw new Error("Önce bir taban flanş oluşturun");
+          if (!f.edges.length) throw new Error("Gönye flanşın ilerleyeceği kenarları seçin");
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Flanş profili eskizini seçin");
+          const fr = resolveFrame(sk.plane, feats);
+          if (!fr) throw new Error("Eskiz düzlemi bulunamadı");
+          const { chains, error } = extractChains(sk.data);
+          if (error) throw new Error(`${sk.name}: ${error}`);
+          const open = chains.filter((c) => !c.closed);
+          if (open.length !== 1) throw new Error("Profil eskizi tek bir açık zincir olmalı (ör. L profili)");
+          kfeats.push({ id: f.id, type: "miterflange", skFrame: fr, chain: open[0].segs, edges: f.edges, t: sp.t, r: sp.r, gap: f.gap, rev: f.rev });
+          break;
+        }
+        case "closecorner": {
+          const sp = sheetParamsBefore(feats, f.id);
+          if (!sp) throw new Error("Önce bir taban flanş oluşturun");
+          if (!f.faces.length) throw new Error("Uzatılacak flanş uç yüzlerini seçin");
+          kfeats.push({ id: f.id, type: "closecorner", faces: f.faces, overlap: f.overlap, gap: f.gap, t: sp.t, r: sp.r });
+          break;
+        }
+        case "tosheet":
+          if (!f.bends.length) throw new Error("Büküm olacak dış kenarları seçin");
+          if (!(f.t > 0)) throw new Error("Sac kalınlığı sıfırdan büyük olmalı");
+          kfeats.push({ id: f.id, type: "tosheet", bends: f.bends, rips: f.rips, t: f.t, r: f.r, gap: f.gap });
+          break;
         case "sketchbend": {
           const sp = sheetParamsBefore(feats, f.id);
           if (!sp) throw new Error("Önce bir taban flanş oluşturun");
@@ -458,6 +498,6 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
       ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId) ||
       (f.type === "member" && (f.segs.some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
-      ((f.type === "spattern" || f.type === "cvpattern") && f.sketch === sketchId),
+      ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId),
   );
 }

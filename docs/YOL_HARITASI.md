@@ -113,7 +113,7 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Döndürme (Revolve) / Döndürerek kesme | Açı, Orta düzlem, Ters | ✅ |
 | Süpürme (Sweep) / Süpürerek kesme | Profil + yol eskizi | ✅ |
 | Loft / Loft kesme | Tek konturlu profiller, düz yüzeyli seçenek | ✅ |
-| Loft: kılavuz eğriler | | ⬜ (çekirdek kısıtı; ileride) |
+| Loft: kılavuz eğriler (ara kesitlerle) | | ✅ |
 | Radyüs (Fillet) | Sabit yarıçap, kenar seçimi | ✅ |
 | Radyüs / Pah: yüz seçimi (yüzün tüm kenarları) | | ✅ |
 | Radyüs: değişken, tam yuvarlak | | ✅ |
@@ -137,7 +137,7 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 | Modül | İçerik | Durum |
 |---|---|---|
 | Sac metal (v0.5) | Taban flanş (kapalı/açık profil), kenar flanş (açı, uzunluk referansı, konum, kısaltma, köşe gönyesi, büküm boşaltma), kenet (açık/kapalı), çizgiden büküm, K faktörü, düzleştir, büküm tablosu, DXF | ✅ |
-| Sac metal — sonraki | Gönye flanş, kademe (jog), köşe kapatma, kalıptan sac'a dönüştür, büküm tablosu dosyası | ⬜ |
+| Sac metal ekleri (v0.8) | Kademe (jog), gönye flanş (otomatik taban bükümüyle), köşe kapatma (alın / bindirme), katıdan saca dönüştür (büküm + yarık + köşe boşaltma) | ✅ |
 | Kaynaklı yapı / profil (v0.6) | İskelet eskizden yapı elemanı, EN profil kütüphanesi (kutu, boru, L, UPN, IPE, HEA, HEB, lama, dolu çubuk), delme noktası / döndürme / aynalama, gönye ve alın köşe işlemleri, kırp/uzat (düz veya profile göre), uç kapağı, köşe takviyesi, bükümlü boru, kesim listesi (gruplama, boy, açı, ağırlık, CSV, tekil STEP) | ✅ |
 | Kaynaklı (v0.7) | 3B eskiz (yön+uzunluk, Δ, mutlak koordinat, yakalama, köşe büküm yarıçapı), bükümlü zincir elemanlar, kaynak dikişi (köşe / boru çevresi / kesikli) ve kaynak tablosu, özel profil kütüphanesi (eskizden, cihaz kütüphanesi, içe/dışa aktarma), yüze göre kırpma, UPN eğimli flanş, eleman / levha imalat resimleri (A4, PDF, SVG, levha DXF) | ✅ |
 | Montaj **(sıradaki)** | Bileşen ekleme, çakışık/eş merkezli/mesafe eşleşmeleri, patlatma | ⬜ |
@@ -150,3 +150,11 @@ Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
 - **Parmak:** tek parmak döndürür (3D) veya kaydırır (eskiz); iki parmak kaydırır ve yakınlaştırır; parmakla dokunmak da seçim yapar.
 - **Fare:** orta tuş döndürür, sağ tuş kaydırır, tekerlek yakınlaştırır (SolidWorks'teki gibi).
 - **Telefon:** ağaç ve özellik paneli alttan açılan sayfa olarak gelir. **Tablet / bilgisayar:** solda sabit panel.
+
+## v0.8 ile eklenenler
+
+| Bölüm | Özellik | Durum |
+|---|---|---|
+| Eskiz | Çizdikten sonra hızlı ölçü girişi, dinamik ayna, eskiz resmi (fotoğraf + iki noktayla ölçekleme), orta nokta çizgisi, 3N merkez dikdörtgen, konik, denklem eğrisi, ayır, kademe çizgisi, koordinat ölçüsü, yay uzunluğu ölçüsü, daire kenarı ölçüsü, eş yarıçaplı, eskizi onar, blok kütüphanesi, kapalı bölge gölgesi | ✅ |
+| Katı | Birleştir (ekle/çıkar/ortak), gövde böl, gövde taşı/kopyala, gövde sil, girinti, eskiz/tablo/eğri/doldurma çoğaltma, helisel diş, esnet (bük/bur/daralt/uzat), köşe pahı, ekstrüzyon başlangıç ötelemesi, girişim kontrolü, kılavuz eğrili loft | ✅ |
+| Sac metal | Kademe, gönye flanş, köşe kapatma, saca dönüştür | ✅ |

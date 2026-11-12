@@ -62,17 +62,18 @@ export function sheetParamsBefore(feats: Feature[], id: string | null): SheetPar
   let p: SheetParams | null = null;
   for (const f of feats) {
     if (f.id === id) break;
-    if (f.type === "sheetbase" && !f.off) p = { t: f.t, r: f.r, k: f.k, relief: f.relief };
+    if ((f.type === "sheetbase" || f.type === "tosheet") && !f.off) p = { t: f.t, r: f.r, k: f.k, relief: f.relief };
   }
   return p;
 }
 
-/** Belgedeki son taban flanş */
-export function lastSheetBase(feats: Feature[]): SheetBaseFeature | null {
-  let b: SheetBaseFeature | null = null;
-  for (const f of feats) if (f.type === "sheetbase" && !f.off) b = f;
+/** Belgedeki son sac parametre kaynağı (taban flanş veya saca dönüştür) */
+export function lastSheetBase(feats: Feature[]): (SheetParams & { id: string }) | null {
+  let b: (SheetParams & { id: string }) | null = null;
+  for (const f of feats) if ((f.type === "sheetbase" || f.type === "tosheet") && !f.off) b = { id: f.id, t: f.t, r: f.r, k: f.k, relief: f.relief };
   return b;
 }
+void (null as unknown as SheetBaseFeature);
 
 /** K faktörü ve büküm yarıçapından büküm payı (nötr eksen yay uzunluğu) */
 export const bendAllowance = (angleDeg: number, r: number, t: number, k: number) => ((angleDeg * Math.PI) / 180) * (r + k * t);

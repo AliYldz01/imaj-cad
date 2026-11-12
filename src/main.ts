@@ -71,6 +71,10 @@ function afterDocChange() {
   updateUndo();
 }
 const FEAT_NAMES: Record<string, string> = {
+  sheetjog: "Kademe",
+  miterflange: "Gönye-Flanş",
+  closecorner: "Köşe-Kapatma",
+  tosheet: "Saca-Dönüştür",
   combine: "Birleştir",
   splitbody: "Gövde-Böl",
   movebody: "Gövde-Taşı",
@@ -249,7 +253,7 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
   if (mode.k === "sketch") return { feats: doc.features.slice(0, featIndex(mode.featId)) };
   if (mode.k === "pm") {
     const d = mode.draft;
-    const live = !["fillet", "chamfer", "shell", "draft", "combine", "delbody", "indent", "thread"].includes(d.type) && !((d.type === "edgeflange" || d.type === "hem") && !(d as any)._preview);
+    const live = !["fillet", "chamfer", "shell", "draft", "combine", "delbody", "indent", "thread", "tosheet"].includes(d.type) && !((d.type === "edgeflange" || d.type === "hem" || d.type === "miterflange") && !(d as any)._preview);
     const base = mode.editingId ? doc.features.slice(0, featIndex(mode.editingId)) : all;
     return { feats: live ? [...base, d] : base, draftId: d.id };
   }
@@ -414,6 +418,9 @@ function refreshHighlight() {
       sel.edges = d.edges.map((r) => nearestEdge(r)).filter((i) => i >= 0);
       sel.faces = (d.faces ?? []).map((r) => nearestFace(r)).filter((i) => i >= 0);
     }
+    if (m && d.type === "tosheet") sel.edges = [...d.bends, ...d.rips].map((r) => nearestEdge(r)).filter((i) => i >= 0);
+    if (m && d.type === "closecorner") sel.faces = d.faces.map((r) => nearestFace(r)).filter((i) => i >= 0);
+    if (m && d.type === "miterflange" && !(d as any)._preview) sel.edges = d.edges.map((r) => nearestEdge(r)).filter((i) => i >= 0);
     if (m && (d.type === "edgeflange" || d.type === "hem") && !(d as any)._preview) sel.edges = d.edges.map((r) => nearestEdge(r)).filter((i) => i >= 0);
     if (m && d.type === "weld") sel.faces = [...d.pairs.flatMap((p) => [p.f1, p.f2]), ...((d as any)._p1 ? [(d as any)._p1] : [])].map((r) => nearestFace(r)).filter((i) => i >= 0);
     const bodyFaces = (refs: (FaceRef | null | undefined)[]) => {
@@ -524,7 +531,9 @@ function pickWant() {
     if (["combine", "movebody", "delbody", "indent", "fpattern", "thread", "flex"].includes(t)) return { face: true };
     if (t === "splitbody") return (mode.draft as any)._pick === "plane" ? { face: true, plane: true } : { face: true };
     if (t === "vchamfer") return { edge: true };
-    if (t === "edgeflange" || t === "hem") return (mode.draft as any)._preview ? {} : { edge: true };
+    if (t === "edgeflange" || t === "hem" || t === "miterflange") return (mode.draft as any)._preview ? {} : { edge: true };
+    if (t === "tosheet") return { edge: true };
+    if (t === "closecorner") return { face: true };
     if (t === "shell" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "point" || t === "csys") return { edge: true, face: true };
@@ -899,6 +908,28 @@ function newFeature(kind: string) {
           : { id, type: "edgeflange", name: "", edges, L: 25, angle: 90, pos: "inside", lenRef: "outer", flip: false, useDef: true, r: sp.r, o1: 0, o2: 0, gap: 0.2 };
       break;
     }
+    case "sheetjog":
+    case "miterflange": {
+      const sp = sheetParamsBefore(doc.features.slice(0, insertAt()), null);
+      if (!sp) return toast("Önce bir taban flanş oluşturun", true);
+      if (!sk) return toast(kind === "sheetjog" ? "Sacın düz yüzüne tek bir kademe çizgisi çizin" : "Önce flanş profilini (açık zincir) ilk kenarın ucunda, kenara dik bir düzlemde çizin", true);
+      if (kind === "sheetjog") draft = { id, type: "sheetjog", name: "", sketch: sk.id, H: 20, side: false, flip: false, useDef: true, r: sp.r };
+      else {
+        const m = viewer.mesh;
+        const edges = [...psel.edges].filter((i) => m?.edges[i].type === "LINE").map((i) => ({ m: m!.edges[i].m, d: m!.edges[i].d }));
+        draft = { id, type: "miterflange", name: "", sketch: sk.id, edges, rev: false, gap: 0.5 };
+      }
+      break;
+    }
+    case "closecorner": {
+      if (!sheetParamsBefore(doc.features.slice(0, insertAt()), null)) return toast("Önce bir taban flanş oluşturun", true);
+      draft = { id, type: "closecorner", name: "", faces: [], overlap: false, gap: 0.2 };
+      break;
+    }
+    case "tosheet":
+      draft = { id, type: "tosheet", name: "", bends: [], rips: [], t: 2, r: 2, k: 0.5, relief: 0.5, gap: 0.5 };
+      (draft as any)._pick = "bends";
+      break;
     case "sketchbend": {
       const sp = sheetParamsBefore(doc.features.slice(0, insertAt()), null);
       if (!sp) return toast("Önce bir taban flanş oluşturun", true);
@@ -989,14 +1020,17 @@ function commitFeature(kind: string) {
   if (draft.type === "endcap" && !draft.faces.length) return toast("Elemanın uç yüzünü seçin", true);
   if (draft.type === "gusset" && (!draft.f1 || !draft.f2)) return toast("İç köşeyi oluşturan iki yüzü seçin", true);
   delete (draft as any)._pick;
+  if (draft.type === "miterflange" && !draft.edges.length) return toast("Flanş kenarlarını seçin", true);
+  if (draft.type === "tosheet" && !draft.bends.length) return toast("Büküm kenarlarını seçin", true);
+  if (draft.type === "closecorner" && !draft.faces.length) return toast("Uç yüz seçin", true);
   if ((draft.type === "edgeflange" || draft.type === "hem") && !draft.edges.length) return toast("Flanş eklenecek kenarı seçin", true);
   delete (draft as any)._origin;
-  if ((draft.type === "edgeflange" || draft.type === "hem") && (draft as any)._preview) {
+  if ((draft.type === "edgeflange" || draft.type === "hem" || draft.type === "miterflange") && (draft as any)._preview) {
     delete (draft as any)._preview;
     if (draftError) return toast(draftError, true);
   } else delete (draft as any)._preview;
   if (draft.type === "extrude" && (draft.end === "surface" || draft.end === "offset") && !draft.face) return toast("Hedef yüzü seçin", true);
-  if (draftError && !["fillet", "chamfer", "shell", "draft", "edgeflange", "hem", "combine", "delbody", "indent", "thread"].includes(draft.type)) return toast(draftError, true);
+  if (draftError && !["fillet", "chamfer", "shell", "draft", "edgeflange", "hem", "miterflange", "combine", "delbody", "indent", "thread", "tosheet"].includes(draft.type)) return toast(draftError, true);
   mode = { k: "part" };
   hidePM();
   commitDoc(() => {
@@ -2005,6 +2039,60 @@ function renderFeaturePM(kind: string) {
       hint(d._preview ? "Önizleme açık — kenar seçmek için kapatın" : "Flanş eklenecek kenarlara dokunun");
       break;
     }
+    case "sheetjog":
+      body.appendChild(group("Kademe çizgisi", sketchSel(), h("p", "pm-hint", "Eskiz sacın düz yüzünde, tek bir çizgi.")));
+      body.appendChild(
+        group(
+          "Kademe",
+          numField("Kademe yüksekliği", d.H, (v) => ((d.H = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.H` }),
+          checkField("Hareket eden tarafı değiştir", d.side, (v) => ((d.side = v), upd())),
+          checkField("Yönü ters çevir", d.flip, (v) => ((d.flip = v), upd())),
+          h("p", "pm-hint", "İki 90° bükümle ötelenmiş kademe; parçanın izdüşüm boyu korunur."),
+        ),
+      );
+      break;
+    case "miterflange": {
+      const openSk = sketches.filter((x) => !extractClosed(x));
+      body.appendChild(group("Profil", selectField("Profil eskizi", openSk.map((x) => ({ v: x.id, t: x.name })), d.sketch, (v) => ((d.sketch = v), upd())), h("p", "pm-hint", "Profil, ilk seçilen kenarın ucunda ve kenara dik düzlemde çizilmiş açık bir zincir olmalı (ör. L, Z, U). Tabanla arasındaki büküm otomatik eklenir.")));
+      const g0 = group("Kenarlar", h("div", "pm-picks", d.edges.length ? `${d.edges.length} kenar seçili` : "Flanşın ilerleyeceği kenarlara dokunun"));
+      if (d.edges.length) g0.appendChild(button("Seçimi temizle", () => ((d.edges = []), renderFeaturePM(kind), refreshHighlight())));
+      g0.appendChild(checkField("Önizlemeyi göster", !!d._preview, (v) => ((d._preview = v), refreshHighlight(), rebuild())));
+      body.appendChild(g0);
+      body.appendChild(group("Seçenekler", checkField("Malzeme tarafını ters çevir", d.rev, (v) => ((d.rev = v), upd())), numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" })));
+      hint("Flanş kenarlarına dokunun");
+      break;
+    }
+    case "closecorner":
+      body.appendChild(
+        group(
+          "Köşe kapatma",
+          h("div", "pm-picks", d.faces.length ? `${d.faces.length} uç yüz seçili` : "Uzatılacak flanşın köşedeki uç yüzüne dokunun"),
+          segField([{ v: "under", t: "Alın (iç yüze kadar)" }, { v: "over", t: "Bindirme (dış yüze kadar)" }], d.overlap ? "over" : "under", (v) => ((d.overlap = v === "over"), upd())),
+          numField("Boşluk", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+        ),
+      );
+      hint("Uzatılacak flanş uç yüzüne dokunun");
+      break;
+    case "tosheet":
+      body.appendChild(
+        group(
+          "Sac parametreleri",
+          numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.1, unit: "mm" }),
+          numField("Büküm yarıçapı (iç)", d.r, (v) => ((d.r = v), upd()), { min: 0, unit: "mm" }),
+          numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), upd()), {}),
+          numField("Yarık boşluğu", d.gap, (v) => ((d.gap = Math.max(0.05, v)), upd()), { min: 0.05, unit: "mm" }),
+        ),
+      );
+      body.appendChild(
+        group(
+          "Kenarlar",
+          segField([{ v: "bends", t: "Büküm kenarları" }, { v: "rips", t: "Yarık kenarları" }], d._pick ?? "bends", (v) => ((d._pick = v), renderFeaturePM(kind))),
+          h("div", "pm-picks", `Büküm: ${d.bends.length} · Yarık: ${d.rips.length}`),
+          h("p", "pm-hint", "Sabit kalınlıklı (kabuklanmış) katıda: bükülecek dış kenarları ve kesilecek köşe kenarlarını seçin. İç kenarlar otomatik bulunur, köşelere boşaltma açılır."),
+        ),
+      );
+      hint(d._pick === "rips" ? "Yarık açılacak köşe kenarlarına dokunun" : "Büküm olacak dış kenarlara dokunun");
+      break;
     case "sketchbend": {
       body.appendChild(group("Büküm çizgisi", sketchSel(), h("p", "pm-hint", "Eskiz sacın düz yüzünde olmalı ve tek bir çizgi içermeli.")));
       body.appendChild(
@@ -2564,7 +2652,24 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     else if (!d.f2) d.f2 = r;
     else [d.f1, d.f2] = [d.f2, r];
     schedulePreview();
-  } else if ((d.type === "edgeflange" || d.type === "hem") && hit.kind === "edge" && m) {
+  } else if (d.type === "tosheet" && hit.kind === "edge" && m) {
+    const e = m.edges[hit.index];
+    if (e.type !== "LINE") return toast("Düz bir kenar seçin", true);
+    const list = d._pick === "rips" ? d.rips : d.bends;
+    const other = d._pick === "rips" ? d.bends : d.rips;
+    const oi = other.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
+    if (oi >= 0) other.splice(oi, 1);
+    const k = list.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
+    if (k >= 0) list.splice(k, 1);
+    else list.push({ m: e.m, d: e.d });
+  } else if (d.type === "closecorner" && hit.kind === "face" && m) {
+    const fc = m.faces[hit.index];
+    if (!fc.n) return toast("Flanşın düz uç yüzünü seçin", true);
+    const k = d.faces.findIndex((r: FaceRef) => dist3(r.c, fc.c) < 1e-3);
+    if (k >= 0) d.faces.splice(k, 1);
+    else d.faces.push(faceRef(hit.index));
+    schedulePreview();
+  } else if ((d.type === "edgeflange" || d.type === "hem" || d.type === "miterflange") && hit.kind === "edge" && m) {
     if (d._preview) return toast("Kenar seçmek için önizlemeyi kapatın", true);
     const e = m.edges[hit.index];
     if (e.type !== "LINE") return toast("Flanş için düz bir kenar seçin", true);
@@ -2942,6 +3047,10 @@ function openSection() {
 // Özellik ağacı
 // =====================================================================
 const FEAT_ICON: Record<string, string> = {
+  sheetjog: "sheetjog",
+  miterflange: "miterflange",
+  closecorner: "closecorner",
+  tosheet: "tosheet",
   combine: "combine",
   splitbody: "splitbody",
   movebody: "movebody",
@@ -3200,6 +3309,10 @@ function commands(): Cmd[] {
       { id: "edgeflange", label: "Kenar Flanş", icon: "edgeflange", run: () => newFeature("edgeflange") },
       { id: "hem", label: "Kenet", icon: "hem", run: () => newFeature("hem") },
       { id: "sketchbend", label: "Çizgiden Büküm", icon: "sketchbend", run: () => newFeature("sketchbend") },
+      { id: "sheetjog", label: "Kademe", icon: "sheetjog", run: () => newFeature("sheetjog") },
+      { id: "miterflange", label: "Gönye Flanş", icon: "miterflange", run: () => newFeature("miterflange") },
+      { id: "closecorner", label: "Köşe Kapat", icon: "closecorner", run: () => newFeature("closecorner") },
+      { id: "tosheet", label: "Saca Dönüştür", icon: "tosheet", run: () => newFeature("tosheet") },
       "sep",
       { id: "cutExtrude", label: "Ekst. Kesme", icon: "cutExtrude", run: () => newFeature("cutExtrude") },
       { id: "hole", label: "Delik Sihirb.", icon: "hole", run: () => newFeature("hole") },

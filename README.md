@@ -6,7 +6,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 
 **Canlı sürüm:** https://aliyldz01.github.io/imaj-cad/
 
-## v0.7 — Kaynaklı yapı modülü tamamlandı
+## v0.8 — Eskiz, katı ve sac metal eksikleri tamamlandı
 
 Ayrıntılı özellik listesi ve sonraki adımlar: [docs/YOL_HARITASI.md](docs/YOL_HARITASI.md)
 
@@ -23,7 +23,10 @@ Ayrıntılı özellik listesi ve sonraki adımlar: [docs/YOL_HARITASI.md](docs/Y
 - **Özel profiller:** eskizden profil (parametrik), cihaz kütüphanesi, dosyaya aktarma; kullanılan profil belgeye gömülür
 - **İmalat resimleri:** her kalem için A4 sayfa (görünüşler, kesit, boy, uç açıları, delik konumları, antet); yazdır/PDF, SVG, levhalar için 1:1 DXF
 - **Kesim listesi:** aynı profil, boy ve açılar gruplanır; adet, kesim boyu, uç açıları, ağırlık, profil başına toplam boy; CSV (Excel) çıktısı ve her kalem için ayrı STEP
-- **Henüz yok:** loft kılavuz eğrileri; esnet (Flex) — kullandığımız çekirdek derlemesi desteklemediği için yerine Ölçekle eklendi
+- **v0.8 eskiz:** çizdikten sonra hızlı ölçü girişi, dinamik ayna, eskiz resmi (fotoğrafı iki noktayla ölçekleme), orta nokta çizgisi, 3N merkez dikdörtgen, konik, denklem eğrisi, ayır, kademe çizgisi, koordinat / yay uzunluğu / daire kenarı ölçüleri, eş yarıçaplı, eskizi onar, bloklar, kapalı bölge gölgesi
+- **v0.8 katı:** birleştir, gövde böl/taşı/sil, girinti, eskiz/tablo/eğri/doldurma çoğaltma, helisel diş, esnet, köşe pahı, ekstrüzyon başlangıç ötelemesi, girişim kontrolü, kılavuz eğrili loft
+- **v0.8 sac metal:** kademe, gönye flanş, köşe kapatma, katıdan saca dönüştür
+- **Sınırlamalar:** esnet kesiti boyunca sabit gövdelerde çalışır; kılavuz eğrili loft iki profille ve çokgen kesitlerle yapılır; diş metrik 60° profildir
 - **Değerlendir:** ölçme (uzunluk, çap, alan, mesafe, açı), kütle özellikleri ve malzeme, kesit görünüşü
 - Düzlemsel yüze eskiz, STEP / STL dışa aktarma, `.icad` kaydet / aç, otomatik kayıt, çevrimdışı çalışma
 - Kalem / fare çizer ve seçer; parmak döndürür, kaydırır ve yakınlaştırır
