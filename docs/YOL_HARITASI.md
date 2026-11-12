@@ -305,3 +305,15 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Gruplar arası köşe ve 3+ elemanlı köşe: sürekli eleman uzar, diğerleri yüzünde biter | ✅ |
 | Bölünmüş düz kiriş (aynı doğrultuda iki parça) sürekli sayılır | ✅ |
 | Köşede ayakların profil yönünü otomatik döndürme, kesişen (X) elemanlar | ⬜ |
+
+## v0.21 — 3B eskizde ilişki/ölçü/çözücü, profil otomasyonu
+
+| Özellik | Durum |
+|---|---|
+| 3B araçlar: Dikdörtgen, Nokta, Seç, Akıllı Ölçü | ✅ |
+| 3B ilişkiler (X/Y/Z boyunca, düzleme paralel, paralel, dik, eşit, doğrusal, sabitle, çakışık, orta nokta, üzerinde) | ✅ |
+| 3B ölçüler (boy, mesafe, açı) + etiketle düzenleme | ✅ |
+| 3B kısıt çözücü + tam tanımlı göstergesi | ✅ |
+| Ayakların profil yönünü otomatik döndürme | ✅ |
+| X kesişen elemanlar (biri sürekli, diğeri iki parça) | ✅ |
+| 3B yay/daire/spline, 3B kırp/ayna/öteleme, 3B ölçü–denklem bağı | ⬜ |

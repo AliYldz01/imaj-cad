@@ -1372,10 +1372,11 @@ function profileX(n: Vec3, d: Vec3, legacy = false): Vec3 {
   y = vnorm(y);
   return vnorm(vcross(y, d));
 }
-type MemberPart = { solids: (Shape | null)[]; lines: ({ a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 } | null)[]; chained: Set<number>; loops: Loop[]; g: number; treated: Set<string> };
+type MemberPart = { keys: string[]; solids: (Shape | null)[]; lines: ({ a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 } | null)[]; chained: Set<number>; loops: Loop[]; g: number; treated: Set<string> };
 function memberTool(f: Extract<KFeature, { type: "member" }>) {
   // SolidWorks grupları: her grup kendi profil konumu ve köşe işlemiyle (köşe işlemi grup içinde)
   const parts: MemberPart[] = [];
+  if (f.ori === 2) f = { ...f, items: autoRotate(f) };
   if (!f.gl || f.gl.length < 2) parts.push({ ...memberCore(f), g: 0 });
   else
     f.gl.forEach((gp, k) => {
@@ -1383,8 +1384,91 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
       if (items.length) parts.push({ ...memberCore({ ...f, items, loops: gp.loops, R: gp.R, corner: gp.corner, gap: gp.gap }), g: k });
     });
   // akıllı birleşimler: T birleşimi, gruplar arası köşe, 3+ elemanlı köşe
+  xSplits = [];
   if (f.ori === 2) resolveJoints(parts, f.gap);
-  for (const p of parts) for (const s of p.solids) if (s) applyTool(s, false, false);
+  for (const xs of xSplits) {
+    const reg = memberReg.get(xs.key);
+    if (!reg) continue;
+    const L1 = vlen(vsub(xs.V, reg.a)), L2 = vlen(vsub(reg.b, xs.V));
+    memberReg.set(xs.key + "/2", { ...reg, key: xs.key + "/2", a: xs.V, len: L2 });
+    memberReg.set(xs.key, { ...reg, b: xs.V, len: L1 });
+  }
+  for (const p of parts) for (const s of p.solids) if (s) for (const q of solidsOf(s)) applyTool(q, false, false);
+}
+/** profilin kesit ağırlık merkezi − sınır kutusu merkezi (profil koordinatlarında); simetrikse ~0 */
+function profileBias(loops: Loop[]): [number, number] {
+  let A = 0, cx = 0, cy = 0;
+  const xs: number[] = [], ys: number[] = [];
+  for (const l of loops) {
+    const pts: Vec2[] = "circle" in l ? Array.from({ length: 24 }, (_, i) => [l.circle.c[0] + l.circle.r * Math.cos((i / 24) * 2 * Math.PI), l.circle.c[1] + l.circle.r * Math.sin((i / 24) * 2 * Math.PI)] as Vec2) : "segs" in l ? l.segs.flatMap((q) => (q.t === "a" ? [q.a, q.m] : [q.a])) : [];
+    let a = 0, x = 0, y = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [p, q] = [pts[i], pts[(i + 1) % pts.length]];
+      const c = p[0] * q[1] - q[0] * p[1];
+      a += c;
+      x += (p[0] + q[0]) * c;
+      y += (p[1] + q[1]) * c;
+      xs.push(p[0]);
+      ys.push(p[1]);
+    }
+    const sg = (l.depth % 2 ? -1 : 1) * Math.sign(a || 1);
+    A += sg * a;
+    cx += sg * x;
+    cy += sg * y;
+  }
+  if (Math.abs(A) < 1e-9) return [0, 0];
+  const gx = cx / (3 * A), gy = cy / (3 * A);
+  return [gx - (Math.min(...xs) + Math.max(...xs)) / 2, gy - (Math.min(...ys) + Math.max(...ys)) / 2];
+}
+/** SolidWorks'te elle yapılan işi otomatik yap: köşeye gelen tekil elemanı (ör. ayak) profilin içi köşeye bakacak şekilde 90° adımlarla döndür */
+function autoRotate(f: Extract<KFeature, { type: "member" }>): MemberItem[] {
+  const items = f.items.map((it) => ({ ...it }));
+  const kk = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+  const J = new Map<string, { i: number; end: 0 | 1 }[]>();
+  items.forEach((it, i) => ([it.a, it.b] as Vec3[]).forEach((p, e) => {
+    const k = kk(p);
+    if (!J.has(k)) J.set(k, []);
+    J.get(k)!.push({ i, end: e as 0 | 1 });
+  }));
+  items.forEach((it, i) => {
+    if (it.k !== "l") return;
+    const gp = f.gl?.[it.g ?? 0];
+    if (gp ? gp.auto === false : f.auto === false) return;
+    const loops = gp?.loops ?? f.loops;
+    const bias = profileBias(loops);
+    if (Math.hypot(bias[0], bias[1]) < 0.05) return; // simetrik profil
+    const sameG = (q: { i: number }) => (items[q.i].g ?? 0) === (it.g ?? 0);
+    // grup içi zincirin parçasıysa (gönyeli köşe) dokunma
+    const ends = ([0, 1] as const).map((e) => J.get(kk(e === 0 ? it.a : it.b))!);
+    if (ends.some((l) => l.some((q) => q.i !== i && sameG(q)))) return;
+    const d = vnorm(vsub(it.b, it.a));
+    let sum: Vec3 = [0, 0, 0];
+    ends.forEach((list, e) => {
+      for (const q of list) {
+        if (q.i === i) continue;
+        const o = items[q.i];
+        const dirO = vnorm(q.end === 0 ? vsub(o.b, o.a) : vsub(o.a, o.b));
+        sum = vadd(sum, vsub(dirO, vmul(d, vdot(dirO, d))));
+      }
+      void e;
+    });
+    if (vlen(sum) < 1e-6) return;
+    const x0 = profileX(it.n, d);
+    const y0 = vcross(d, x0);
+    // içe bakan vektör: ağırlık merkezinden kutu merkezine (−bias); en iyi 90° adımı seç
+    let best = x0, bd = -Infinity;
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2;
+      const x = vadd(vmul(x0, Math.cos(a)), vmul(y0, Math.sin(a)));
+      const y = vcross(d, x);
+      const inward = vadd(vmul(x, -bias[0]), vmul(y, -bias[1]));
+      const sc = vdot(vnorm(inward), vnorm(sum));
+      if (sc > bd + 1e-9) [bd, best] = [sc, x];
+    }
+    // n'yi (profil Y) seçilen döndürmeye göre ayarla: profileX(n,d) = x olsun
+    it.n = vcross(d, best);
+  });
+  return items;
 }
 /** Bağlı segmentleri uç uca aynı yönde akacak şekilde çevirir (profil kanatları köşede ters dönmesin) */
 function orientChains(src: MemberItem[]): MemberItem[] {
@@ -1424,9 +1508,9 @@ function orientChains(src: MemberItem[]): MemberItem[] {
 }
 /** T birleşimleri ve gruplar arası / 3+ elemanlı köşeler: elemanları birbirinin yüzünde biter */
 function resolveJoints(parts: MemberPart[], gap: number) {
-  type M = { p: MemberPart; i: number; a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
+  type M = { p: MemberPart; i: number; key: string; a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
   const ms: M[] = [];
-  for (const p of parts) p.lines.forEach((li, i) => li && !p.chained.has(i) && p.solids[i] && ms.push({ p, i, ...li }));
+  for (const p of parts) p.lines.forEach((li, i) => li && !p.chained.has(i) && p.solids[i] && ms.push({ p, i, key: p.keys[i], ...li }));
   const kk = (q: Vec3) => q.map((v) => Math.round(v * 1000)).join(",");
   const J = new Map<string, { m: M; end: 0 | 1 }[]>();
   for (const m of ms)
@@ -1487,7 +1571,34 @@ function resolveJoints(parts: MemberPart[], gap: number) {
     for (const o of others) trimTo(o.m, o.end, V, prim.map((q) => q.m));
     void k;
   }
+  // X kesişimi: iki eleman birbirini ortasından kesiyor → biri sürekli, diğeri iki parçaya ayrılır
+  for (let u = 0; u < ms.length; u++)
+    for (let w = u + 1; w < ms.length; w++) {
+      const A = ms[u], B = ms[w];
+      const c = vcross(A.d, B.d);
+      if (vlen(c) < 1e-6) continue;
+      const r = vsub(B.a, A.a);
+      // iki doğru arasındaki en yakın noktalar
+      const dd = vdot(A.d, B.d);
+      const ta = (vdot(r, A.d) - dd * vdot(r, B.d)) / (1 - dd * dd);
+      const tb = (dd * vdot(r, A.d) - vdot(r, B.d)) / (1 - dd * dd);
+      if (ta < 1e-3 || ta > A.L - 1e-3 || tb < 1e-3 || tb > B.L - 1e-3) continue;
+      const PA = vadd(A.a, vmul(A.d, ta)), PB = vadd(B.a, vmul(B.d, tb));
+      if (vlen(vsub(PA, PB)) > 1e-3) continue;
+      // birincil: daha düşey olan, sonra düşük grup / sıra
+      const [P, S] = Math.abs(B.d[1]) > Math.abs(A.d[1]) + 1e-6 || (Math.abs(B.d[1]) >= Math.abs(A.d[1]) - 1e-6 && B.p.g < A.p.g) ? [B, A] : [A, B];
+      // sürekli elemanın dış konturu boyunca uzun prizma ile kes (açılı kesişimde de tam oturur)
+      const big = bodySize();
+      const outer = P.p.loops.filter((l) => l.depth === 0);
+      const prism = profile(outer).sketchOnPlane(new Plane(vsub(PA, vmul(P.d, big)), P.x, P.d)).extrude(2 * big);
+      const cut = S.p.solids[S.i]!.cut(prism);
+      const pieces = solidsOf(cut).filter((q) => volOf(q) > 1e-3);
+      S.p.solids[S.i] = pieces.length > 1 ? (makeCompound(pieces.map((q) => q.clone())) as any) : pieces[0] ?? null;
+      xSplits.push({ key: S.key, V: PA });
+    }
 }
+/** X kesişiminde ikiye ayrılan elemanların kesim listesi kaydı */
+let xSplits: { key: string; V: Vec3 }[] = [];
 function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, "g"> {
   const items = f.ori === 2 ? orientChains(f.items) : f.items;
   type LI = { a: Vec3; b: Vec3; d: Vec3; L: number; x: Vec3 };
@@ -1652,7 +1763,7 @@ function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, 
       solids[T.i] = keepFar(solids[T.i]!.cut(halfSpace(vadd(V, vmul(dT, sR + f.gap)), dT)), V, dT);
     }
   }
-  return { solids, lines, chained, loops: f.loops, treated: new Set() };
+  return { keys: items.map((it) => it.key), solids, lines, chained, loops: f.loops, treated: new Set() };
 }
 
 const segDist = (p: Vec3, a: Vec3, b: Vec3) => {

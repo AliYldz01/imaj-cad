@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.21: **3B eskiz 2B gibi**: Dikdörtgen, Nokta, Seç, Akıllı Ölçü (boy, mesafe, açı), ilişkiler (X/Y/Z boyunca, düzleme paralel, paralel, dik, eşit, doğrusal, sabitle, çakışık, orta nokta, üzerinde), 3B kısıt çözücü, tam tanımlı göstergesi, ölçü etiketleri; profillerde **ayakların otomatik dönmesi** ve **X kesişimlerin** otomatik çözümü
 - v0.20: **Akıllı profil birleşimleri**: ters yönde çizilmiş çizgilerde L/U kanatları artık köşede ters dönmüyor (gönye yüzleri tam oturur), **T birleşimleri**, **gruplar arası köşeler** ve **3+ elemanlı köşeler** (ayak + çerçeve) otomatik çözülür; tüm profillerde (L, U, IPE/HEA/HEB, kutu, boru, lama) girişimsiz
 - v0.19.1: "Profili konumlandır" penceresi telefonda ve bilgisayarda büyük (ekran genişliğine uyar), noktalar büyük ve parmakla dokunulabilir, geçerli delme noktası turuncu
 - v0.19: Yapı elemanı **grupları** (her grup ayrı delme noktası/döndürme/köşe işlemi), **Alignment** (profil eksenini X/Y/Z veya kenara hizala), **profili konumlandır** (profil resminde noktaya dokun), 3B eskizde **nokta sürükleme** + X/Y/Z boyunca ilişkisinin korunması, **Ctrl + yüz** ile 3B eksen hizalama

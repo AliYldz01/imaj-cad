@@ -465,6 +465,10 @@ export interface Sketch3DFeature extends FeatBase {
   /** köşe büküm yarıçapı (0 = keskin köşe) */
   r: number;
   seq: number;
+  /** 3B ilişkiler (çakışık, sabit, paralel, dik, eşit, orta nokta, üzerinde, doğrusal, düzleme paralel) */
+  cons3?: { id: string; t: import("../sketch/solver3d").Rel3; e: string[]; p?: Vec3 }[];
+  /** 3B sürücü ölçüler: çizgi boyu, iki nokta arası, iki çizgi arası açı */
+  dims3?: { id: string; t: "len" | "dist" | "ang"; e: string[]; v: number }[];
 }
 
 /** Eleman referansı: yapı elemanı özelliği + segment sırası */
@@ -667,7 +671,7 @@ export type KFeature =
   | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
   | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
   | { id: string; type: "vchamfer"; v: Vec3; d: number }
-  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number }[] }
+  | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; auto?: boolean; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean }[] }
   | { id: string; type: "weld"; pairs: { f1: FaceRef; f2: FaceRef }[]; a: number; intermittent: boolean; len: number; pitch: number }
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }

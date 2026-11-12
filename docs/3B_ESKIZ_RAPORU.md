@@ -66,6 +66,26 @@ Test: `tests/e2e/s3d1.py` — tıklayarak çizim, X/Z/Y eksen çıkarımı, Tab,
 
 Test: `tests/e2e/s3d2.py`.
 
-## 5. Hâlâ kalan
-- 3B eskizde tam kısıt çözücü (eşit, dik, paralel, sürücü ölçüler) ve 3B yay / spline.
-- Gruplar arası kırpma sırası (SolidWorks "trim order"); şimdilik gruplar arası birleşim için Kırp/Uzat kullanılır.
+## 5. v0.21 ile tamamlananlar
+
+**3B eskiz 2B eskiz gibi çalışır:**
+| Konu | Durum |
+|---|---|
+| Araçlar: Çizgi, **Dikdörtgen** (etkin düzlemde, 4 eksen ilişkisiyle), **Nokta**, **Seç**, **Akıllı Ölçü** | ✅ |
+| Seç: noktaya / çizgiye tıkla, Ctrl/Shift ile çoklu seçim, sürükle, Delete ile sil, Esc | ✅ |
+| İlişkiler (SolidWorks "İlişki Ekle"): X/Y/Z boyunca, XY/YZ/ZX düzlemine paralel, paralel, dik, eşit, doğrusal, sabitle, çakışık, orta nokta, üzerinde, yapı çizgisi | ✅ |
+| Akıllı Ölçü: çizgi boyu (çizgi + boşluğa tık), iki nokta arası mesafe, iki çizgi arası açı; ekrandaki ölçü etiketine dokununca değer değişir; panelde ölçü listesi | ✅ |
+| **3B kısıt çözücü** (`src/sketch/solver3d.ts`, Levenberg–Marquardt): ölçü/ilişki eklenince, nokta sürüklenince, koordinat değişince çözülür; çelişen ilişki/ölçü reddedilir | ✅ |
+| **Tam tanımlı göstergesi**: kalan serbestlik sayısı ("✔ Eskiz tam tanımlı") | ✅ |
+| İlişki etiketleri grafik alanda (X, Y, Z, ∥, ⊥, =, ⚓ …) | ✅ |
+
+**Profil otomasyonu (v0.21):**
+| Konu | Durum |
+|---|---|
+| Köşeye gelen tekil elemanın (ayak) profili otomatik 90° adımlarla dönerek iç tarafı köşeye bakar (L, U; simetrik profillerde gerekmez). Kullanıcı döndürme/aynalama/hizalama verirse otomatik dönmez. | ✅ |
+| X kesişim: ortadan kesişen iki elemandan biri sürekli kalır, diğeri onun dış konturuyla kesilip iki parçaya ayrılır (açılı kesişimde de girişimsiz); kesim listesinde iki parça | ✅ |
+
+## 6. Hâlâ kalan
+- 3B eskizde yay, daire, spline; kırp/uzat, ayna, öteleme, eskiz radyüsü (2B'de var).
+- 3B ölçülerin denklemlere bağlanması (2B ölçüler gibi).
+- Gruplar arası kırpma sırasını elle seçme.

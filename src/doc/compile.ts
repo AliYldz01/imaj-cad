@@ -368,13 +368,13 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           // SolidWorks grupları: 1. grup = özelliğin kendi alanları, sonra f.groups
           const groups = [{ segs: f.segs, align: f.align, mirror: f.mirror, rot: f.rot, poff: f.poff, corner: f.corner, gap: f.gap, alignAx: f.alignAx, alignTo: f.alignTo }, ...(f.groups ?? [])];
           const items: MemberItem[] = [];
-          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number }[] = [];
+          const gl: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean }[] = [];
           let gi = 0;
           let pr0: ReturnType<typeof placedProfile> | null = null;
           groups.forEach((G, gk) => {
           const pr = placedProfile(std, f.size, G.align as Align, G.mirror, G.rot, custom, G.poff);
           pr0 ??= pr;
-          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap });
+          gl.push({ loops: pr.loops, R: pr.R, corner: G.corner, gap: G.gap, auto: !G.rot && !G.mirror && !G.alignTo });
           const gItems: MemberItem[] = [];
           // 3B eskiz çizgileri: köşe yarıçapı varsa çizgi–yay–çizgi zincirine çevrilir
           const s3: { f: Sketch3DFeature; lines: { a: Vec3; b: Vec3; key: string }[] }[] = [];
@@ -427,7 +427,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           for (const it of gItems) items.push({ ...it, g: gk });
           });
           const pr = pr0!;
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, ...(groups.length > 1 ? { gl } : {}) });
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: custom ? cname : profileName(std, f.size), R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, ...(groups.length > 1 ? { gl } : {}) });
           break;
         }
         case "trim": {

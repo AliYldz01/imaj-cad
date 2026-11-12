@@ -24,7 +24,8 @@ import * as THREE from "three";
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
-import { Sketch3DTool, PLANES as S3PLANES, setLineLength, enforceAlong } from "./sketch/sketch3d";
+import { Sketch3DTool, PLANES as S3PLANES, setLineLength } from "./sketch/sketch3d";
+import { REL3_NAMES, dofOf as dof3 } from "./sketch/solver3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
 
@@ -413,6 +414,15 @@ function drawSketches() {
     }
   }
   if (selSegs.length) sketchGroup.push(viewer.fatLines(selSegs, 0x1c7ed6, 3.5));
+  if (s3tool?.active()) {
+    const ss = s3tool.selSegs();
+    if (ss.lines.length) sketchGroup.push(viewer.fatLines(ss.lines, 0xf76707, 4));
+    const k = viewer.worldPerPixel() * 7;
+    for (let i = 0; i < ss.pts.length; i += 3) {
+      const [x, y, z] = ss.pts.slice(i, i + 3);
+      sketchGroup.push(viewer.fatLines([x - k, y, z, x + k, y, z, x, y - k, z, x, y + k, z, x, y, z - k, x, y, z + k], 0xf76707, 4));
+    }
+  }
   if (othSegs.length) sketchGroup.push(viewer.fatLines(othSegs, 0xae3ec9, 2.5));
   sketchGroup.forEach((o) => viewer.overlay.add(o));
   viewer.requestRender();
@@ -545,6 +555,11 @@ var s3tool: Sketch3DTool = new Sketch3DTool({
     schedulePreview();
   },
   hint: (t) => hint(t),
+  toast: (t, err) => toast(t, err),
+  selChanged: () => {
+    renderFeaturePM("sketch3d");
+    drawSketches();
+  },
 });
 const partInput: InputHandler = {
   hover(e) {
@@ -1949,6 +1964,55 @@ function renderFeaturePM(kind: string) {
       f3._d ??= [0, 0, 0];
       const act = f3._act ?? f3.xyz.length - 1;
       // SolidWorks 3B çizgi aracı: etkin düzlem + zincir
+      // SolidWorks 3B eskiz araçları
+      const gt = group(
+        "Araç",
+        segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }], s3tool.mode, (v) => s3tool.setMode(v as any)),
+      );
+      // tanım durumu
+      const fdof = dof3(f3);
+      const fixedAny = (f3.cons3 ?? []).some((c) => c.t === "fix");
+      gt.appendChild(h("p", "pm-hint", f3.xyz.length ? (fdof === 0 ? "✔ Eskiz tam tanımlı" : `Eksik tanımlı: ${fdof} serbestlik${fixedAny ? "" : " (konum için bir noktayı sabitleyin)"}`) : "Henüz nokta yok"));
+      body.appendChild(gt);
+      // seçim → ilişki ekle
+      if (s3tool.sel.length) {
+        const opts = s3tool.relOptions();
+        const gr = group(`Seçili: ${s3tool.sel.map((q) => (q.k === "p" ? "N" + (f3.ids.indexOf(q.id) + 1) : "Ç" + (f3.lines.findIndex((l) => l.id === q.id) + 1))).join(", ")}`);
+        const row = h("div", "pm-row");
+        row.style.flexWrap = "wrap";
+        for (const o of opts) row.appendChild(button(o === "x" ? REL3_NAMES.alongX : o === "y" ? REL3_NAMES.alongY : o === "z" ? REL3_NAMES.alongZ : o === "cons" ? "Yapı çizgisi ↔" : (REL3_NAMES as any)[o], () => s3tool.addRel(o), "btn"));
+        row.appendChild(button("Sil", () => s3tool.deleteSel(), "btn danger"));
+        gr.appendChild(row);
+        if (!opts.length) gr.appendChild(h("p", "pm-hint", "Bu seçim için ilişki yok. 2 nokta, 1–2 çizgi veya nokta + çizgi seçin."));
+        body.appendChild(gr);
+      }
+      // ilişkiler ve ölçüler listesi
+      {
+        const rl = h("div", "pm-feats");
+        const nm = (id: string) => (f3.ids.includes(id) ? "N" + (f3.ids.indexOf(id) + 1) : "Ç" + (f3.lines.findIndex((l) => l.id === id) + 1));
+        f3.lines.forEach((l) => {
+          if (!l.ax) return;
+          const row = h("div", "pm-row");
+          row.append(h("span", "", `${(REL3_NAMES as any)["along" + l.ax.toUpperCase()]} · ${nm(l.id)}`), button("✕", () => (delete (l as any).ax, s3tool.resolve(), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"));
+          rl.appendChild(row);
+        });
+        (f3.cons3 ?? []).forEach((c, j) => {
+          const row = h("div", "pm-row");
+          row.append(h("span", "", `${REL3_NAMES[c.t]} · ${c.e.map(nm).join(", ")}`), button("✕", () => (f3.cons3!.splice(j, 1), s3tool.resolve(), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"));
+          rl.appendChild(row);
+        });
+        if (rl.childElementCount) body.appendChild(group("İlişkiler", rl));
+        const dl = h("div", "pm-feats");
+        (f3.dims3 ?? []).forEach((m, j) => {
+          const row = h("div", "pm-row");
+          row.append(
+            numField(`${m.t === "len" ? "Boy" : m.t === "dist" ? "Mesafe" : "Açı"} ${m.e.map(nm).join("–")}`, m.v, (v) => s3tool.editDim(m.id, undefined, v), { unit: m.t === "ang" ? "°" : "mm", key: `${f3.id}.dims3[${j}].v` }),
+            button("✕", () => (f3.dims3!.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"),
+          );
+          dl.appendChild(row);
+        });
+        if (dl.childElementCount) body.appendChild(group("Ölçüler", dl));
+      }
       const g0 = group(
         "Çizgi (3B)",
         segField(S3PLANES.map((p) => ({ v: p, t: p })), s3tool.planeName, (v) => ((s3tool.plane = S3PLANES.indexOf(v as any)), s3tool.cyclePlane(0))),
@@ -2003,7 +2067,7 @@ function renderFeaturePM(kind: string) {
         (["X", "Y", "Z"] as const).forEach((ax, k) => {
           const nf = numField(ax, f3.xyz[i][k], (v) => {
             f3.xyz[i][k] = v;
-            enforceAlong(f3, i);
+            s3tool.resolve([i]);
             renderFeaturePM(kind);
             drawSketches();
             upd();
@@ -2031,7 +2095,15 @@ function renderFeaturePM(kind: string) {
         const row = h("div", "pm-row");
         row.append(
           h("span", "", `N${ia + 1}→N${ib + 1}${l.ax ? " ∥" + l.ax.toUpperCase() : ""}`),
-          numField("L", Math.round(dist3(f3.xyz[ia], f3.xyz[ib]) * 1000) / 1000, (v) => (setLineLength(f3, l.id, v), renderFeaturePM(kind), drawSketches(), upd()), { unit: "mm", min: 0.001 }),
+          numField("L", Math.round(dist3(f3.xyz[ia], f3.xyz[ib]) * 1000) / 1000, (v) => {
+            const dm = f3.dims3?.find((q) => q.t === "len" && q.e[0] === l.id);
+            if (dm) return s3tool.editDim(dm.id, undefined, v);
+            setLineLength(f3, l.id, v);
+            s3tool.resolve();
+            renderFeaturePM(kind);
+            drawSketches();
+            upd();
+          }, { unit: "mm", min: 0.001 }),
           checkField("Yapı", !!l.cons, (v) => ((l.cons = v), drawSketches())),
           button("✕", () => (f3.lines.splice(j, 1), renderFeaturePM(kind), drawSketches(), upd()), "btn danger"),
         );

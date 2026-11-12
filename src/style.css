@@ -313,3 +313,6 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .i3d[hidden] { display: none; }
 .i3d .i3d-ar { position: absolute; left: -16px; top: -34px; width: 32px; height: 34px; display: grid; place-items: center; font-size: 26px; color: #2f9e44; cursor: grab; transform-origin: 16px 34px; text-shadow: 0 0 3px #fff; touch-action: none; }
 .i3d .i3d-v { position: absolute; left: 14px; top: -12px; font-size: 12px; background: rgba(255,255,255,.9); border: 1px solid #2f9e44; border-radius: 4px; padding: 0 4px; white-space: nowrap; pointer-events: none; }
+.s3-labels span { position: fixed; transform: translate(-50%, -50%); font: 12px system-ui; white-space: nowrap; }
+.s3-dim { background: #fff; border: 1px solid #1c7ed6; color: #1c7ed6; padding: 1px 5px; border-radius: 4px; cursor: pointer; pointer-events: auto; min-width: 22px; text-align: center; }
+.s3-rel { background: #ebfbee; color: #2b8a3e; border: 1px solid #2b8a3e; padding: 0 3px; border-radius: 3px; font-size: 10px; pointer-events: none; }
