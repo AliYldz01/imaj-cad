@@ -4024,6 +4024,11 @@ const skTool = (t: SkTool, icon: string, label = TOOL_NAMES[t]): Cmd => ({
 
 function commands(): Cmd[] {
   if (tab === "asm") return asmUI ? asmUI.commands() : [];
+  // 3B eskiz açıkken üst çubukta 3B araçları (2B eskiz gibi)
+  if (s3tool?.active()) {
+    const T = (m: string, label: string, icon: string): Cmd => ({ id: "s3" + m, label, icon, run: () => (s3tool.setMode(m as any), renderCommands()), active: () => s3tool.mode === m });
+    return [T("line", "Çizgi", "line"), T("rect", "Dikdörtgen", "rect"), T("arc", "Yay", "arc3"), T("point", "Nokta", "point"), T("select", "Seç", "select"), T("dim", "Akıllı Ölçü", "dim"), T("trim", "Kırp", "trim"), T("extend", "Uzat", "extend")];
+  }
   if (tab === "features")
     return [
       { id: "extrude", label: "Ekstrüzyon", icon: "extrude", run: () => newFeature("extrude") },

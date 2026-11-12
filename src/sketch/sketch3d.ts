@@ -51,6 +51,8 @@ export class Sketch3DTool {
   private rectP: Vec3 | null = null;
   /** 3 noktalı yay: seçilen başlangıç / bitiş */
   private arcPick: Cand[] = [];
+  /** hizalama kılavuzu (mavi kesikli): hizalanan nokta → imleç */
+  private guide: [Vec3, Vec3] | null = null;
   private hov: S3Sel | null = null;
   private labels: HTMLDivElement;
   last3: Solve3Result | null = null;
@@ -82,6 +84,7 @@ export class Sketch3DTool {
     return a >= 0 && a < d.xyz.length ? a : -1;
   }
   clear() {
+    document.querySelector(".s3-relbar")?.remove();
     this.g.clear();
     this.tip.style.display = "none";
     this.labels.innerHTML = "";
@@ -125,6 +128,7 @@ export class Sketch3DTool {
   }
   /** ekran noktasının dünya konumu (yakalama + düzlem + eksen çıkarımı) */
   locate(x: number, y: number, snap = true): Cand | null {
+    this.guide = null;
     const d = this.ctx.draft();
     if (!d) return null;
     const v = this.ctx.viewer;
@@ -204,7 +208,27 @@ export class Sketch3DTool {
             best = { ax, p: [p.x, p.y, p.z], e };
           }
         }
-        if (best) return { p: round3(best.p), idx: -1, ax: best.ax, kind: "axis" };
+        if (best) {
+          // SolidWorks hizalama çıkarımı: eksen boyunca giderken başka bir noktanın aynı koordinatına yakalan (eşit uzunluk vb.)
+          const k = best.ax === "x" ? 0 : best.ax === "y" ? 1 : 2;
+          const glob = this.axes[best.ax].x === 1 || this.axes[best.ax].y === 1 || this.axes[best.ax].z === 1;
+          if (glob) {
+            const sp = this.screenOf(best.p);
+            let al: { p: Vec3; q: Vec3; d: number } | null = null;
+            for (const q of [...d.xyz, ...this.ctx.cands()]) {
+              if (q === A) continue;
+              const P2 = [...best.p] as Vec3;
+              P2[k] = q[k];
+              const s2 = this.screenOf(P2), dd = Math.hypot(s2[0] - sp[0], s2[1] - sp[1]);
+              if (dd < 7 && (!al || dd < al.d) && Math.abs(P2[k] - A[k]) > 1e-6) al = { p: P2, q, d: dd };
+            }
+            if (al) {
+              this.guide = [al.q, al.p];
+              return { p: round3(al.p), idx: -1, ax: best.ax, kind: "axis" };
+            }
+          }
+          return { p: round3(best.p), idx: -1, ax: best.ax, kind: "axis" };
+        }
       }
     }
     if (onHit) return onHit.c;
@@ -266,6 +290,7 @@ export class Sketch3DTool {
       const p = c.p;
       this.g.add(v.fatLines([p[0] - r, p[1], p[2], p[0] + r, p[1], p[2], p[0], p[1] - r, p[2], p[0], p[1] + r, p[2], p[0], p[1], p[2] - r, p[0], p[1], p[2] + r], c.kind === "pt" || c.kind === "model" || c.kind === "on" ? 0xf59f00 : 0x0ca5e9, c.kind === "pt" || c.kind === "model" || c.kind === "on" ? 3 : 1.5));
     }
+    if (this.guide) this.g.add(v.fatLines([...this.guide[0], ...this.guide[1]], 0x1c7ed6, 1, true));
     if (c && ev) {
       const parts: string[] = [this.planeName];
       if (A) parts.push(`L ${fmt(Math.hypot(c.p[0] - A[0], c.p[1] - A[1], c.p[2] - A[2]))}`);
@@ -389,6 +414,7 @@ export class Sketch3DTool {
   };
   // ---------- seçim / ilişki / ölçü ----------
   setMode(m: S3Mode) {
+    document.querySelector(".s3-relbar")?.remove();
     this.mode = m;
     this.dimPick = [];
     this.rectP = null;
@@ -450,6 +476,7 @@ export class Sketch3DTool {
         else this.sel.push(en);
       } else this.sel = [en];
       (this.ctx.selChanged ?? this.ctx.changed)();
+      this.showRelBar(e.clientX, e.clientY);
       return;
     }
     // Akıllı Ölçü
@@ -549,6 +576,35 @@ export class Sketch3DTool {
       this.ctx.toast?.("Bu ilişki diğer ilişki/ölçülerle çelişiyor; eklenmedi", true);
     }
     this.ctx.changed();
+  }
+  /** SolidWorks bağlam çubuğu: seçimin yanında ilişki düğmeleri (telefonda panel kapalıyken de) */
+  showRelBar(x: number, y: number) {
+    document.querySelector(".s3-relbar")?.remove();
+    if (!this.sel.length) return;
+    const NAMES: Record<string, string> = { x: "X boyunca", y: "Y boyunca", z: "Z boyunca", parXY: "∥XY", parYZ: "∥YZ", parZX: "∥ZX", cons: "Yapı", par: "Paralel", perp: "Dik", equal: "Eşit", collin: "Doğrusal", fix: "Sabitle", coinc: "Çakışık", mid: "Orta nokta", on: "Üzerinde", tan: "Teğet", fillet: "Radyüs", mirXY: "Ayna XY", mirYZ: "Ayna YZ", mirZX: "Ayna ZX" };
+    const bar = document.createElement("div");
+    bar.className = "minibar sw-popup s3-relbar";
+    bar.style.cssText = `position:fixed;z-index:60;left:${Math.max(4, Math.min(innerWidth - 330, x + 14))}px;top:${Math.max(4, y - 58)}px;display:flex;flex-wrap:wrap;gap:4px;max-width:320px`;
+    const add = (t: string, fn: () => void) => {
+      const b = document.createElement("button");
+      b.className = "sw-sb";
+      b.textContent = t;
+      b.style.minHeight = "34px";
+      b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      b.addEventListener("click", () => (bar.remove(), fn()));
+      bar.appendChild(b);
+    };
+    for (const o of this.relOptions()) add(NAMES[o] ?? o, () => this.addRel(o));
+    // seçimden ölçü (SolidWorks: seçili iki öğe → Akıllı Ölçü)
+    const S = this.sel;
+    if (S.length === 1 && S[0].k === "l") add("Boy ölçüsü", () => this.addDim("len", [S[0].id], { clientX: x, clientY: y }));
+    if (S.length === 1 && S[0].k === "a") add("Yarıçap ölçüsü", () => this.addDim("rad", [S[0].id], { clientX: x, clientY: y }));
+    if (S.length === 2 && S.every((q) => q.k === "p")) add("Mesafe ölçüsü", () => this.addDim("dist", [S[0].id, S[1].id], { clientX: x, clientY: y }));
+    if (S.length === 2 && S.every((q) => q.k === "l")) add("Açı ölçüsü", () => this.addDim("ang", [S[0].id, S[1].id], { clientX: x, clientY: y }));
+    add("Sil", () => this.deleteSel());
+    add("✕", () => {});
+    bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    document.body.appendChild(bar);
   }
   /** seçime uygun ilişkiler (SolidWorks "İlişki Ekle") */
   relOptions(): string[] {

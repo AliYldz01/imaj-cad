@@ -1761,8 +1761,27 @@ export class SketchEditor implements InputHandler {
         this.op(() => {
           const b = this.makePoint(inf);
           const l = addLine(sk, prev, b, cons);
-          if (inf.hv) addRel(sk, inf.hv === "h" ? "horizontal" : "vertical", [l.id]);
-          else if (inf.lineRel && getEnt(sk, inf.lineRel.ref)) addRel(sk, inf.lineRel.t, [inf.lineRel.ref, l.id]);
+          const pa = P(sk, prev), pb = P(sk, b);
+          const L = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
+          // SolidWorks: düz çizilen çizgi (var olan noktaya kapanırken de) yatay/dikey ilişkisi alır
+          const hv = inf.hv ?? (Math.abs(pb[1] - pa[1]) <= 1e-6 * Math.max(1, L) ? "h" : Math.abs(pb[0] - pa[0]) <= 1e-6 * Math.max(1, L) ? "v" : undefined);
+          if (hv) {
+            // aynı iki nokta arasında önceden hizalama ilişkisi varsa çizgi ilişkisiyle değiştir (fazla tanım olmasın)
+            const tp = hv === "h" ? "horizontal" : "vertical";
+            sk.rels = sk.rels.filter((r) => !(r.t === tp && r.refs.length === 2 && r.refs.includes(prev) && r.refs.includes(b)));
+            addRel(sk, tp, [l.id]);
+          } else if (inf.lineRel && getEnt(sk, inf.lineRel.ref)) addRel(sk, inf.lineRel.t, [inf.lineRel.ref, l.id]);
+          // yeni nokta başka bir noktayla hizalandıysa (mavi kılavuz) hizalama ilişkisi kur
+          if (!inf.ptId && !cons) {
+            let gotH = false, gotV = false;
+            for (const [id, q] of Object.entries(sk.pts)) {
+              if (id === b || id === prev || id === ORIGIN) continue;
+              const qq = P(sk, id);
+              if (!gotV && hv !== "v" && Math.abs(qq[0] - pb[0]) < 1e-6) (addRel(sk, "vertical", [id, b]), (gotV = true));
+              else if (!gotH && hv !== "h" && Math.abs(qq[1] - pb[1]) < 1e-6) (addRel(sk, "horizontal", [id, b]), (gotH = true));
+              void q;
+            }
+          }
           st.last = b;
           st.lastEnt = l.id;
           st.away = false;

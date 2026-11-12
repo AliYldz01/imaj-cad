@@ -345,3 +345,12 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Dokunmatik/kalemde yakalama simgesi rozeti | ✅ |
 | 3B eskizde çizgi/yay üzerine yakalama + Üzerinde ilişkisi | ✅ |
 | Radyüse değen kenara sonradan radyüs (sıra değiştirerek yeniden deneme) | ✅ |
+
+## v0.24
+
+| Özellik | Durum |
+|---|---|
+| 2B otomatik yatay/dikey (kapanan çizgi dahil) + nokta hizalama ilişkisi | ✅ |
+| 3B araçlar üst çubukta | ✅ |
+| 3B seçim yanında ilişki/ölçü çubuğu | ✅ |
+| 3B hizalama çıkarımı (eksen boyunca diğer noktanın hizası) | ✅ |
