@@ -7,6 +7,8 @@ import { evalNum, fmtNum, toLocal, toWorld, dot, sub } from "../doc/math";
 import type { InputHandler, Viewer } from "../viewer";
 import { solve, analyze, type SolveResult } from "./solver";
 import { pictureMesh } from "./picture";
+import { autoDefine } from "./define";
+import { traceImage, imageDataOf } from "./trace";
 import { prefs } from "../input/prefs";
 import { offsetEnts, mirrorEnts, linearPattern, circularPattern, moveEnts, centroid } from "./ops";
 import {
@@ -1342,7 +1344,7 @@ export class SketchEditor implements InputHandler {
     // uç noktalar mevcut noktalara (orijin dahil) yakalanır; aynı noktaya iki kez yakalanma olmaz
     const used = new Set<string>();
     const ptAt = (q: Vec2, _pref?: string | null): string => {
-      const h = this.hitTest(q, this.tolPx, { ents: false, exclude: used });
+      const h = this.noSnap ? null : this.hitTest(q, this.tolPx, { ents: false, exclude: used });
       if (h && h.kind === "pt") return used.add(h.id), h.id;
       const id = addPt(sk, q);
       used.add(id);
@@ -3071,62 +3073,68 @@ export class SketchEditor implements InputHandler {
     this.host.toast(`${items.length} kesişim eğrisi eklendi`);
   }
 
+  private noSnap = false;
+  traceOpt = { fg: "auto" as "auto" | "dark" | "light", thr: 0, eps: 1.5, shapes: true };
+  /** Eskiz resminden kenar izleme: dış kontur ve delikler eskize eklenir (dönen: eklenen şekil sayısı) */
+  async traceEdges(): Promise<number> {
+    const pc = this.data.pic;
+    if (!pc) return 0;
+    const o = this.traceOpt;
+    let img: ImageData;
+    try {
+      img = await imageDataOf(pc.src, 600);
+    } catch (e: any) {
+      this.host.toast(String(e?.message ?? e));
+      return 0;
+    }
+    const r = traceImage(img, { thr: o.thr || undefined, invert: o.fg === "auto" ? undefined : o.fg === "light", eps: o.eps });
+    if (!r.loops.length) {
+      this.host.toast("Kenar izlenemedi: eşiği ya da nesne rengini değiştirin");
+      return 0;
+    }
+    const H = pc.w * pc.aspect, a = (pc.rot * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+    const map = (q: Vec2): Vec2 => {
+      let lx = (q[0] / r.w - 0.5) * pc.w;
+      const ly = (0.5 - q[1] / r.h) * H;
+      if (pc.flip) lx = -lx;
+      return [pc.x + lx * ca - ly * sa, pc.y + lx * sa + ly * ca];
+    };
+    const px = pc.w / r.w;
+    let n = 0;
+    this.snapshot();
+    const stack = this.undoStack.length;
+    for (const loop of r.loops) {
+      const pts = loop.map(map);
+      let sh: Shape | null = null;
+      if (o.shapes) {
+        const g = recognize([...pts, pts[0]], px);
+        if (g && (g.kind === "circle" || g.kind === "rect" || g.kind === "ellipse")) sh = g;
+      }
+      if (!sh) sh = { kind: "poly", pts, closed: true };
+      this.noSnap = true;
+      try {
+        this.addShape(sh);
+      } finally {
+        this.noSnap = false;
+      }
+      n++;
+    }
+    // addShape kendi geri alma adımlarını ekler: tek adıma indir
+    this.undoStack.length = stack;
+    this.resolve();
+    this.render();
+    this.renderPanel();
+    this.host.changed();
+    this.host.toast(`${n} kontur izlendi (eşik ${r.thr})`);
+    return n;
+  }
+
   /** Tam tanımla: orijine göre yatay/dikey ölçüler ve yarıçaplar ekler */
   fullyDefine() {
     const sk = this.data;
     this.snapshot();
     const before = JSON.stringify(sk);
-    let added = 0;
-    const tryDim = (d: SDim) => {
-      const before = solve(sk, undefined, false).dof;
-      sk.dims.push(d);
-      const r = solve(sk, undefined, false);
-      if (!r.ok || r.conflicts.length || r.dof >= before) {
-        sk.dims.pop();
-        return false;
-      }
-      added++;
-      return true;
-    };
-    let res = solve(sk);
-    let def = analyze(sk, res.dof);
-    // yarıçaplar
-    for (const e of sk.ents) {
-      if ((e.t === "circle" || e.t === "arc") && !def.radii.has(e.id)) {
-        const c = P(sk, e.c);
-        tryDim({ id: nid(sk, "d"), t: e.t === "circle" ? "dia" : "rad", refs: [e.id], v: e.t === "circle" ? e.r * 2 : e.r, lp: add2(c, [e.r * 0.8, e.r * 0.9]) });
-      }
-    }
-    res = solve(sk);
-    def = analyze(sk, res.dof);
-    let k = 0;
-    for (const id of Object.keys(sk.pts)) {
-      if (def.pts.has(id)) continue;
-      const q = P(sk, id);
-      k++;
-      const okx = Math.abs(q[0]) > 1e-9 && tryDim({ id: nid(sk, "d"), t: "dist", sub: "h", refs: q[0] >= 0 ? [ORIGIN, id] : [id, ORIGIN], v: Math.abs(q[0]), lp: [q[0] / 2, Math.min(0, q[1]) - 8 - (k % 5) * 6] });
-      const oky = Math.abs(q[1]) > 1e-9 && tryDim({ id: nid(sk, "d"), t: "dist", sub: "v", refs: q[1] >= 0 ? [ORIGIN, id] : [id, ORIGIN], v: Math.abs(q[1]), lp: [Math.min(0, q[0]) - 8 - (k % 5) * 6, q[1] / 2] });
-      if (okx || oky) {
-        res = solve(sk);
-        def = analyze(sk, res.dof);
-      }
-      if (res.dof === 0) break;
-    }
-    // orijinde duran ama tanımsız noktalar için sabitle
-    res = solve(sk);
-    def = analyze(sk, res.dof);
-    for (const id of Object.keys(sk.pts)) {
-      if (res.dof === 0) break;
-      if (def.pts.has(id)) continue;
-      const q = P(sk, id);
-      const before = solve(sk, undefined, false).dof;
-      sk.rels.push({ id: nid(sk, "r"), t: "fix", refs: [id], fx: q[0], fy: q[1] });
-      const r = solve(sk, undefined, false);
-      if (!r.ok || r.conflicts.length || r.dof >= before) sk.rels.pop();
-      else added++;
-      res = solve(sk);
-      def = analyze(sk, res.dof);
-    }
+    const added = autoDefine(sk);
     if (!added) {
       this.undoStack.pop();
       Object.assign(sk, JSON.parse(before));
@@ -4716,6 +4724,26 @@ export class SketchEditor implements InputHandler {
         const row = h("div", "pm-buttons");
         row.append(cal, fl, rm);
         box.appendChild(row);
+        box.appendChild(h("div", "pm-sub", "Kenarları izle"));
+        const tz = this.traceOpt;
+        const fsel = document.createElement("select");
+        fsel.innerHTML = `<option value="auto">Nesne: otomatik</option><option value="dark">Koyu nesne, açık zemin</option><option value="light">Açık nesne, koyu zemin</option>`;
+        fsel.value = tz.fg;
+        fsel.addEventListener("change", () => (tz.fg = fsel.value as any));
+        box.appendChild(fsel);
+        box.appendChild(this.numField("Eşik (0 = otomatik)", tz.thr, (v) => (tz.thr = Math.max(0, Math.min(255, Math.round(v))))));
+        box.appendChild(this.numField("Sadeleştirme (piksel)", tz.eps, (v) => (tz.eps = Math.max(0.5, v))));
+        const rl = h("label", "pm-check");
+        const rc = document.createElement("input");
+        rc.type = "checkbox";
+        rc.checked = tz.shapes;
+        rc.addEventListener("change", () => (tz.shapes = rc.checked));
+        rl.append(rc, document.createTextNode(" Daire / dikdörtgen / elips tanı"));
+        box.appendChild(rl);
+        const tb = h("button", "btn primary", "Kenarları izle");
+        tb.addEventListener("click", () => void this.traceEdges());
+        box.appendChild(tb);
+        box.appendChild(h("p", "pm-hint", "Önce resmi iki noktayla gerçek ölçüye getirin. Parçayı düz, zıt renkli zemine koyup tepeden çekin."));
       }
     }
     if (this.tool === "polygon") box.appendChild(this.numField("Kenar sayısı", this.opts.sides, (v) => (this.opts.sides = Math.max(3, Math.round(v)))));

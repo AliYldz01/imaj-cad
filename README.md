@@ -46,6 +46,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.71: kesim listesi özellikleri, yapı sistemi, 3B spline / helis / kesişim eğrisi ve 3B yol boyunca süpürme, özellikler arası gönye.
 - v0.72: belge sekmeleri, dosya yöneticisi, belge özellikleri (ondalık, ANSI üçüncü açı), 3MF / PDF / eskiz ve yüz DXF, panel iğnesi, seçim kırıntıları, görev bölmesi, şerit özelleştirme.
 - v0.73: desen güdümlü bileşen çoğaltma, bileşen bastırma.
+- v0.74: ekstrüzyon panelinde derinlik oku, dokunuşta üst üste adaylar, sihirbaz eskizleri tam tanımlı, fotoğraftan kenar izleme, sesle ölçü girişi (🎤).
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

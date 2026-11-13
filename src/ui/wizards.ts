@@ -1,5 +1,7 @@
 // Şekil sihirbazları: ölçüleri yazarak, çizim yapmadan parametrik parça (eskiz + ekstrüzyon) üretir.
 import type { Feature } from "../doc/types";
+import { ORIGIN } from "../doc/types";
+import { autoDefine } from "../sketch/define";
 
 export interface WizField { k: string; label: string; v: number | string }
 export interface Wizard { id: string; name: string; fields: WizField[]; build: (p: Record<string, any>, uid: () => string) => Feature[] }
@@ -8,34 +10,68 @@ type Sk = { pts: Record<string, { x: number; y: number }>; ents: any[]; rels: an
 function sk() {
   const d: Sk = { pts: {}, ents: [], rels: [], dims: [], seq: 1 };
   const id = (p: string) => p + d.seq++;
+  const rel = (t: string, refs: string[]) => d.rels.push({ id: id("r"), t, refs });
   const pt = (x: number, y: number) => {
     const k = id("p");
     d.pts[k] = { x, y };
+    if (Math.abs(x) < 1e-9 && Math.abs(y) < 1e-9) rel("coincident", [k, ORIGIN]);
     return k;
   };
-  const poly = (q: [number, number][]) => {
+  /** kapalı çokgen: yatay / dikey kenarlara ilişki; `dims` true ise kenar uzunluğu ölçüsü */
+  const poly = (q: [number, number][], dims: boolean[] = []) => {
     const ids = q.map(([x, y]) => pt(x, y));
-    ids.forEach((a, i) => d.ents.push({ id: id("l"), t: "line", p1: a, p2: ids[(i + 1) % ids.length] }));
+    ids.forEach((a, i) => {
+      const j = (i + 1) % ids.length, b = ids[j];
+      const l = id("l");
+      d.ents.push({ id: l, t: "line", p1: a, p2: b });
+      const [x0, y0] = q[i], [x1, y1] = q[j];
+      if (Math.abs(y0 - y1) < 1e-9) rel("horizontal", [l]);
+      else if (Math.abs(x0 - x1) < 1e-9) rel("vertical", [l]);
+      if (dims[i]) {
+        const L = Math.hypot(x1 - x0, y1 - y0);
+        d.dims.push({ id: id("d"), t: "dist", refs: [a, b], sub: "a", v: L, lp: [(x0 + x1) / 2 + (y1 - y0) * 0.15, (y0 + y1) / 2 - (x1 - x0) * 0.15] });
+      }
+    });
+    return ids;
   };
-  const rect = (x0: number, y0: number, x1: number, y1: number) => poly([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]);
-  const circle = (x: number, y: number, r: number) => {
+  const rect = (x0: number, y0: number, x1: number, y1: number) => poly([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], [true, true, false, false]);
+  const circle = (x: number, y: number, r: number, dim = true) => {
     const c = id("c");
-    d.ents.push({ id: c, t: "circle", c: pt(x, y), r });
-    d.dims.push({ id: id("d"), t: "dia", refs: [c], v: 2 * r, lp: [x + r * 0.8, y + r * 1.2] });
+    const cp = pt(x, y);
+    d.ents.push({ id: c, t: "circle", c: cp, r });
+    if (dim) d.dims.push({ id: id("d"), t: "dia", refs: [c], v: 2 * r, lp: [x + r * 0.8, y + r * 1.2] });
+    return { c, cp };
   };
-  return { d, poly, rect, circle };
+  return { d, poly, rect, circle, rel, id };
 }
+/** Sihirbaz eskizini tam tanımlar (kalan noktalar orijinden yatay / dikey ölçülür) */
+const define = (d: Sk) => {
+  try {
+    autoDefine(d as any);
+  } catch {
+    /* çözücü yoksa eskiz yine kullanılabilir */
+  }
+};
 const feats = (uid: () => string, name: string, plane: string, d: Sk, depth: number, extra: Record<string, any> = {}): Feature[] => {
   const s = uid();
+  define(d);
   return [
     { id: s, type: "sketch", name: name + "-Eskiz", plane: { k: "std", n: plane }, data: d } as any,
     { id: uid(), type: "extrude", name, sketch: s, cut: false, end: "blind", d1: depth, rev: false, dir2: false, end2: "blind", d2: 10, ...extra } as any,
   ];
 };
 const holesOnCircle = (c: ReturnType<typeof sk>, n: number, pcd: number, dh: number) => {
+  const pc = c.circle(0, 0, pcd / 2);
+  c.d.ents.find((e) => e.id === pc.c).cons = true;
+  let first = "";
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + Math.PI / 2;
-    c.circle((pcd / 2) * Math.cos(a), (pcd / 2) * Math.sin(a), dh / 2);
+    const h = c.circle((pcd / 2) * Math.cos(a), (pcd / 2) * Math.sin(a), dh / 2, i === 0);
+    c.rel("onCircle", [h.cp, pc.c]);
+    if (i === 0) {
+      c.rel("vertical", [h.cp, ORIGIN]);
+      first = h.c;
+    } else c.rel("equal", [h.c, first]);
   }
 };
 
@@ -106,7 +142,8 @@ export const WIZARDS: Wizard[] = [
     fields: [{ k: "a", label: "Yatay kol", v: 80 }, { k: "b", label: "Dikey kol", v: 60 }, { k: "t", label: "Kalınlık", v: 8 }, { k: "w", label: "Genişlik", v: 50 }],
     build: (p, uid) => {
       const c = sk();
-      c.poly([[0, 0], [p.a, 0], [p.a, p.t], [p.t, p.t], [p.t, p.b], [0, p.b]]);
+      c.poly([[0, 0], [p.a, 0], [p.a, p.t], [p.t, p.t], [p.t, p.b], [0, p.b]], [true, true, false, false, false, true]);
+      c.d.dims.push({ id: c.id("d"), t: "dist", refs: [Object.keys(c.d.pts)[3], Object.keys(c.d.pts)[2]], sub: "h", v: p.t, lp: [p.t / 2, p.t * 2] });
       return feats(uid, "Braket", "front", c.d, p.w);
     },
   },
@@ -116,7 +153,14 @@ export const WIZARDS: Wizard[] = [
     build: (p, uid) => {
       const c = sk();
       c.rect(-p.w / 2, -p.h / 2, p.w / 2, p.h / 2);
-      if (p.t > 0) c.rect(-p.w / 2 + p.t, -p.h / 2 + p.t, p.w / 2 - p.t, p.h / 2 - p.t);
+      if (p.t > 0) {
+        const o = Object.keys(c.d.pts);
+        const ii = c.poly([[-p.w / 2 + p.t, -p.h / 2 + p.t], [p.w / 2 - p.t, -p.h / 2 + p.t], [p.w / 2 - p.t, p.h / 2 - p.t], [-p.w / 2 + p.t, p.h / 2 - p.t]]);
+        c.d.dims.push({ id: c.id("d"), t: "dist", refs: [o[0], ii[0]], sub: "h", v: p.t, lp: [-p.w / 2 + p.t / 2, -p.h / 2 - 6] });
+        c.d.dims.push({ id: c.id("d"), t: "dist", refs: [o[0], ii[0]], sub: "v", v: p.t, lp: [-p.w / 2 - 6, -p.h / 2 + p.t / 2] });
+        c.d.dims.push({ id: c.id("d"), t: "dist", refs: [ii[2], o[2]], sub: "h", v: p.t, lp: [p.w / 2 - p.t / 2, p.h / 2 + 6] });
+        c.d.dims.push({ id: c.id("d"), t: "dist", refs: [ii[2], o[2]], sub: "v", v: p.t, lp: [p.w / 2 + 6, p.h / 2 - p.t / 2] });
+      }
       return feats(uid, "Profil", "front", c.d, p.L);
     },
   },

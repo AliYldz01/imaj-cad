@@ -30,6 +30,7 @@ import * as THREE from "three";
 import { type Act, type Dir, DIRS8, comboOf, keyMap, keyOf, dirOf, gestCfg, openCustomize, printList } from "./ui/keys";
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
+import { parseSpokenNumbers, voiceSupported, listenOnce } from "./input/voice";
 import { AsmUI } from "./asm/asmui";
 import { loadLib } from "./asm/assembly";
 import { loadBlocks } from "./sketch/editor";
@@ -1428,7 +1429,7 @@ function pickWant() {
 function partClick(e: PointerEvent) {
   let hit = viewer.pick(e.clientX, e.clientY, pickWant());
   // aynı yere tekrar tıklama (Alt ile veya seçili yüze): arkadaki yüze geç
-  if (mode.k === "part" && hit?.kind === "face" && (e.altKey || (lastPick && Math.hypot(e.clientX - lastPick.x, e.clientY - lastPick.y) < 4 && psel.faces.has(hit.index) && psel.faces.size === 1))) {
+  if (mode.k === "part" && hit?.kind === "face" && (e.altKey || (lastPick && Math.hypot(e.clientX - lastPick.x, e.clientY - lastPick.y) < (e.pointerType === "mouse" ? 4 : 14) && psel.faces.has(hit.index) && psel.faces.size === 1))) {
     return selectOtherAt(e.clientX, e.clientY);
   }
   lastPick = hit?.kind === "face" ? { x: e.clientX, y: e.clientY, i: hit.index } : null;
@@ -1459,7 +1460,11 @@ function partClick(e: PointerEvent) {
     return schedulePreview();
   }
   if (mode.k === "pm" && mode.draft.type === "member" && memberSegPick(e.clientX, e.clientY)) return;
-  if (mode.k === "pm") return pmPick(hit, e);
+  if (mode.k === "pm") {
+    pmPick(hit, e);
+    if (hit && e.pointerType !== "mouse") offerCandidates(e.clientX, e.clientY, hit);
+    return;
+  }
   if (mode.k === "measure") return measurePick(hit);
   // normal seçim (fare: SolidWorks gibi tık seçimi değiştirir, Ctrl/Shift ekler)
   const replace = e.pointerType === "mouse" && !(e.ctrlKey || e.shiftKey || e.metaKey);
@@ -1477,6 +1482,62 @@ function partClick(e: PointerEvent) {
   refreshHighlight();
   updateSelHint();
   if (mode.k === "part" && hit) showMiniBar(e.clientX, e.clientY);
+  if (hit && e.pointerType !== "mouse") offerCandidates(e.clientX, e.clientY, hit);
+}
+/** üst üste adaylar (telefon / kalem): dokunulan yerdeki diğer kenar / yüz / düzlem adayları küçük çubukta; dokununca seçim onunla değişir */
+function pickCandidates(x: number, y: number, want: { face?: boolean; edge?: boolean; plane?: boolean }): PickHit[] {
+  const out: PickHit[] = [];
+  const key = (q: PickHit) => (q.kind === "plane" ? "p:" + q.id : q.kind + ":" + q.index);
+  const add = (q: PickHit | null) => q && !out.some((o) => key(o) === key(q)) && out.push(q);
+  if (want.edge) add(viewer.pick(x, y, { edge: true }));
+  if (want.face) viewer.pickFacesAll(x, y).forEach(add);
+  if (want.plane) add(viewer.pick(x, y, { plane: true }));
+  return out;
+}
+function candLabel(q: PickHit) {
+  const m = viewer.mesh;
+  if (q.kind === "plane") return "▭ " + (STD_NAMES[q.id as StdPlane] ?? getFeat(q.id)?.name ?? "Düzlem");
+  if (q.kind === "edge") {
+    const t = m?.edges[q.index]?.type;
+    return "╱ Kenar" + (t === "CIRCLE" ? " (daire)" : t === "LINE" ? " (doğru)" : "");
+  }
+  const f = m?.faces[q.index];
+  return "◼ Yüz" + (f?.type === "PLANE" ? " (düz)" : f?.type === "CYLINDRE" ? " (silindir)" : "");
+}
+function offerCandidates(x: number, y: number, hit: PickHit) {
+  document.querySelector(".cand-bar")?.remove();
+  const want = pickWant();
+  const all = pickCandidates(x, y, want);
+  const key = (q: PickHit) => (q.kind === "plane" ? "p:" + q.id : q.kind + ":" + q.index);
+  const alts = all.filter((q) => key(q) !== key(hit));
+  if (!alts.length) return;
+  const bar = h("div", "cand-bar");
+  bar.appendChild(h("span", "small", "Diğer adaylar:"));
+  for (const q of alts.slice(0, 5)) {
+    const b = h("button", "btn", candLabel(q));
+    b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      bar.remove();
+      if (mode.k === "pm") {
+        pmPick(hit); // ilk seçimi geri al (seçimler aç / kapat)
+        pmPick({ ...q, point: q.point ?? hit.point } as PickHit);
+        return;
+      }
+      clearPartSel();
+      if (q.kind === "face") psel.faces.add(q.index);
+      else if (q.kind === "edge") psel.edges.add(q.index);
+      else psel.planes.add(q.id);
+      renderTree();
+      refreshHighlight();
+      updateSelHint();
+    });
+    bar.appendChild(b);
+  }
+  const r = $("#view").getBoundingClientRect();
+  bar.style.left = Math.min(r.width - 260, Math.max(4, x - r.left - 60)) + "px";
+  bar.style.top = Math.max(4, y - r.top + 26) + "px";
+  $("#view").appendChild(bar);
+  setTimeout(() => bar.remove(), 5000);
 }
 /** SolidWorks bağlam araç çubuğu: seçimin yanında uygun komutlar */
 function showMiniBar(x: number, y: number) {
@@ -7452,7 +7513,79 @@ function renderActBar() {
     openRadial(r.left + r.width / 2, r.top + r.height / 2);
   });
   b("⤢", "Ekrana sığdır", () => fitAll());
+  if (voiceSupported()) b("🎤", "Sesle ölçü gir", () => void voiceInput(), "small");
 }
+// ---------- sesle ölçü girişi ----------
+let lastNumInput: HTMLInputElement | null = null;
+document.addEventListener("focusin", (e) => {
+  const t = e.target;
+  if (t instanceof HTMLInputElement && (t.type === "number" || t.inputMode === "decimal" || t.type === "text") && !t.closest("#cmd-search")) lastNumInput = t;
+});
+function voiceTargets(): { ins: HTMLInputElement[]; ok?: HTMLElement } {
+  let box = document.querySelector<HTMLElement>(".dim-prompt");
+  if (!box && !(lastNumInput?.isConnected && lastNumInput.offsetParent) && mode.k === "sketch" && ["line", "centerline", "rect", "crect", "circle"].includes(mode.editor.tool)) {
+    mode.editor.numericEntry();
+    box = document.querySelector<HTMLElement>(".dim-prompt");
+  }
+  if (box) return { ins: [...box.querySelectorAll<HTMLInputElement>("input")].filter((i) => i.type !== "checkbox"), ok: box.querySelector<HTMLElement>("button.ok") ?? undefined };
+  if (lastNumInput?.isConnected && lastNumInput.offsetParent) return { ins: [lastNumInput] };
+  return { ins: [] };
+}
+/** konuşmayı dinler (ya da test için verilen metni kullanır), sayıları etkin ölçü alanlarına yazar */
+async function voiceInput(text?: string): Promise<number[]> {
+  let alts: string[];
+  if (text !== undefined) alts = [text];
+  else {
+    if (!voiceSupported()) return toast("Bu tarayıcı sesle girişi desteklemiyor (Chrome kullanın)"), [];
+    const t0 = voiceTargets();
+    if (!t0.ins.length) return toast("Önce bir ölçü alanına dokunun ya da ölçüyü çift tıklayın"), [];
+    toast("🎤 Dinliyorum… (ör. \"yirmi beş virgül beş\")");
+    document.body.classList.add("listening");
+    try {
+      alts = await listenOnce();
+    } catch (e: any) {
+      toast(String(e?.message ?? e));
+      return [];
+    } finally {
+      document.body.classList.remove("listening");
+    }
+  }
+  let nums: number[] = [], heard = alts[0] ?? "";
+  for (const a of alts) {
+    const n = parseSpokenNumbers(a);
+    if (n.length) {
+      nums = n;
+      heard = a;
+      break;
+    }
+  }
+  if (!nums.length) return toast(`Sayı anlaşılamadı: "${heard}"`), [];
+  const { ins, ok } = voiceTargets();
+  if (!ins.length) return toast("Önce bir ölçü alanına dokunun"), [];
+  nums.slice(0, ins.length).forEach((v, i) => {
+    const inp = ins[i];
+    inp.value = String(+v.toFixed(6));
+    inp.dispatchEvent(new Event("input", { bubbles: true }));
+    inp.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  toast(`🎤 ${heard} → ${nums.join(" × ")}`);
+  if (ok) ok.click();
+  return nums;
+}
+// ölçü kutularına mikrofon düğmesi
+new MutationObserver(() => {
+  if (!voiceSupported()) return;
+  document.querySelectorAll<HTMLElement>(".dim-prompt:not([data-mic])").forEach((box) => {
+    box.dataset.mic = "1";
+    const m = h("button", "mic", "🎤");
+    m.title = "Sesle gir";
+    m.addEventListener("pointerdown", (e) => e.preventDefault()); // odak kutuda kalsın
+    m.addEventListener("click", () => void voiceInput());
+    const ok = box.querySelector("button.ok");
+    ok ? box.insertBefore(m, ok) : box.appendChild(m);
+  });
+}).observe(document.body, { childList: true });
+
 setInterval(() => {
   // mod / araç değişince çubuğu güncelle (ucuz karşılaştırma)
   const key = [selFilter, mode.k, asmUI?.on ? `asm${$("#pm").hidden ? 0 : 1}${asmUI.sel ?? ""}${asmUI.selSet.size}${asmUI.selMate ?? ""}` : "", mode.k === "sketch" ? mode.editor.tool + mode.editor.isDrawing() + !!(mode.editor as any).st?.arc : "", viewer.mods.ctrl, actBarOn(), prefs.leftHanded].join("|");
@@ -7533,8 +7666,10 @@ addEventListener("resize", () => renderCommands());
   $("#view").appendChild(hd);
   let st: { f: ExtrudeFeature; base: Vec3; dir: Vec3; d0: number; x: number; y: number; px: number } | null = null;
   const target = () => {
-    if (mode.k !== "part" || !treeSel) return null;
-    const f = getFeat(treeSel);
+    // ekstrüzyon paneli açıkken (telefonda da) taslağın derinlik oku; parça modunda seçili ekstrüzyonun
+    const inPm = mode.k === "pm" && mode.draft.type === "extrude";
+    if (!inPm && (mode.k !== "part" || !treeSel)) return null;
+    const f = (inPm ? (mode as any).draft : getFeat(treeSel!)) as Feature | undefined;
     if (!f || f.type !== "extrude" || (f.end !== "blind" && f.end !== "mid") || f.dirVec) return null;
     const sk = getFeat(f.sketch) as SketchFeature | undefined;
     const fr0 = sk && resolveFrame(sk.plane, doc.features);
@@ -7582,16 +7717,24 @@ addEventListener("resize", () => renderCommands());
     if (!st) return;
     const along = (e.clientX - st.x) * (st as any).ux + (e.clientY - st.y) * (st as any).uy;
     let v = st.d0 + along / st.px;
-    v = Math.max(0.1, Math.round(v * (st.f.end === "mid" ? 1 : 1)));
-    st.f.d1 = v;
+    // adım: 1 mm (Shift / ince kalem ile 0,1 mm); telefonda parmakla aynı
+    const stp = e.shiftKey ? 0.1 : 1;
+    v = Math.max(stp, Math.round(v / stp) * stp);
+    st.f.d1 = +v.toFixed(3);
     viewer.requestRender();
+    if (mode.k === "pm") schedulePreview();
   });
   hd.addEventListener("pointerup", () => {
     if (!st) return;
-    const f = st.f, v = f.d1;
-    f.d1 = st.d0;
+    const f = st.f, v = f.d1, d0 = st.d0;
     st = null;
-    if (v !== f.d1) commitDoc(() => (f.d1 = v));
+    if (mode.k === "pm") {
+      // panelde değer güncellenir; ✓ ile özellik oluşur
+      renderFeaturePM(kindOf(mode.draft));
+      return schedulePreview();
+    }
+    f.d1 = d0;
+    if (v !== d0) commitDoc(() => (f.d1 = v));
   });
 }
 
@@ -8406,6 +8549,9 @@ function showCmd(title: string) {
   return false;
 }
 (window as any).__app = {
+  voiceInput,
+  parseSpoken: (t: string) => parseSpokenNumbers(t),
+  sketchDof: (d: any) => solveSketch(JSON.parse(JSON.stringify(d)), undefined, false).dof,
   showCmd,
   fileAct: (a: string) => fileAct(a),
   toggleTaskPane,

@@ -650,3 +650,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.72 | Genel: belge sekmeleri, dosya yöneticisi, belge özellikleri (ondalık, ANSI), 3MF / PDF / eskiz-yüz DXF, panel iğnesi, kırıntılar, görev bölmesi, şerit özelleştirme (6. grup tamam) | ✅ |
 
 | v0.73 | Montaj: desen güdümlü bileşen çoğaltma, bileşen bastırma (7. grup tamam) | ✅ |
+
+| v0.74 | Telefon / kalemsiz: panelde derinlik oku, aday çubuğu, sihirbaz tam tanımlı, fotoğraftan kenar izleme, sesle ölçü | ✅ |

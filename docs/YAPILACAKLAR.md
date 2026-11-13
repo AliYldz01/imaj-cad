@@ -60,11 +60,11 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.73 7.2 Bileşen bastırma (çizim, çözücü, malzeme listesi, girişim, kütle, STEP dışı; desen örnekleri tohumu izler)
 
 ## 8. Telefon / kalemsiz
-- ⬜ 8.1 Model üzerinde derinlik oku
-- ⬜ 8.2 Üst üste adaylar arasında dokunarak geçiş
-- ⬜ 8.3 Sihirbaz eskizlerinde tam ölçülendirme
-- ⬜ 8.4 Fotoğraftan kenar izleme
-- ⬜ 8.5 Sesle ölçü girişi
+- ✅ v0.74 8.1 Model üzerinde derinlik oku (ekstrüzyon panelinde de, 1 mm adım, Shift 0,1)
+- ✅ v0.74 8.2 Üst üste adaylar arasında dokunarak geçiş (aday çubuğu)
+- ✅ v0.74 8.3 Sihirbaz eskizlerinde tam ölçülendirme
+- ✅ v0.74 8.4 Fotoğraftan kenar izleme
+- ✅ v0.74 8.5 Sesle ölçü girişi
 
 ## 9. Saha
 - ⬜ 9.1 Modele fotoğraf ekleme
