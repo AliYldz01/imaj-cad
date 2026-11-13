@@ -264,6 +264,12 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           if (!ps) throw new Error("Yol eskizini seçin");
           const ppl = kplane(ps.plane, feats, ps.id);
           if (!ppl) throw new Error("Yol eskizinin düzlemi bulunamadı");
+          if (f.helix) {
+            const ci = ps.data.ents.find((e: any) => e.t === "circle" && !e.cons) as any;
+            if (!ci) throw new Error(`${ps.name}: helis için eskizde bir daire olmalı (taban çapı)`);
+            kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: [], closed: false }, circ: f.circ, circIn: f.circIn, orient: f.orient, helix: { ...f.helix, c: pointPos(ps.data, ci.c), r: ci.r } });
+            break;
+          }
           const path = extractPath(ps.data);
           if (path.error) throw new Error(`${ps.name}: ${path.error}`);
           kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient });
@@ -296,7 +302,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
               return pts;
             });
           }
-          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides });
+          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd });
           break;
         }
         case "rib": {

@@ -146,8 +146,11 @@ function nextName(key: string) {
   return `${FEAT_NAMES[key] ?? key}${doc.seq[key]}`;
 }
 // ---------- Denklemler ----------
+function activeConfig() {
+  return doc.configs?.find((c) => c.name === doc.config);
+}
 function varValue(name: string, seen = new Set<string>()): number | undefined {
-  const ex = doc.vars?.[name];
+  const ex = activeConfig()?.vars[name] ?? doc.vars?.[name];
   if (ex === undefined || seen.has(name)) return undefined;
   seen.add(name);
   return evalNum(ex, (n) => varValue(n, seen)) ?? undefined;
@@ -1783,7 +1786,22 @@ function renderFeaturePM(kind: string) {
         gp.appendChild(numField("Çap", d.circ!, (v) => ((d.circ = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.circ` }));
         gp.appendChild(numField("İç çap (0 = dolu çubuk)", d.circIn ?? 0, (v) => ((d.circIn = v || undefined), upd()), { min: 0, unit: "mm" }));
       } else gp.appendChild(selectField("Profil (kapalı eskiz)", opts, d.sketch, (v) => ((d.sketch = v), upd())));
-      gp.appendChild(selectField("Yol (açık veya kapalı zincir)", opts, d.path, (v) => ((d.path = v), upd())));
+      gp.appendChild(segField([{ v: "path", t: "Eskiz yolu" }, { v: "helix", t: "Helis / yay" }], d.helix ? "helix" : "path", (v) => {
+        d.helix = v === "helix" ? d.helix ?? { pitch: 10, turns: 5 } : undefined;
+        renderFeaturePM(kind);
+        upd();
+      }));
+      gp.appendChild(selectField(d.helix ? "Taban dairesi eskizi (helis ekseni = eskiz normali)" : "Yol (açık veya kapalı zincir)", opts, d.path, (v) => ((d.path = v), upd())));
+      if (d.helix) {
+        const H = d.helix;
+        gp.append(
+          numField("Hatve", H.pitch, (v) => ((H.pitch = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Tur sayısı", H.turns, (v) => ((H.turns = v), upd()), { min: 0.1 }),
+          numField("Koniklik açısı (0 = silindirik)", H.taper ?? 0, (v) => ((H.taper = v || undefined), upd()), { unit: "°" }),
+          checkField("Sol el (saat yönü tersi)", !!H.left, (v) => ((H.left = v || undefined), upd())),
+          h("p", "pm-hint", `Yükseklik: ${(H.pitch * H.turns).toFixed(2)} mm. Yay için "Dairesel profil" ile tel çapını verin.`),
+        );
+      }
       gp.appendChild(selectField("Profil yönelimi", [{ v: "follow", t: "Yolu izle" }, { v: "normal", t: "Normali sabit tut" }], d.orient ?? "follow", (v) => ((d.orient = v as any), upd())));
       if (!circ) gp.appendChild(h("p", "pm-hint", "Profil eskizi, yolun başlangıç noktasında yola dik bir düzlemde olmalıdır."));
       body.appendChild(gp);
@@ -1806,6 +1824,14 @@ function renderFeaturePM(kind: string) {
         group(
           "Seçenekler",
           checkField("Düz yüzeyli (ruled)", d.ruled, (v) => ((d.ruled = v), upd())),
+          ...(!d.ruled
+            ? [
+                selectField("Başlangıç kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }], d.tanStart ? "1" : "0", (v) => ((d.tanStart = v === "1" ? 1 : undefined), renderFeaturePM(kind), upd())),
+                ...(d.tanStart ? [numField("Başlangıç teğet uzunluğu", d.tanStart, (v) => ((d.tanStart = v), upd()), { min: 0.1 })] : []),
+                selectField("Bitiş kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }], d.tanEnd ? "1" : "0", (v) => ((d.tanEnd = v === "1" ? 1 : undefined), renderFeaturePM(kind), upd())),
+                ...(d.tanEnd ? [numField("Bitiş teğet uzunluğu", d.tanEnd, (v) => ((d.tanEnd = v), upd()), { min: 0.1 })] : []),
+              ]
+            : []),
           checkField("Sac geçiş parçası (loft büküm)", !!d.sheetT, (v) => ((d.sheetT = v ? lastSheetBase(doc.features)?.t ?? 2 : undefined), (d.ruled = v ? true : d.ruled), renderFeaturePM(kind), upd())),
           ...(d.sheetT
             ? [
@@ -2824,7 +2850,9 @@ function renderFeaturePM(kind: string) {
         return row;
       };
       if (d.type === "axis") {
-        body.appendChild(group("Eksen", h("p", "pm-hint", "Doğrusal bir kenara (eksen kenar boyunca) veya dairesel bir kenara (silindir ekseni) dokunun."), v3("Nokta", d.p, drawRefGeom), v3("Yön", d.d, drawRefGeom)));
+        const am = d._amode ?? "edge";
+        const hints: Record<string, string> = { edge: "Doğrusal bir kenara, dairesel bir kenara ya da silindirik yüze (silindir ekseni) dokunun.", "2pl": `İki düz yüze / düzleme dokunun: kesişim çizgisi eksen olur (${(d._picks ?? []).length}/2).`, "2pt": `İki noktaya (kenar ortası / daire merkezi) dokunun (${(d._picks ?? []).length}/2).` };
+        body.appendChild(group("Eksen", segField([{ v: "edge", t: "Kenar / silindir" }, { v: "2pl", t: "İki düzlem" }, { v: "2pt", t: "İki nokta" }], am, (v) => ((d._amode = v), (d._picks = []), renderFeaturePM(kind))), h("p", "pm-hint", hints[am]), v3("Nokta", d.p, drawRefGeom), v3("Yön", d.d, drawRefGeom)));
         const bs = h("div", "pm-buttons");
         (["x", "y", "z"] as const).forEach((a) => bs.appendChild(button(`${a.toUpperCase()} ekseni`, () => ((d.p = [0, 0, 0]), (d.d = [...AXES[a]] as Vec3), renderFeaturePM(kind), drawRefGeom()))));
         body.appendChild(bs);
@@ -2952,6 +2980,116 @@ function drawRefGeom() {
 }
 
 // ---------- Denklemler penceresi ----------
+/** yapılandırmayı etkinleştir: bastırma durumları uygulanır, değişkenler çözücüden okunur */
+function setConfig(name: string) {
+  commitDoc(() => {
+    doc.config = name;
+    const cfg = activeConfig();
+    if (cfg) for (const f of doc.features) f.off = cfg.off.includes(f.id) || undefined;
+    applyEquations();
+  });
+  toast(`Yapılandırma: ${name}`);
+}
+/** SolidWorks Yapılandırmalar + tasarım tablosu: satır = global değişken / bastırılabilir özellik, sütun = yapılandırma */
+function openConfigs() {
+  if (!doc.configs?.length) {
+    doc.configs = [{ name: "Varsayılan", vars: {}, off: doc.features.filter((f) => f.off).map((f) => f.id) }];
+    doc.config = "Varsayılan";
+  }
+  const cfgs = doc.configs;
+  const dlg = h("dialog", "cut-dialog") as HTMLDialogElement;
+  const render = () => {
+    dlg.innerHTML = `<h2>Yapılandırmalar (tasarım tablosu)</h2><p class="small">Her sütun bir yapılandırma. Değişken hücresi boşsa global değer kullanılır. Özellik satırında işaretli = bastırılmış.</p>`;
+    const vars = Object.keys(doc.vars ?? {});
+    const feats = doc.features.filter((f) => f.type !== "sketch");
+    const tb = document.createElement("table");
+    tb.className = "cut-table";
+    const hr = document.createElement("tr");
+    hr.appendChild(h("th", "", ""));
+    cfgs.forEach((c, j) => {
+      const th = h("th", "");
+      const nm = h("input") as HTMLInputElement;
+      nm.value = c.name;
+      nm.size = 10;
+      nm.addEventListener("change", () => {
+        const v = nm.value.trim();
+        if (!v || cfgs.some((x) => x !== c && x.name === v)) return (nm.value = c.name);
+        if (doc.config === c.name) doc.config = v;
+        c.name = v;
+      });
+      const act = h("input") as HTMLInputElement;
+      act.type = "radio";
+      act.name = "cfgact";
+      act.checked = doc.config === c.name;
+      act.title = "Etkin yapılandırma";
+      act.addEventListener("change", () => (setConfig(c.name), render()));
+      const del = button("✕", () => {
+        if (cfgs.length < 2) return;
+        cfgs.splice(j, 1);
+        if (!cfgs.some((x) => x.name === doc.config)) setConfig(cfgs[0].name);
+        render();
+      }, "btn danger");
+      th.append(act, nm, del);
+      hr.appendChild(th);
+    });
+    tb.appendChild(hr);
+    for (const v of vars) {
+      const tr = document.createElement("tr");
+      tr.appendChild(h("td", "", `${v} (= ${doc.vars![v]})`));
+      for (const c of cfgs) {
+        const td = document.createElement("td");
+        const i = h("input") as HTMLInputElement;
+        i.value = c.vars[v] ?? "";
+        i.size = 7;
+        i.placeholder = doc.vars![v];
+        i.addEventListener("change", () => {
+          if (i.value.trim()) c.vars[v] = i.value.trim();
+          else delete c.vars[v];
+          if (doc.config === c.name) setConfig(c.name);
+        });
+        td.appendChild(i);
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    }
+    for (const f of feats) {
+      const tr = document.createElement("tr");
+      tr.appendChild(h("td", "", `Bastır: ${f.name}`));
+      for (const c of cfgs) {
+        const td = document.createElement("td");
+        const i = h("input") as HTMLInputElement;
+        i.type = "checkbox";
+        i.checked = c.off.includes(f.id);
+        i.addEventListener("change", () => {
+          c.off = i.checked ? [...c.off, f.id] : c.off.filter((x) => x !== f.id);
+          if (doc.config === c.name) setConfig(c.name);
+        });
+        td.appendChild(i);
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    }
+    if (!vars.length) dlg.appendChild(h("p", "pm-hint", "Ölçüleri yapılandırmaya göre değiştirmek için önce Denklemler'de global değişken tanımlayın (ör. L = 30) ve ölçüye =L yazın."));
+    dlg.appendChild(tb);
+    const bar = h("div", "pm-row");
+    bar.append(
+      button("Yapılandırma ekle (etkinden kopya)", () => {
+        const cur = activeConfig() ?? cfgs[0];
+        let n = cfgs.length + 1;
+        while (cfgs.some((x) => x.name === `Yapılandırma${n}`)) n++;
+        cfgs.push({ name: `Yapılandırma${n}`, vars: { ...cur.vars }, off: [...cur.off] });
+        render();
+      }, "btn"),
+      button("Kapat", () => dlg.close(), "btn primary"),
+    );
+    dlg.appendChild(bar);
+  };
+  render();
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => (dlg.remove(), saveDoc(), renderTree()));
+  dlg.showModal();
+}
+
 function openEquations() {
   const dlg = h("dialog");
   dlg.innerHTML = `<h2>Global Değişkenler ve Denklemler</h2><p class="small">Ölçü ve özellik alanlarına <b>=ad</b> veya <b>=L/2+5</b> gibi ifadeler yazabilirsiniz. Fonksiyonlar: sin, cos, tan (derece), sqrt, abs, pi.</p>`;
@@ -3678,6 +3816,43 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     if (f.type !== "CYLINDRE") return toast("Sarma için silindirik bir yüz seçin", true);
     d.face = { c: f.c, n: f.n };
     schedulePreview();
+  } else if (d.type === "axis" && m && (d._amode ?? "edge") !== "edge") {
+    const picks: any[] = (d._picks ??= []);
+    if (d._amode === "2pl") {
+      if (hit.kind !== "face" || !m.faces[hit.index].n) return toast("Düz bir yüz seçin", true);
+      const f = m.faces[hit.index];
+      picks.push({ c: f.c, n: f.n });
+      if (picks.length === 2) {
+        const [A, B] = picks;
+        const n1 = new THREE.Vector3(...A.n), n2 = new THREE.Vector3(...B.n);
+        const dir = new THREE.Vector3().crossVectors(n1, n2);
+        if (dir.length() < 1e-6) return (d._picks = []), toast("Düzlemler paralel; kesişmiyor", true);
+        dir.normalize();
+        // iki düzlemin kesişim çizgisinde bir nokta: (d1 n2 - d2 n1) × dir / |dir|²'ye eşdeğer çözüm
+        const d1 = n1.dot(new THREE.Vector3(...A.c)), d2 = n2.dot(new THREE.Vector3(...B.c));
+        const c = new THREE.Vector3().crossVectors(new THREE.Vector3().copy(n2).multiplyScalar(d1).sub(new THREE.Vector3().copy(n1).multiplyScalar(d2)), new THREE.Vector3().crossVectors(n1, n2)).divideScalar(new THREE.Vector3().crossVectors(n1, n2).lengthSq());
+        d.p = c.toArray() as Vec3;
+        d.d = dir.toArray() as Vec3;
+        d._picks = [];
+      }
+    } else {
+      if (hit.kind !== "edge") return toast("Bir kenara dokunun (orta noktası / daire merkezi)", true);
+      const e = m.edges[hit.index];
+      picks.push(e.c ?? e.m);
+      if (picks.length === 2) {
+        const v = new THREE.Vector3(...(picks[1] as Vec3)).sub(new THREE.Vector3(...(picks[0] as Vec3)));
+        if (v.length() < 1e-6) return (d._picks = []), toast("Noktalar çakışık", true);
+        d.p = picks[0];
+        d.d = v.normalize().toArray() as Vec3;
+        d._picks = [];
+      }
+    }
+    renderFeaturePM("axis");
+    drawRefGeom();
+  } else if (d.type === "axis" && hit.kind === "face" && m && m.faces[hit.index].r && m.faces[hit.index].ax) {
+    const f = m.faces[hit.index];
+    [d.p, d.d] = [f.ac ?? f.c, f.ax!];
+    drawRefGeom();
   } else if (d.type === "axis" && hit.kind === "edge" && m) {
     const e = m.edges[hit.index];
     if (e.d) [d.p, d.d] = [e.m, e.d];
@@ -4079,7 +4254,7 @@ const FEAT_ICON: Record<string, string> = {
 
 function renderTree() {
   if (asmUI?.on) return asmUI.renderTree();
-  $("#part-name").textContent = doc.name;
+  $("#part-name").textContent = doc.name + (doc.configs?.length && doc.config ? ` [${doc.config}]` : "");
   const ul = $("#tree");
   ul.innerHTML = "";
   const rollIdx = mode.k === "sketch" && !mode.isNew ? featIndex(mode.featId) : mode.k === "pm" && mode.editingId ? featIndex(mode.editingId) : doc.rollback ?? Infinity;
@@ -4232,7 +4407,14 @@ function renderTreeActions() {
   const idx = featIndex(f.id);
   add("Buraya geri sar", () => commitDoc(() => (doc.rollback = idx)));
   if (doc.rollback != null) add("Sona sar", () => commitDoc(() => (doc.rollback = null)));
-  add(f.off ? "Etkinleştir" : "Bastır", () => commitDoc(() => (f.off = !f.off)));
+  add(f.off ? "Etkinleştir" : "Bastır", () =>
+    commitDoc(() => {
+      f.off = !f.off;
+      // etkin yapılandırmanın bastırma listesi de güncellenir (SolidWorks: "Bu yapılandırma")
+      const cfg = activeConfig();
+      if (cfg) cfg.off = f.off ? [...new Set([...cfg.off, f.id])] : cfg.off.filter((x) => x !== f.id);
+    }),
+  );
   const i0 = doc.features.indexOf(f);
   if (i0 > 0) add("▲ Yukarı", () => moveFeature(f.id, doc.features[i0 - 1].id));
   if (i0 < doc.features.length - 1) add("▼ Aşağı", () => moveFeature(f.id, doc.features[i0 + 2]?.id ?? null));
@@ -4386,6 +4568,7 @@ function commands(): Cmd[] {
       { id: "section", label: "Kesit", icon: "section", run: () => openSection(), active: () => !!section },
       { id: "material", label: "Malzeme", icon: "material", run: () => chooseMaterial() },
       { id: "equations", label: "Denklemler", icon: "equations", run: () => openEquations() },
+      { id: "configs", label: "Yapılandırmalar", icon: "tpattern", run: () => openConfigs() },
       { id: "interfere", label: "Girişim", icon: "interfere", run: () => checkInterference() },
     ];
   const inSk = mode.k === "sketch";
@@ -6271,5 +6454,6 @@ function showCmd(title: string) {
   /** testler için: belgeyi değiştir */
   setDoc(d: PartDoc) { treeSel = null; commitDoc(() => (doc = d)); },
   __kf: () => compile(viewFeatures().feats, doc.profiles ?? {}).kfeats,
+  pmPick: (hit: any) => pmPick(hit),
   kernel,
 };

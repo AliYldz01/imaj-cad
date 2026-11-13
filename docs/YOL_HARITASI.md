@@ -547,3 +547,12 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Delik konumlarını eskizle ölçülendirme (konum eskizi) | ✅ |
 | Aynı dosyaya kaydet (masaüstü Chrome/Edge), Farklı kaydet, Son belgeler | ✅ |
 | Diş özelliğinin kendisini hızlandırma | ⬜ |
+
+## v0.41 — Modelleme ekleri
+| Özellik | Durum |
+|---|---|
+| Helis / yay (silindirik, konik, sol el) süpürme yolu | ✅ |
+| Loft başlangıç / bitiş kısıtı: profile dik + teğet uzunluğu | ✅ |
+| Referans eksen: silindir yüzü, iki düzlem, iki nokta | ✅ |
+| Yapılandırmalar + tasarım tablosu (değişken değerleri, bastırma) | ✅ |
+| Süpürmede burulma / kılavuz eğri, sac aç/katla, flanş profili, köşe başına kaynak işlemi | ⬜ |

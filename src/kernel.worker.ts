@@ -6,7 +6,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeBSplineApproximation, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
@@ -371,7 +371,23 @@ function pathWire(segs: Seg[], closed: boolean, frame: Frame) {
 
 function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
   const sframe = resolvePlane(f.path.pl);
-  const spine = pathWire(f.path.segs, f.path.closed, sframe);
+  let spine: any;
+  if (f.helix) {
+    const H = f.helix;
+    if (!(H.pitch > 0) || !(H.turns > 0)) throw new Error("Helis: hatve ve tur sayısı pozitif olmalı");
+    const c = toWorld(sframe, H.c);
+    if (H.taper) {
+      // konik helis: noktalardan B-spline (tur başına 24 nokta)
+      const n = Math.max(8, Math.round(H.turns * 24)), tn = Math.tan((H.taper * Math.PI) / 180);
+      const xa = sframe.x, ya = vcross(sframe.n, sframe.x), sg = H.left ? -1 : 1;
+      const pts: [number, number, number][] = [];
+      for (let i = 0; i <= n; i++) {
+        const t = (i / n) * H.turns * 2 * Math.PI, z = (H.pitch * t) / (2 * Math.PI), r = Math.max(0.01, H.r - z * tn);
+        pts.push(vadd(vadd(c, vmul(sframe.n, z)), vadd(vmul(xa, r * Math.cos(t)), vmul(ya, sg * r * Math.sin(t)))) as any);
+      }
+      spine = assembleWire([makeBSplineApproximation(pts as any, { tolerance: 1e-3, degMax: 3 } as any)]);
+    } else spine = makeHelix(H.pitch, H.pitch * H.turns, H.r, c as any, sframe.n as any, !!H.left);
+  } else spine = pathWire(f.path.segs, f.path.closed, sframe);
   const oc = getOC();
   const sp: any = spine;
   const p0 = sp.startPoint, t0 = sp.tangentAt(0);
@@ -522,7 +538,28 @@ function loftTool(f: Extract<KFeature, { type: "loft" }>) {
     if (!ps.MakeSolid()) throw new Error("Merkez çizgili loft katı oluşturamadı");
     return cast(ps.Shape());
   }
-  const sks = f.profiles.map((p) => loopDrawing(p.loops[0]).sketchOnPlane(makePlane(resolvePlane(p.pl))) as any);
+  const frs = f.profiles.map((p) => resolvePlane(p.pl));
+  const sk = (i: number, off = 0) => loopDrawing(f.profiles[i].loops[0]).sketchOnPlane(makePlane(frs[i], off)) as any;
+  const sks = f.profiles.map((_, i) => sk(i));
+  // başlangıç / bitiş kısıtı "profile dik": profile paralel yardımcı kesit (teğet uzunluğuyla orantılı)
+  if (!f.ruled && (f.tanStart || f.tanEnd)) {
+    const cen = (i: number) => {
+      const L: any = f.profiles[i].loops[0];
+      const pts: Vec2[] = L.circle ? [L.circle.c] : L.ellipse ? [L.ellipse.c] : L.segs.map((q: any) => q.a);
+      const m: Vec2 = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+      return toWorld(frs[i], m);
+    };
+    const n = sks.length;
+    const aux = (i: number, j: number, t: number) => {
+      const dv = vsub(cen(j), cen(i));
+      const s = vdot(dv, frs[i].n) >= 0 ? 1 : -1;
+      return sk(i, s * Math.min(0.45 * Math.abs(vdot(dv, frs[i].n)) || 0.3 * vlen(dv), 0.25 * t * vlen(dv)));
+    };
+    const list = [...sks];
+    if (f.tanEnd) list.splice(n - 1, 0, aux(n - 1, n - 2, f.tanEnd));
+    if (f.tanStart) list.splice(1, 0, aux(0, 1, f.tanStart));
+    return list[0].loftWith(list.slice(1), { ruled: false });
+  }
   return sks[0].loftWith(sks.slice(1), { ruled: f.ruled });
 }
 

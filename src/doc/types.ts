@@ -227,6 +227,8 @@ export interface SweepFeature extends FeatBase {
   circIn?: number;
   /** profil yönelimi: yolu izle (varsayılan) / normali sabit tut */
   orient?: "follow" | "normal";
+  /** helis yolu (SolidWorks Helis/Spiral): yol eskizindeki daire taban çemberi; hatve, tur, sol el, koniklik (°) */
+  helix?: { pitch: number; turns: number; left?: boolean; taper?: number };
 }
 export interface LoftFeature extends FeatBase {
   type: "loft";
@@ -236,6 +238,9 @@ export interface LoftFeature extends FeatBase {
   ruled: boolean;
   /** merkez çizgisi eskizi (isteğe bağlı) */
   center?: string;
+  /** SolidWorks başlangıç / bitiş kısıtı "profile dik": teğet uzunluğu (0 / yok = kısıtsız) */
+  tanStart?: number;
+  tanEnd?: number;
   /** sac geçiş parçası (loft büküm): sac kalınlığı — uçlar açık ince cidar */
   sheetT?: number;
   /** kılavuz eğri eskizleri (isteğe bağlı) */
@@ -631,6 +636,9 @@ export interface PartDoc {
   rollback?: number | null;
   /** global değişkenler: ad -> ifade */
   vars?: Record<string, string>;
+  /** yapılandırmalar (SolidWorks konfigürasyon / tasarım tablosu): değişken değerleri ve bastırılan özellikler */
+  configs?: { name: string; vars: Record<string, string>; off: string[] }[];
+  config?: string;
   /** özellik alanlarına bağlı denklemler: "özellikId.alan" -> ifade */
   eqs?: Record<string, string>;
   /** belgeye gömülü özel profiller (kimlik -> ad + konturlar) */
@@ -664,8 +672,8 @@ export type KFeature =
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string }
-  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal" }
-  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][] }
+  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number } }
+  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean }
