@@ -463,3 +463,16 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Açı: yerleştirildiği bölgeye göre dar / geniş (SolidWorks gibi), sürükleyince değer güncellenir | ✅ |
 | Çelişen veya fazlalık ölçü → sürülen (referans) ölçü; sürücü ↔ sürülen | ✅ |
 | Ölçü: tek tık seç + bağlam çubuğu, çift tık düzenle, Delete sil | ✅ |
+
+## v0.33 — Montaj ekleri
+| Özellik | Durum |
+|---|---|
+| Montaj ve bileşen ana düzlemleri / orijin ile eşleşme (ağaçtan seçim) | ✅ |
+| Alt montaj: seçilenlerden oluştur, .icasm ekle, rijit / esnek, dağıt, kaydet | ✅ |
+| Bileşen değiştir (konum + eşleşmeler korunur), eşleşmeleriyle kopyala | ✅ |
+| Bağlam içinde parça düzenle → "Montaja dön" ile bileşen güncellenir | ✅ |
+| Bağlantı elemanları: ISO 4017 cıvata, ISO 4032 somun, ISO 7089 pul (M4–M20) | ✅ |
+| Profil merkezi, üniversal mafsal eşleşmeleri | ✅ |
+| MateXpert (sağlanamayan eşleşme + bastırma önerisi), boşluk doğrulama, montaj kesiti | ✅ |
+| Hareket etüdü: döner / doğrusal motor, eşleşmelerle birlikte hareket | ✅ |
+| Yol, kam, yuva eşleşmeleri; montaj kesme/delik özellikleri | ⬜ |

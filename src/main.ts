@@ -5192,6 +5192,37 @@ asmUI = new AsmUI({
   hidePM,
   download,
   currentPart: () => ({ name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles }),
+  // SolidWorks: montajda parçayı düzenle → parça açılır, "Montaja dön" ile bileşen güncellenir
+  editPart: (part, done) => {
+    const saved = JSON.stringify(doc);
+    asmUI!.leave();
+    doc = { ...emptyDoc(), name: part.name, features: JSON.parse(JSON.stringify(part.features)), ...(part.profiles ? { profiles: part.profiles } : {}), ...(part.eqs ? { eqs: part.eqs } : {}) } as any;
+    treeSel = null;
+    setTab("features");
+    renderTree();
+    rebuild();
+    const bar = h("div", "ctx-edit-bar");
+    bar.append(h("span", "", `Montaj bileşeni düzenleniyor: ${part.name}`));
+    const back = button("Montaja dön ✓", async () => {
+      if (mode.k === "sketch") exitSketch(true);
+      if (mode.k === "pm") cancelFeature();
+      const np = { name: doc.name, features: JSON.parse(JSON.stringify(doc.features)), eqs: (doc as any).eqs, profiles: (doc as any).profiles };
+      doc = JSON.parse(saved);
+      bar.remove();
+      saveDoc();
+      setTab("asm");
+      await asmUI!.enter();
+      done(np);
+    }, "btn primary");
+    const cancel = button("Vazgeç", async () => {
+      doc = JSON.parse(saved);
+      bar.remove();
+      setTab("asm");
+      await asmUI!.enter();
+    }, "btn");
+    bar.append(back, cancel);
+    document.body.appendChild(bar);
+  },
   setStatus: (k, t) => setStatus(k as any, t),
   onLeave: () => {
     renderTree();

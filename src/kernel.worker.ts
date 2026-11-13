@@ -3017,7 +3017,7 @@ function exportShape(id: number, format: "step" | "stl") {
 }
 
 /** Montaj: her bileşeni kur, dönüşüm matrisiyle yerleştir; STEP (bileşik) veya bileşenler arası girişim */
-async function asmOp(id: number, op: "step" | "interfere", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]) {
+async function asmOp(id: number, op: "step" | "interfere" | "clearance", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]) {
   const placed: Shape[] = [];
   for (const p of parts) {
     bodies = [];
@@ -3050,6 +3050,19 @@ async function asmOp(id: number, op: "step" | "interfere", parts: { features: KF
     if (!ok.length) return post({ id, type: "asm", blob: null, message: "Montajda katı yok" });
     const c = makeCompound(ok.map((x) => x.clone()));
     post({ id, type: "asm", blob: c.blobSTEP() });
+    return;
+  }
+  if (op === "clearance") {
+    // SolidWorks Boşluk Doğrulama: bileşen çiftleri arasındaki en kısa mesafe
+    const dist: { a: number; b: number; d: number }[] = [];
+    for (let i = 0; i < placed.length; i++)
+      for (let j = i + 1; j < placed.length; j++) {
+        if (!placed[i] || !placed[j]) continue;
+        try {
+          dist.push({ a: i, b: j, d: measureDistanceBetween(placed[i], placed[j]) });
+        } catch {}
+      }
+    post({ id, type: "asm", dist });
     return;
   }
   const pairs: { a: number; b: number; vol: number }[] = [];

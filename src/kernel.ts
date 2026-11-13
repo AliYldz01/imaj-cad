@@ -39,7 +39,7 @@ export class Kernel {
   }
 
   /** montaj: STEP veya bileşenler arası girişim */
-  async asm(op: "step" | "interfere", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]): Promise<{ blob?: Blob | null; pairs?: { a: number; b: number; vol: number }[]; message?: string }> {
+  async asm(op: "step" | "interfere" | "clearance", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]): Promise<{ blob?: Blob | null; pairs?: { a: number; b: number; vol: number }[]; dist?: { a: number; b: number; d: number }[]; message?: string }> {
     await this.ready;
     return this.request({ type: "asm", op, parts } as any);
   }

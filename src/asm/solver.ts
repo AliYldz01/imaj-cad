@@ -4,6 +4,31 @@
 import * as THREE from "three";
 import type { Vec3 } from "../doc/types";
 import type { AsmDoc, AsmComp, Mate, MateEnt } from "./assembly";
+const ASM_ID = "__asm";
+/** montaj ana düzlemleri / orijini: sabit birim dönüşümlü sanal bileşen */
+const ASM_COMP = { id: ASM_ID, name: "Montaj", part: { name: "", features: [] }, q: [0, 0, 0, 1], p: [0, 0, 0], fixed: true } as unknown as AsmComp;
+/** çözüm haritası: bileşenler + sanal montaj bileşeni */
+function compMap(doc: AsmDoc) {
+  const m = new Map(doc.comps.map((c) => [c.id, c]));
+  m.set(ASM_ID, ASM_COMP);
+  return m;
+}
+/** etkin eşleşmeler: bastırılanlar ve rijit alt montajın iç eşleşmeleri hariç; rijit alt montajlar için örtük kilitler */
+function activeMates(doc: AsmDoc, cm: Map<string, AsmComp>): Mate[] {
+  const rigid = new Set((doc.subs ?? []).filter((s) => s.rigid).map((s) => s.id));
+  const ok = (e?: MateEnt) => !e || cm.has(e.comp);
+  const out = doc.mates.filter((m) => !m.off && !(m.sub && rigid.has(m.sub)) && ok(m.a) && ok(m.b) && ok(m.c) && ok(m.d));
+  for (const s of doc.subs ?? []) {
+    if (!s.rigid) continue;
+    const ids = s.comps.filter((id) => cm.has(id) && s.poses[id]);
+    for (let i = 1; i < ids.length; i++) {
+      const A = s.poses[ids[0]], B = s.poses[ids[i]];
+      const e = (comp: string): MateEnt => ({ comp, kind: "point", c: [0, 0, 0], n: [0, 0, 1] });
+      out.push({ id: `__rig_${s.id}_${i}`, type: "lock", a: e(ids[0]), b: e(ids[i]), ref: { pa: A.p, qa: A.q, pb: B.p, qb: B.q }, L: 50 });
+    }
+  }
+  return out;
+}
 
 const V = (a: Vec3) => new THREE.Vector3(a[0], a[1], a[2]);
 const QC = (c: AsmComp) => new THREE.Quaternion(c.q[0], c.q[1], c.q[2], c.q[3]);
@@ -90,6 +115,24 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
       if (m.flipD) x = -x;
       if (t === "limit") return { r: [...r, ineq(x, Math.min(lo, hi), Math.max(lo, hi))], lim: true };
       return { r: [...r, x - lo] };
+    }
+    case "profileCenter": {
+      // iki düz yüzün profil merkezleri hizalı, yüzler çakışık (ötelemeli)
+      return { r: [...align(A.N, B.N, same), ...v3(d.clone().addScaledVector(A.N, -(m.v ?? 0)))] };
+    }
+    case "universal": {
+      // üniversal mafsal: θ2 = atan(tan θ1 · cos β)
+      const ca = cm.get(m.a.comp)!, cb = cm.get(m.b.comp)!;
+      const ref = m.ref!;
+      const k1 = m.id + "u1", k2 = m.id + "u2";
+      const t1 = wrap(twist(QC(ca), ref.qa, A.N), lastTw.get(k1) ?? 0);
+      lastTw.set(k1, t1);
+      const t2 = wrap(twist(QC(cb), ref.qb, B.N), lastTw.get(k2) ?? 0);
+      lastTw.set(k2, t2);
+      const cosb = Math.abs(dot(A.N, B.N));
+      const raw = Math.atan2(Math.sin(t1) * cosb, Math.cos(t1));
+      const tgt = t1 + Math.atan2(Math.sin(raw - t1), Math.cos(raw - t1));
+      return { r: [(t2 - (m.flip ? -tgt : tgt)) * (m.L ?? 50) * 0.02] };
     }
     case "limitAngle": {
       const ang = (Math.acos(Math.max(-1, Math.min(1, dot(A.N, B.N) * (same ? 1 : -1)))) * 180) / Math.PI;
@@ -199,10 +242,10 @@ const sizeOf = (c: AsmComp) => (c as any)._L ?? 50;
 
 /** eşzamanlı çözüm */
 export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
-  const cm = new Map(doc.comps.map((c) => [c.id, c]));
+  const cm = compMap(doc);
   const anyFixed = doc.comps.some((c) => c.fixed);
   const free = doc.comps.filter((c) => !c.fixed && !(o.hold?.has(c.id)) && (anyFixed || c !== doc.comps[0]));
-  const mates = doc.mates.filter((m) => !m.off && cm.has(m.a.comp) && cm.has(m.b.comp) && (!m.c || cm.has(m.c.comp)) && (!m.d || cm.has(m.d.comp)));
+  const mates = activeMates(doc, cm);
   // yalnız eşleşmeye bağlı serbest bileşenler (sürüklenen hariç diğerleri olduğu yerde)
   const linked = new Set<string>();
   for (const m of mates) for (const e of [m.a, m.b, m.c, m.d]) if (e) linked.add(e.comp);
@@ -303,6 +346,7 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
   run(false, o.iters ?? 60);
   const bad: string[] = [];
   for (const m of mates) {
+    if (m.id.startsWith("__rig_")) continue;
     const r = mateRes(m, cm).r;
     if (r.some((v) => Math.abs(v) > 1e-3)) bad.push(m.id);
   }
@@ -312,13 +356,13 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
 /** bileşen başına kalan serbestlik derecesi (SolidWorks (-) göstergesi) */
 export function dofAll(doc: AsmDoc): Map<string, number> {
   const out = new Map<string, number>();
-  const cm = new Map(doc.comps.map((c) => [c.id, c]));
+  const cm = compMap(doc);
   const anyFixed = doc.comps.some((c) => c.fixed);
   const vars = doc.comps.filter((c) => !c.fixed && (anyFixed || c !== doc.comps[0]));
   for (const c of doc.comps) out.set(c.id, 0);
   const n = vars.length * 6;
   if (!n) return out;
-  const mates = doc.mates.filter((m) => !m.off && cm.has(m.a.comp) && cm.has(m.b.comp) && (!m.c || cm.has(m.c.comp)) && (!m.d || cm.has(m.d.comp)) && !(mateRes(m, cm).lim));
+  const mates = activeMates(doc, cm).filter((m) => !mateRes(m, cm).lim);
   const save = vars.map((c) => ({ p: [...c.p] as Vec3, q: [...c.q] as [number, number, number, number] }));
   const res = () => mates.flatMap((m) => mateRes(m, cm).r);
   const r0 = res();

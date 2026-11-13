@@ -7,7 +7,8 @@ import type { Kernel } from "../kernel";
 import type { MeshData, Vec3 } from "../doc/types";
 import { compile } from "../doc/compile";
 import { h, numField, checkField, selectField, segField, group, button } from "../ui/dom";
-import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
+import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
+import { fastener, FASTENER_NAMES, FASTENER_SIZES, type FastenerKind } from "./toolbox";
 import { solveAll, dofAll, wEnt } from "./solver";
 
 export interface AsmCtx {
@@ -21,6 +22,8 @@ export interface AsmCtx {
   currentPart: () => AsmPart;
   setStatus: (k: string, t: string) => void;
   onLeave: () => void;
+  /** bağlam içinde parça düzenle: parça modunda aç, bitince güncel parçayla geri çağır */
+  editPart?: (part: AsmPart, done: (p: AsmPart) => void) => void;
 }
 type Cmd = { id: string; label: string; icon: string; run: () => void; active?: () => boolean } | "sep";
 
@@ -30,6 +33,7 @@ const uid = () => "c" + Date.now().toString(36) + Math.random().toString(36).sli
 const V3 = (a: Vec3) => new THREE.Vector3(a[0], a[1], a[2]);
 const QQ = (c: AsmComp) => new THREE.Quaternion(c.q[0], c.q[1], c.q[2], c.q[3]);
 type Pose = { p: Vec3; q: [number, number, number, number] };
+void ASM_ID;
 const KIND_NAMES: Record<string, string> = { plane: "Düz yüz", cyl: "Silindir", line: "Doğrusal kenar", circle: "Dairesel kenar", point: "Köşe" };
 
 /** eşleşme türünün seçim kutuları: [başlık, adet][] */
@@ -64,6 +68,7 @@ export class AsmUI {
   /** çoklu bileşen seçimi (Ctrl) */
   selSet = new Set<string>();
   selMate: string | null = null;
+  selSub: string | null = null;
   private mateDraft: MateDraft | null = null;
   private snap: Map<string, Pose> | null = null;
   /** hatalı (sağlanamayan) eşleşmeler */
@@ -577,7 +582,7 @@ export class AsmUI {
   private prepRef(m: Mate) {
     const ca = this.doc.comps.find((c) => c.id === m.a.comp), cb = this.doc.comps.find((c) => c.id === m.b.comp);
     if (!ca || !cb) return;
-    if (["lock", "gear", "rack", "screw", "coupler"].includes(m.type) && !m.ref) m.ref = { pa: [...ca.p], qa: [...ca.q], pb: [...cb.p], qb: [...cb.q] };
+    if (["lock", "gear", "rack", "screw", "coupler", "universal"].includes(m.type) && !m.ref) m.ref = { pa: [...ca.p], qa: [...ca.q], pb: [...cb.p], qb: [...cb.q] };
     m.L = Math.max((ca as any)._L ?? 50, (cb as any)._L ?? 50);
   }
   suggest(a: MateEnt, b: MateEnt): MateType {
@@ -607,6 +612,7 @@ export class AsmUI {
     this.ctx.showPM(edit ? `Eşleşmeyi düzenle — ${MATE_NAMES[edit.type]}` : "Eşleşme", () => this.commitMate(), () => this.cancelMate());
     this.renderMatePM();
     this.preview();
+    this.renderTree();
   }
   private cancelMate() {
     if (!this.mateDraft) return;
@@ -660,7 +666,7 @@ export class AsmUI {
     if (d.type === "width" && ents[0] && ents[1] && ents[2] && !ents[3]) ents.length = 3; // sekme tek silindir olabilir
     else if (ents.some((e) => !e)) return null;
     const [a, b, c, dd] = ents as MateEnt[];
-    const vals = ["distance", "angle", "limit", "limitAngle", "gear", "rack", "screw", "coupler"].includes(d.type);
+    const vals = ["distance", "angle", "limit", "limitAngle", "gear", "rack", "screw", "coupler", "profileCenter"].includes(d.type);
     return { id: "__draft", type: d.type, a, b, ...(c ? { c } : {}), ...(dd ? { d: dd } : {}), v: vals ? d.v : undefined, vmax: ["limit", "limitAngle", "gear", "coupler"].includes(d.type) ? d.vmax : undefined, flip: d.flip || undefined, flipD: d.flipD || undefined };
   }
   /** canlı önizleme */
@@ -690,7 +696,7 @@ export class AsmUI {
     if (!d) return;
     const body = document.getElementById("pm-body")!;
     body.innerHTML = "";
-    const name = (e: MateEnt) => `${this.doc.comps.find((c) => c.id === e.comp)?.name ?? "?"} · ${e.label ?? KIND_NAMES[e.kind]}`;
+    const name = (e: MateEnt) => `${this.doc.comps.find((c) => c.id === e.comp)?.name ?? "Montaj"} · ${e.label ?? KIND_NAMES[e.kind]}`;
     // seçim kutuları
     let k = 0;
     slotsOf(d.type).forEach(([title, n], si) => {
@@ -743,7 +749,8 @@ export class AsmUI {
     if (d.type === "rack") vals.push(nf("Pinyon hatve çapı", "v", "mm"));
     if (d.type === "screw") vals.push(nf("Hatve (tur başına)", "v", "mm"));
     if (d.type === "coupler") vals.push(nf("Oran: 1. bileşen", "v", "mm"), nf("Oran: 2. bileşen", "vmax", "mm"));
-    if (["gear", "rack", "screw", "coupler"].includes(d.type)) vals.push(checkField("Ters çevir", d.flip, (x) => ((d.flip = x), pv())));
+    if (d.type === "profileCenter") vals.push(nf("Öteleme", "v", "mm"));
+    if (["gear", "rack", "screw", "coupler", "universal"].includes(d.type)) vals.push(checkField("Ters çevir", d.flip, (x) => ((d.flip = x), pv())));
     if (ALIGNABLE.has(d.type))
       vals.push(
         h("div", "pm-hint", "Eşleşme hizalaması"),
@@ -756,6 +763,8 @@ export class AsmUI {
     const tips: Partial<Record<MateType, string>> = {
       symmetric: "İki varlık, seçilen simetri düzlemine göre simetrik konumlanır.",
       width: "Sekme (veya silindir) iki genişlik yüzünün tam ortasında kalır.",
+      profileCenter: "İki düz yüzün profil merkezleri hizalanır ve yüzler çakışır (öteleme verilebilir).",
+      universal: "İki milin dönmesi üniversal mafsal bağıntısıyla bağlanır (milleri ayrıca eksenlerine eşleştirin).",
       hinge: "Eş merkezli + çakışık eşleşmeyi tek eşleşmede birleştirir: yalnız eksen etrafında döner.",
       gear: "İki silindir ekseninin dönmeleri çaplar oranında bağlanır (eş merkezli eşleşmeleri ayrıca verin).",
       rack: "1. seçim: kremayerin doğrusal kenarı / düz yüzü (hareket yönü); 2. seçim: pinyon silindiri.",
@@ -820,13 +829,13 @@ export class AsmUI {
     this.save();
     this.refresh().then(() => this.renderTree());
   }
-  openAddDialog() {
+  openAddDialog(replace?: AsmComp) {
     const dlg = document.createElement("dialog");
     dlg.className = "input-dialog";
-    dlg.appendChild(h("h2", "", "Bileşen ekle"));
+    dlg.appendChild(h("h2", "", replace ? `Bileşeni değiştir: ${replace.name}` : "Bileşen ekle"));
     const lib = loadLib();
     const cur = this.ctx.currentPart();
-    const add = (p: AsmPart) => (dlg.close(), this.addComp(p));
+    const add = (p: AsmPart) => (dlg.close(), replace ? this.replaceComp(replace, p) : this.addComp(p));
     dlg.appendChild(button(`Geçerli parça: ${cur.name}`, () => add(cur), "btn primary wide"));
     dlg.appendChild(h("h3", "", "Parça kütüphanesi"));
     const names = Object.keys(lib);
@@ -855,6 +864,29 @@ export class AsmUI {
         inp.click();
       }),
     );
+    if (!replace) {
+      dlg.appendChild(
+        button("Alt montaj ekle (.icasm)…", () => {
+          const inp = document.createElement("input");
+          inp.type = "file";
+          inp.accept = ".icasm,.json";
+          inp.onchange = async () => {
+            const f = inp.files?.[0];
+            if (!f) return;
+            try {
+              const d = JSON.parse(await f.text());
+              if (d.kind !== "asm") throw 0;
+              dlg.close();
+              this.insertSub(d);
+            } catch {
+              this.ctx.toast("Montaj dosyası okunamadı", true);
+            }
+          };
+          inp.click();
+        }),
+      );
+      dlg.appendChild(button("Bağlantı elemanı (cıvata / somun / pul)…", () => (dlg.close(), this.openToolbox())));
+    }
     dlg.appendChild(button("Kapat", () => dlg.close()));
     document.body.appendChild(dlg);
     dlg.addEventListener("close", () => dlg.remove());
@@ -1217,6 +1249,293 @@ export class AsmUI {
     dlg.showModal();
   }
 
+  // ---------- ana düzlemler / orijin (bileşen ve montaj) ----------
+  /** bileşenin (veya montajın) Ön / Üst / Sağ düzlemi ve orijini eşleşme varlığı olarak */
+  planeEnts(comp: string): [string, MateEnt][] {
+    return [
+      ["Ön düzlem", { comp, kind: "plane", c: [0, 0, 0], n: [0, 0, 1], label: "Ön düzlem" }],
+      ["Üst düzlem", { comp, kind: "plane", c: [0, 0, 0], n: [0, 1, 0], label: "Üst düzlem" }],
+      ["Sağ düzlem", { comp, kind: "plane", c: [0, 0, 0], n: [1, 0, 0], label: "Sağ düzlem" }],
+      ["Orijin", { comp, kind: "point", c: [0, 0, 0], n: [0, 0, 1], label: "Orijin" }],
+    ];
+  }
+
+  // ---------- alt montaj ----------
+  /** .icasm dosyasını alt montaj olarak ekle (rijit) */
+  insertSub(sub: AsmDoc) {
+    const map = new Map<string, string>();
+    const box = new THREE.Box3().setFromObject(this.group);
+    const dx = box.isEmpty() ? 0 : box.max.x + 40;
+    const sid = uid();
+    for (const c of sub.comps) {
+      const id = uid();
+      map.set(c.id, id);
+      this.doc.comps.push({ ...JSON.parse(JSON.stringify(c)), id, p: [c.p[0] + dx, c.p[1], c.p[2]], fixed: false });
+    }
+    const re = (e?: MateEnt) => (e ? { ...e, comp: map.get(e.comp) ?? e.comp } : undefined);
+    for (const m of sub.mates) {
+      if ([m.a, m.b, m.c, m.d].some((e) => e && !map.has(e.comp))) continue;
+      this.doc.mates.push({ ...JSON.parse(JSON.stringify(m)), id: uid(), a: re(m.a)!, b: re(m.b)!, ...(m.c ? { c: re(m.c) } : {}), ...(m.d ? { d: re(m.d) } : {}), sub: sid });
+    }
+    const ids = [...map.values()];
+    this.doc.subs = [...(this.doc.subs ?? []), { id: sid, name: sub.name, comps: ids, rigid: true, poses: this.capture(ids) }];
+    this.save();
+    this.refresh().then(() => this.renderTree());
+  }
+  private capture(ids: string[]) {
+    const out: Record<string, { p: Vec3; q: [number, number, number, number] }> = {};
+    for (const id of ids) {
+      const c = this.doc.comps.find((x) => x.id === id);
+      if (c) out[id] = { p: [...c.p] as Vec3, q: [...c.q] as Pose["q"] };
+    }
+    return out;
+  }
+  /** seçili bileşenlerden alt montaj oluştur (aralarındaki eşleşmeler iç eşleşme olur) */
+  formSub() {
+    const ids = [...this.selSet].filter((id) => !(this.doc.subs ?? []).some((s) => s.comps.includes(id)));
+    if (ids.length < 2) return this.ctx.toast("Ctrl ile en az iki bileşen seçin", true);
+    const name = prompt("Alt montaj adı", "AltMontaj" + ((this.doc.subs?.length ?? 0) + 1))?.trim();
+    if (!name) return;
+    const sid = uid();
+    for (const m of this.doc.mates) if (!m.sub && [m.a, m.b, m.c, m.d].every((e) => !e || ids.includes(e.comp))) m.sub = sid;
+    this.doc.subs = [...(this.doc.subs ?? []), { id: sid, name, comps: ids, rigid: true, poses: this.capture(ids) }];
+    this.solve();
+    this.save();
+    this.draw();
+    this.renderTree();
+  }
+  subAct(id: string, act: "rigid" | "dissolve" | "save") {
+    const s = (this.doc.subs ?? []).find((x) => x.id === id);
+    if (!s) return;
+    if (act === "rigid") {
+      s.rigid = !s.rigid;
+      if (s.rigid) s.poses = this.capture(s.comps); // esnekten rijite: güncel konumlar kilitlenir
+    } else if (act === "dissolve") {
+      for (const m of this.doc.mates) if (m.sub === id) delete m.sub;
+      this.doc.subs = (this.doc.subs ?? []).filter((x) => x !== s);
+    } else {
+      const comps = this.doc.comps.filter((c) => s.comps.includes(c.id));
+      const mates = this.doc.mates.filter((m) => m.sub === id).map((m) => ({ ...m, sub: undefined }));
+      const d: AsmDoc = { kind: "asm", name: s.name, comps: JSON.parse(JSON.stringify(comps, (k, v) => (k.startsWith("_") ? undefined : v))), mates };
+      if (d.comps[0]) d.comps[0].fixed = true;
+      return this.ctx.download(new Blob([JSON.stringify(d)], { type: "application/json" }), `${s.name}.icasm`);
+    }
+    this.solve();
+    this.save();
+    this.draw();
+    this.renderTree();
+  }
+  /** bileşeni başka parçayla değiştir: konum ve eşleşmeler korunur */
+  replaceComp(c: AsmComp, part: AsmPart) {
+    c.part = JSON.parse(JSON.stringify(part));
+    c.name = `${part.name}<${this.doc.comps.filter((x) => x.part.name === part.name).length}>`;
+    this.meshes.delete(c.id);
+    this.save();
+    this.refresh().then(() => {
+      const r = this.solve();
+      this.draw();
+      this.renderTree();
+      this.ctx.toast(r.ok ? "Bileşen değiştirildi" : "Bileşen değiştirildi; bazı eşleşmeler artık sağlanamıyor (⚠) — düzenleyin", !r.ok);
+    });
+  }
+  /** eşleşmeleriyle kopyala: kopya, kaynağın eşleşmelerini aynı referanslarla alır (sonra düzenlenir) */
+  copyWithMates(c: AsmComp) {
+    const id = uid();
+    const n = this.doc.comps.filter((x) => x.part.name === c.part.name).length + 1;
+    const L = ((c as any)._L ?? 30) * 1.5;
+    this.doc.comps.push({ ...JSON.parse(JSON.stringify(c, (k, v) => (k.startsWith("_") ? undefined : v))), id, name: `${c.part.name}<${n}>`, fixed: false, p: [c.p[0] + L, c.p[1], c.p[2]] });
+    const sw = (e?: MateEnt) => (e ? { ...e, comp: e.comp === c.id ? id : e.comp } : undefined);
+    let k = 0;
+    for (const m of this.doc.mates.slice()) {
+      if (m.sub || ![m.a, m.b, m.c, m.d].some((e) => e?.comp === c.id)) continue;
+      // yerleşimi belirleyen öteleme eşleşmeleri bastırılmış gelir (SolidWorks: yeni referans seçilir)
+      const off = ["coincident", "distance", "concentric", "lock", "tangent", "width", "symmetric", "profileCenter", "hinge"].includes(m.type);
+      this.doc.mates.push({ ...JSON.parse(JSON.stringify(m)), id: uid(), a: sw(m.a)!, b: sw(m.b)!, ...(m.c ? { c: sw(m.c) } : {}), ...(m.d ? { d: sw(m.d) } : {}), ...(off ? { off: true } : {}), ref: undefined });
+      k++;
+    }
+    this.save();
+    this.refresh().then(() => {
+      this.solve();
+      this.draw();
+      this.renderTree();
+      this.ctx.toast(`${k} eşleşme kopyalandı; konumlandıranlar bastırılmış — düzenleyip yeni referansları seçin`);
+    });
+  }
+
+  // ---------- MateXpert ----------
+  /** sağlanamayan eşleşmeleri ve hangisi bastırılınca çözüldüğünü bul */
+  mateXpert() {
+    const r = this.solve();
+    const dlg = document.createElement("dialog");
+    dlg.className = "input-dialog";
+    const nm = (m: Mate) => `${MATE_NAMES[m.type]} (${[...new Set([m.a, m.b].map((e) => this.doc.comps.find((c) => c.id === e.comp)?.name ?? "Montaj"))].join(", ")})`;
+    dlg.appendChild(h("h2", "", "MateXpert — eşleşme analizi"));
+    if (r.ok) dlg.appendChild(h("p", "", "✓ Tüm eşleşmeler sağlanıyor. Sorun yok."));
+    else {
+      const bad = this.doc.mates.filter((m) => this.bad.has(m.id));
+      dlg.appendChild(h("p", "", `Sağlanamayan eşleşmeler (${bad.length}): ${bad.map(nm).join(" · ")}`));
+      // aday: bastırılınca tüm eşleşmeler sağlanıyorsa
+      const start = this.poses();
+      const fix: Mate[] = [];
+      for (const m of this.doc.mates.filter((x) => !x.off)) {
+        m.off = true;
+        const rr = solveAll(this.doc);
+        m.off = undefined;
+        this.restore(start);
+        if (rr.ok) fix.push(m);
+      }
+      this.solve();
+      if (fix.length) {
+        dlg.appendChild(h("p", "", "Şunlardan birini bastırmak sorunu çözer:"));
+        for (const m of fix) dlg.appendChild(button(`Bastır: ${nm(m)}`, () => (dlg.close(), this.mateAct(m, "off")), "btn wide"));
+      } else dlg.appendChild(h("p", "pm-hint", "Tek bir eşleşmeyi bastırmak yetmiyor; sağlanamayanları düzenleyin veya silin."));
+    }
+    dlg.appendChild(button("Kapat", () => dlg.close(), "btn primary"));
+    document.body.appendChild(dlg);
+    dlg.addEventListener("close", () => dlg.remove());
+    dlg.showModal();
+  }
+
+  // ---------- boşluk doğrulama ----------
+  async clearance() {
+    const vis = this.doc.comps.filter((c) => !c.hidden);
+    const sel = vis.filter((c) => this.selSet.has(c.id));
+    const use = sel.length >= 2 ? sel : vis;
+    const min = parseFloat((prompt("Boşluk doğrulama: en az boşluk (mm)", "1") ?? "").replace(",", "."));
+    if (!isFinite(min)) return;
+    const parts = use.map((c) => ({ features: compile(c.part.features, c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+    this.ctx.setStatus("busy", "Boşluk hesaplanıyor…");
+    const r = await this.ctx.kernel.asm("clearance", parts);
+    this.meshes.clear();
+    await this.refresh();
+    const rows = (r.dist ?? []).sort((a, b) => a.d - b.d);
+    const dlg = document.createElement("dialog");
+    dlg.className = "input-dialog";
+    dlg.innerHTML = `<h2>Boşluk doğrulama (en az ${min} mm)</h2><table class="cut-table"><tr><th>Bileşen 1</th><th>Bileşen 2</th><th>Boşluk (mm)</th><th></th></tr>${rows.map((x) => `<tr><td>${use[x.a].name}</td><td>${use[x.b].name}</td><td>${x.d.toFixed(3)}</td><td>${x.d < min - 1e-6 ? "⚠ az" : "✓"}</td></tr>`).join("")}</table>`;
+    dlg.appendChild(button("Kapat", () => dlg.close(), "btn primary"));
+    document.body.appendChild(dlg);
+    dlg.addEventListener("close", () => dlg.remove());
+    dlg.showModal();
+  }
+
+  // ---------- montaj kesit görünümü ----------
+  openSection() {
+    const st = { ax: "x", off: 0, flip: false };
+    const R = this.ctx.viewer.renderer;
+    const apply = () => {
+      const n = new THREE.Vector3(st.ax === "x" ? 1 : 0, st.ax === "y" ? 1 : 0, st.ax === "z" ? 1 : 0).multiplyScalar(st.flip ? 1 : -1);
+      R.clippingPlanes = [new THREE.Plane(n, st.flip ? -st.off : st.off)];
+      this.ctx.viewer.requestRender();
+    };
+    const close = () => {
+      R.clippingPlanes = [];
+      this.ctx.viewer.requestRender();
+      this.ctx.hidePM();
+    };
+    this.ctx.showPM("Montaj kesit görünümü", close, close);
+    const body = document.getElementById("pm-body")!;
+    const box = new THREE.Box3().setFromObject(this.group);
+    const render = () => {
+      body.innerHTML = "";
+      const lo = box.isEmpty() ? -100 : (box.min as any)[st.ax], hi = box.isEmpty() ? 100 : (box.max as any)[st.ax];
+      const sl = h("input") as HTMLInputElement;
+      sl.type = "range";
+      sl.min = String(lo);
+      sl.max = String(hi);
+      sl.step = "0.5";
+      sl.value = String(st.off);
+      sl.style.width = "100%";
+      sl.addEventListener("input", () => ((st.off = +sl.value), apply()));
+      body.appendChild(group("Kesit düzlemi", segField([{ v: "x", t: "Sağ (YZ)" }, { v: "y", t: "Üst (XZ)" }, { v: "z", t: "Ön (XY)" }], st.ax, (v) => ((st.ax = v), (st.off = 0), render(), apply())), sl, numField("Öteleme", st.off, (v) => ((st.off = v), apply()), { unit: "mm" }), checkField("Tarafı çevir", st.flip, (v) => ((st.flip = v), apply()))));
+    };
+    render();
+    apply();
+  }
+
+  // ---------- hareket etüdü (motor) ----------
+  openMotion() {
+    const st = { comp: this.sel, ent: null as MateEnt | null, kind: "rot", speed: 30, dur: 4, playing: false };
+    const start = this.poses();
+    let raf = 0;
+    const stop = () => {
+      st.playing = false;
+      cancelAnimationFrame(raf);
+    };
+    const finish = () => {
+      stop();
+      this.picker = null;
+      this.ctx.hidePM();
+    };
+    this.ctx.showPM("Hareket etüdü", finish, () => (finish(), this.restore(start), this.solve(), this.draw()));
+    const body = document.getElementById("pm-body")!;
+    const play = () => {
+      const c = this.doc.comps.find((x) => x.id === st.comp);
+      if (!c || !st.ent) return this.ctx.toast("Motor için bileşen ve yön (silindir / kenar / yüz) seçin", true);
+      if (c.fixed) return this.ctx.toast("Sabit bileşen hareket ettirilemez", true);
+      stop();
+      st.playing = true;
+      const t0 = performance.now();
+      let last = t0;
+      const step = (now: number) => {
+        if (!st.playing) return;
+        const dt = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        const w = wEnt(st.ent!, c);
+        if (st.kind === "rot") {
+          // devir/dk → rad/s
+          const ang = ((st.speed * 2 * Math.PI) / 60) * dt;
+          const r = new THREE.Quaternion().setFromAxisAngle(w.N, ang);
+          const q = r.multiply(QQ(c));
+          this.solve({ drag: { comp: c.id, rot: [q.x, q.y, q.z, q.w] }, iters: 15 });
+        } else {
+          const lc = ((c as any)._lc as Vec3) ?? [0, 0, 0];
+          const P = V3(lc).applyQuaternion(QQ(c)).add(V3(c.p)).addScaledVector(w.N, st.speed * dt);
+          this.solve({ drag: { comp: c.id, local: lc, target: [P.x, P.y, P.z] }, iters: 15 });
+        }
+        this.draw();
+        if ((now - t0) / 1000 < st.dur) raf = requestAnimationFrame(step);
+        else st.playing = false;
+      };
+      raf = requestAnimationFrame(step);
+    };
+    const render = () => {
+      body.innerHTML = "";
+      const cn = this.doc.comps.find((x) => x.id === st.comp)?.name;
+      body.appendChild(group("Motor", segField([{ v: "rot", t: "Döner motor" }, { v: "lin", t: "Doğrusal motor" }], st.kind, (v) => ((st.kind = v), render())), h("div", "pm-picks", `${cn ?? "Bileşen seçilmedi"} · ${st.ent ? st.ent.label ?? KIND_NAMES[st.ent.kind] : "yön: silindir / kenar / düz yüz seçin"}`), numField(st.kind === "rot" ? "Hız" : "Hız", st.speed, (v) => (st.speed = v), { unit: st.kind === "rot" ? "dev/dk" : "mm/s" }), numField("Süre", st.dur, (v) => (st.dur = Math.max(0.1, v)), { unit: "s" })));
+      const row = h("div", "pm-row");
+      row.append(button("▶ Oynat", play, "btn primary"), button("■ Durdur", stop), button("⟲ Başa al", () => (stop(), this.restore(start), this.solve(), this.draw())));
+      body.appendChild(row);
+      body.appendChild(h("p", "pm-hint", "Motor bileşeni seçilen eksen etrafında döndürür veya yön boyunca iter; eşleşmeler (dişli, menteşe, vida, kremayer…) diğer bileşenleri birlikte hareket ettirir."));
+    };
+    this.picker = (p) => {
+      if (!p) return;
+      st.comp = p.comp;
+      if (p.ent) st.ent = p.ent.kind === "point" ? null : p.ent;
+      render();
+    };
+    render();
+  }
+
+  // ---------- bağlantı elemanları (Toolbox) ----------
+  openToolbox() {
+    const st = { kind: "bolt" as FastenerKind, size: "M10", len: 30 };
+    const done = () => (this.ctx.hidePM(), this.addComp(fastener(st.kind, st.size, st.len)));
+    this.ctx.showPM("Bağlantı elemanı (Toolbox)", done, () => this.ctx.hidePM());
+    const body = document.getElementById("pm-body")!;
+    const render = () => {
+      body.innerHTML = "";
+      body.appendChild(
+        group(
+          "Eleman",
+          selectField("Tür", (Object.keys(FASTENER_NAMES) as FastenerKind[]).map((k) => ({ v: k, t: FASTENER_NAMES[k] })), st.kind, (v) => ((st.kind = v), render())),
+          selectField("Boyut", Object.keys(FASTENER_SIZES).map((k) => ({ v: k, t: k })), st.size, (v) => (st.size = v)),
+          ...(st.kind === "bolt" ? [selectField("Boy", [8, 10, 12, 16, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 100].map((k) => ({ v: String(k), t: k + " mm" })), String(st.len), (v) => (st.len = +v))] : []),
+        ),
+      );
+      body.appendChild(h("p", "pm-hint", "Eleman montaja eklenir; deliğe eş merkezli + yüzeye çakışık eşleştirin (Alt + sürükle ile SmartMate)."));
+    };
+    render();
+  }
   // ---------- ağaç (SolidWorks FeatureManager: bileşenler + Eşleşmeler klasörü) ----------
   renderTree() {
     const ul = document.getElementById("tree")!;
@@ -1225,10 +1544,36 @@ export class AsmUI {
     ul.innerHTML = "";
     acts.innerHTML = "";
     const dof = dofAll(this.doc);
-    const nm = (id: string) => this.doc.comps.find((c) => c.id === id)?.name ?? "?";
+    const nm = (id: string) => this.doc.comps.find((c) => c.id === id)?.name ?? "Montaj";
+    // ana düzlemler / orijin: eşleşme panelinde tıklanınca seçim olur (SolidWorks)
+    const planeRows = (comp: string, cls: string) => {
+      for (const [t, e] of this.planeEnts(comp)) {
+        const li = h("li", cls, (e.kind === "point" ? "∘ " : "▱ ") + t);
+        li.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (this.mateDraft) this.pickInto(e);
+          else if (this.picker) this.picker({ comp, ent: e });
+          else this.ctx.toast("Ana düzlemler eşleşme seçimi içindir: önce Eşleşme'yi açın");
+        });
+        ul.appendChild(li);
+      }
+    };
+    if (this.mateDraft || this.picker) {
+      ul.appendChild(h("li", "rollbar", "Montaj ana düzlemleri"));
+      planeRows(ASM_ID, "child");
+    }
+    const subOf = (id: string) => (this.doc.subs ?? []).find((x) => x.comps.includes(id));
+    const shownSub = new Set<string>();
     for (const c of this.doc.comps) {
+      const sb = subOf(c.id);
+      if (sb && !shownSub.has(sb.id)) {
+        shownSub.add(sb.id);
+        const li = h("li", "rollbar" + (this.selSub === sb.id ? " sel" : ""), `▣ ${sb.name} (${sb.rigid ? "rijit" : "esnek"} alt montaj)`);
+        li.addEventListener("click", () => ((this.selSub = this.selSub === sb.id ? null : sb.id), (this.sel = null), (this.selMate = null), this.selSet = new Set(this.selSub ? sb.comps : []), this.draw(), this.renderTree()));
+        ul.appendChild(li);
+      }
       const f = dof.get(c.id) ?? 0;
-      const li = h("li", (this.sel === c.id || this.selSet.has(c.id) ? "sel " : "") + (c.hidden ? "off" : ""));
+      const li = h("li", (sb ? "child " : "") + (this.sel === c.id || this.selSet.has(c.id) ? "sel " : "") + (c.hidden ? "off" : ""));
       li.appendChild(h("span", "", `${c.fixed ? "(f) " : f > 0 ? "(-) " : ""}${c.name}`));
       li.title = c.fixed ? "Sabit" : f > 0 ? `${f} serbestlik derecesi kaldı` : "Tam tanımlı";
       li.addEventListener("click", (ev) => {
@@ -1236,10 +1581,12 @@ export class AsmUI {
         else this.selSet = new Set([c.id]);
         this.sel = c.id;
         this.selMate = null;
+        this.selSub = null;
         this.draw();
         this.renderTree();
       });
       ul.appendChild(li);
+      if ((this.mateDraft || this.picker) && (this.sel === c.id || this.selSet.has(c.id) || this.doc.comps.length <= 3)) planeRows(c.id, "child");
     }
     if (this.doc.mates.length) {
       ul.appendChild(h("li", "rollbar", `Eşleşmeler (${this.doc.mates.filter((m) => m.id !== "__draft").length})`));
@@ -1266,6 +1613,14 @@ export class AsmUI {
       ul.appendChild(li);
     }
     const add = (t: string, fn: () => void, cls = "btn") => acts.appendChild(button(t, fn, cls));
+    const ss = (this.doc.subs ?? []).find((x) => x.id === this.selSub);
+    if (ss) {
+      add(ss.rigid ? "Esnek yap" : "Rijit yap", () => this.subAct(ss.id, "rigid"), "btn primary");
+      add("Alt montajı dağıt", () => this.subAct(ss.id, "dissolve"));
+      add("Alt montajı kaydet (.icasm)", () => this.subAct(ss.id, "save"));
+      return;
+    }
+    if (this.selSet.size >= 2) add("Seçilenlerden alt montaj oluştur", () => this.formSub(), "btn primary");
     const sm = this.doc.mates.find((m) => m.id === this.selMate);
     if (sm) {
       add("Düzenle", () => this.startMate(sm), "btn primary");
@@ -1286,6 +1641,9 @@ export class AsmUI {
       this.ctx.toast(ms.length ? ms.map((m) => MATE_NAMES[m.type]).join(", ") : "Bu bileşenin eşleşmesi yok");
     });
     add("Aynala", () => this.openMirror());
+    add("Değiştir…", () => this.openAddDialog(c));
+    add("Eşleşmeleriyle kopyala", () => this.copyWithMates(c));
+    if (this.ctx.editPart) add("Parçayı düzenle", () => this.ctx.editPart!(c.part, (np) => this.replaceComp(c, np)));
     add("Kütüphaneden güncelle", () => {
       const p = loadLib()[c.part.name];
       if (!p) return this.ctx.toast("Kütüphanede bu adla parça yok", true);
@@ -1297,6 +1655,8 @@ export class AsmUI {
     add("Sil", () => {
       this.doc.comps = this.doc.comps.filter((x) => x !== c);
       this.doc.mates = this.doc.mates.filter((m) => ![m.a, m.b, m.c, m.d].some((e) => e?.comp === c.id));
+      for (const sb of this.doc.subs ?? []) sb.comps = sb.comps.filter((x) => x !== c.id);
+      this.doc.subs = (this.doc.subs ?? []).filter((sb) => sb.comps.length > 1);
       this.sel = null;
       this.selSet.clear();
       this.save();
@@ -1324,7 +1684,13 @@ export class AsmUI {
       { id: "explodeView", label: "Patlatılmış Görünüm", icon: "lpattern", run: () => this.openExplode() },
       { id: "explode", label: this.doc.exploded ? "Daralt" : "Patlat", icon: "cpattern", run: () => this.toggleExplode(), active: () => !!this.doc.exploded },
       "sep",
+      { id: "toolbox", label: "Bağlantı Elemanı", icon: "hole", run: () => this.openToolbox() },
+      { id: "motion", label: "Hareket Etüdü", icon: "revolve", run: () => this.openMotion() },
+      "sep",
       { id: "interf", label: "Girişim", icon: "interfere", run: () => this.interference() },
+      { id: "clear", label: "Boşluk Doğrula", icon: "measure", run: () => this.clearance() },
+      { id: "asec", label: "Montaj Kesiti", icon: "section", run: () => this.openSection() },
+      { id: "matex", label: "MateXpert", icon: "relations", run: () => this.mateXpert() },
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => this.massProps() },
       { id: "bom", label: "Malzeme Listesi", icon: "cutlist", run: () => this.showBom() },
       { id: "step", label: "STEP (montaj)", icon: "file", run: () => this.exportStep() },

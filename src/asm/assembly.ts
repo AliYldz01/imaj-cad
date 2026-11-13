@@ -20,7 +20,7 @@ export interface MateEnt { comp: string; kind: "plane" | "cyl" | "line" | "circl
 export type MateType =
   | "coincident" | "parallel" | "perpendicular" | "distance" | "angle" | "concentric" | "lock" | "tangent"
   | "limit" | "limitAngle" | "symmetric" | "width"
-  | "gear" | "rack" | "screw" | "coupler" | "hinge";
+  | "profileCenter" | "gear" | "rack" | "screw" | "coupler" | "hinge" | "universal";
 export interface Mate {
   id: string;
   type: MateType;
@@ -42,10 +42,16 @@ export interface Mate {
   L?: number;
   /** açı limiti (menteşe) */
   lim?: boolean;
+  /** alt montajın iç eşleşmesi (alt montaj rijitken devre dışı) */
+  sub?: string;
 }
+/** alt montaj: üyeleri birlikte (rijit) veya kendi eşleşmeleriyle (esnek) hareket eder */
+export interface SubAsm { id: string; name: string; comps: string[]; rigid: boolean; poses: Record<string, { p: Vec3; q: [number, number, number, number] }> }
 /** patlatılmış görünüm adımı (SolidWorks Patlatma adımı) */
 export interface ExplodeStep { id: string; comps: string[]; dir: Vec3; d: number }
-export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean }
+export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean; subs?: SubAsm[] }
+/** montajın kendi ana düzlemleri / orijini için sanal bileşen kimliği */
+export const ASM_ID = "__asm";
 
 export const MATE_NAMES: Record<MateType, string> = {
   coincident: "Çakışık",
@@ -65,11 +71,13 @@ export const MATE_NAMES: Record<MateType, string> = {
   screw: "Vida",
   coupler: "Doğrusal bağlayıcı",
   hinge: "Menteşe",
+  profileCenter: "Profil merkezi",
+  universal: "Üniversal mafsal",
 };
 export const MATE_GROUPS: Record<"std" | "adv" | "mech", MateType[]> = {
   std: ["coincident", "parallel", "perpendicular", "tangent", "concentric", "lock", "distance", "angle"],
-  adv: ["symmetric", "width", "limit", "limitAngle", "coupler"],
-  mech: ["hinge", "gear", "rack", "screw"],
+  adv: ["profileCenter", "symmetric", "width", "limit", "limitAngle", "coupler"],
+  mech: ["hinge", "gear", "rack", "screw", "universal"],
 };
 
 export const newAsm = (): AsmDoc => ({ kind: "asm", name: "Montaj1", comps: [], mates: [] });
@@ -109,7 +117,7 @@ export function cylAxis(mesh: MeshData, face: number): Vec3 | null {
 }
 
 /** eşleşmenin kaldırdığı serbestlik */
-const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0, limitAngle: 0, symmetric: 1, width: 1, gear: 1, rack: 1, screw: 1, coupler: 1, hinge: 5 };
+const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0, limitAngle: 0, symmetric: 1, width: 1, gear: 1, rack: 1, screw: 1, coupler: 1, hinge: 5, profileCenter: 5, universal: 1 };
 
 export function dofOf(doc: AsmDoc, id: string): number {
   const c = doc.comps.find((x) => x.id === id);

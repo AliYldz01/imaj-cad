@@ -13,22 +13,28 @@ SolidWorks montaj mantığı: bileşenler 6 serbestlikle başlar (ilk bileşen s
 | Bileşen | Çarpışma algılama (sürüklerken dur) | ✅ (sınır kutusu) |
 | Bileşen | Doğrusal / dairesel bileşen çoğaltma | ✅ |
 | Bileşen | Bileşenleri aynala: kopya / ters el (aynalı parça) | ✅ |
-| Bileşen | Alt montaj, bileşen değiştir (replace), eşleşmelerle kopyala, yapılandırmalar | ⬜ |
-| Bileşen | Bağlam içinde parça düzenleme (in-context), montaj özellikleri (montaj kesmesi / deliği) | ⬜ |
-| Bileşen | Akıllı bağlantı elemanları (Toolbox cıvata/somun) | ⬜ |
+| Bileşen | Alt montaj (rijit/esnek), bileşen değiştir, eşleşmeleriyle kopyala | ✅ |
+| Bileşen | Yapılandırmalar | ⬜ |
+| Bileşen | Bağlam içinde parça düzenleme | ✅ |
+| Bileşen | Montaj özellikleri (montaj kesmesi / deliği) | ⬜ |
+| Bileşen | Bağlantı elemanları (cıvata / somun / pul, M4–M20) | ✅ |
 | Seçim | Düz yüz, silindir, doğrusal kenar, dairesel kenar, köşe | ✅ |
-| Seçim | Bileşen ana düzlemleri / orijin, eksen / referans geometri | ⬜ |
+| Seçim | Bileşen ve montaj ana düzlemleri / orijin | ✅ |
 | Standart | Çakışık, paralel, dik, teğet, eş merkezli, kilit, mesafe, açı; hizalı / ters hizalı; ölçüyü ters çevir | ✅ |
 | Gelişmiş | Simetrik, genişlik, limit mesafe, limit açı, doğrusal bağlayıcı | ✅ |
-| Gelişmiş | Yol eşleşmesi, profil merkezi | ⬜ |
+| Gelişmiş | Profil merkezi | ✅ |
+| Gelişmiş | Yol eşleşmesi | ⬜ |
 | Mekanik | Menteşe, dişli, kremayer–pinyon, vida | ✅ |
-| Mekanik | Kam, yuva (slot), üniversal mafsal | ⬜ |
+| Mekanik | Üniversal mafsal | ✅ |
+| Mekanik | Kam, yuva (slot) | ⬜ |
 | Eşleşme yönetimi | Eşleşme paneli (seçim kutuları, Standart/Gelişmiş/Mekanik), canlı önizleme | ✅ |
 | Eşleşme yönetimi | Düzenle (çift tık), bastır / etkinleştir, hizalamayı çevir, sil; hatalı eşleşme ⚠ | ✅ |
 | Eşleşme yönetimi | Aşırı tanım / çelişki reddi, (f)/(-) serbestlik göstergesi | ✅ |
 | Eşleşme yönetimi | Ctrl ile iki varlık → eşleşme açılır çubuğu; SmartMates (Alt + sürükle) | ✅ |
-| Eşleşme yönetimi | MateXpert (hata analizi), eşleşme klasörleri | ⬜ |
+| Eşleşme yönetimi | MateXpert (hata analizi) | ✅ |
 | Patlatma | Patlatma adımları (bileşen + yön + mesafe), otomatik adımlar, patlat / daralt animasyonu, patlatma çizgileri | ✅ |
 | Değerlendirme | Girişim tespiti (gerçek geometri), kütle özellikleri, malzeme listesi (CSV), STEP montaj | ✅ |
-| Değerlendirme | Boşluk doğrulama, delik hizalama, montaj kesit görünümü | ⬜ |
-| Hareket | Hareket etüdü / animasyon (motor), fiziksel dinamik | ⬜ |
+| Değerlendirme | Boşluk doğrulama, montaj kesit görünümü | ✅ |
+| Değerlendirme | Delik hizalama | ⬜ |
+| Hareket | Hareket etüdü (döner / doğrusal motor) | ✅ |
+| Hareket | Fiziksel dinamik, animasyon kaydı | ⬜ |

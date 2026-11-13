@@ -811,7 +811,7 @@ export type KernelRequest =
   | { id: number; type: "exportBody"; body: number }
   | { id: number; type: "drawing"; body: number }
   | { id: number; type: "interfere" }
-  | { id: number; type: "asm"; op: "step" | "interfere"; parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[] };
+  | { id: number; type: "asm"; op: "step" | "interfere" | "clearance"; parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[] };
 
 export type KernelResponse =
   | { type: "ready" }
@@ -825,4 +825,4 @@ export type KernelResponse =
   | { id: number; type: "cutlist"; items: CutItem[]; welds: WeldItem[] }
   | ({ id: number; type: "drawing" } & DrawData)
   | { id: number; type: "interfere"; pairs: { a: number; b: number; vol: number }[] }
-  | { id: number; type: "asm"; blob?: Blob | null; pairs?: { a: number; b: number; vol: number }[]; message?: string };
+  | { id: number; type: "asm"; blob?: Blob | null; pairs?: { a: number; b: number; vol: number }[]; dist?: { a: number; b: number; d: number }[]; message?: string };
