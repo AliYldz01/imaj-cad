@@ -512,3 +512,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Eskizde Esc eskizden çıkmaz (SolidWorks gibi); ✕ ve geri tuşu sormaya devam eder | ✅ |
 | Bulunamayan referans için "yeniden seç" penceresi | ⬜ |
 | Delik sihirbazı konumlarını kenara ölçülendirme | ⬜ |
+
+## v0.37 — Montaj–parça bağı
+| Özellik | Durum |
+|---|---|
+| Parça dosyası değişince montajdaki örnekleri güncellenir (Montaj sekmesine dönünce) | ✅ |
+| Parçayı düzenle → aynı parçanın tüm örnekleri | ✅ |
+| Eşleşmeler yeni geometriyi izler; kaybolan referans ⚠ | ✅ |
+| Çarpışma algılama gerçek geometriyle (mil–delik yanlış alarm vermez) | ✅ |
+| Silindir eşleşme ekseni doğru (yarım yüz merkezi değil) | ✅ |
+| Bağlam içi düzenlemede sayfa yenilenirse ana parça korunur | ✅ |

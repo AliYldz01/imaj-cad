@@ -44,6 +44,12 @@ let doc: PartDoc = loadDoc();
 /** montaj çalışma alanı (Montaj sekmesi) */
 let asmUI: AsmUI | null = null;
 function loadDoc(): PartDoc {
+  // bağlam içi düzenleme sırasında sayfa yenilendiyse ana parça belgesini geri yükle
+  const ctxSaved = localStorage.getItem("imajcad.ctxsaved");
+  if (ctxSaved) {
+    localStorage.removeItem("imajcad.ctxsaved");
+    localStorage.setItem(STORE, ctxSaved);
+  }
   try {
     const raw = localStorage.getItem(STORE);
     if (raw) {
@@ -4163,6 +4169,8 @@ function setTab(t: "features" | "sketch" | "evaluate" | "sheet" | "weld" | "asm"
   document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
   document.querySelector<HTMLElement>(`#tabs button[data-tab="${t}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   renderCommands();
+  // montaj daha önce açıldıysa sekmeye dönünce otomatik aç (parça değişiklikleri o sırada alınır)
+  if (t === "asm" && asmUI && !asmUI.on && asmUI.doc.comps.length && !document.querySelector(".ctx-edit-bar")) void asmUI.enter().then(renderCommands);
 }
 document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab as any)));
 
@@ -5279,10 +5287,14 @@ asmUI = new AsmUI({
   showPM,
   hidePM,
   download,
-  currentPart: () => ({ name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles }),
+  currentPart: () => {
+    if (!(doc as any).uid) ((doc as any).uid = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), saveDoc();
+    return { name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: (doc as any).uid };
+  },
   // SolidWorks: montajda parçayı düzenle → parça açılır, "Montaja dön" ile bileşen güncellenir
   editPart: (part, done) => {
     const saved = JSON.stringify(doc);
+    localStorage.setItem("imajcad.ctxsaved", saved);
     asmUI!.leave();
     doc = { ...emptyDoc(), name: part.name, features: JSON.parse(JSON.stringify(part.features)), ...(part.profiles ? { profiles: part.profiles } : {}), ...(part.eqs ? { eqs: part.eqs } : {}) } as any;
     treeSel = null;
@@ -5294,8 +5306,11 @@ asmUI = new AsmUI({
     const back = button("Montaja dön ✓", async () => {
       if (mode.k === "sketch") exitSketch(true);
       if (mode.k === "pm") cancelFeature();
-      const np = { name: doc.name, features: JSON.parse(JSON.stringify(doc.features)), eqs: (doc as any).eqs, profiles: (doc as any).profiles };
+      const np = { name: doc.name, features: JSON.parse(JSON.stringify(doc.features)), eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: part.key };
       doc = JSON.parse(saved);
+      localStorage.removeItem("imajcad.ctxsaved");
+      // bileşen ana parçanın kendisiyse parça dosyası da güncellenir (SolidWorks: bağlam içi düzenleme parçayı kaydeder)
+      if (part.key && (doc as any).uid === part.key) (doc.features = JSON.parse(JSON.stringify(np.features))), np.profiles && ((doc as any).profiles = np.profiles), np.eqs && ((doc as any).eqs = np.eqs);
       bar.remove();
       saveDoc();
       setTab("asm");
@@ -5304,6 +5319,7 @@ asmUI = new AsmUI({
     }, "btn primary");
     const cancel = button("Vazgeç", async () => {
       doc = JSON.parse(saved);
+      localStorage.removeItem("imajcad.ctxsaved");
       bar.remove();
       setTab("asm");
       await asmUI!.enter();

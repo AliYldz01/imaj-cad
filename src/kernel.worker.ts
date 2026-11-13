@@ -2953,7 +2953,10 @@ function toMesh(shape: Shape): MeshData {
     const info: FaceInfo = { c, n, type };
     if (type === "CYLINDRE")
       try {
-        info.r = cylinderParams(f).rho;
+        const cp = cylinderParams(f);
+        info.r = cp.rho;
+        info.ax = cp.a;
+        info.ac = vadd(cp.L, vmul(cp.a, vdot(vsub(c, cp.L), cp.a)));
       } catch {}
     return info;
   });

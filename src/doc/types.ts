@@ -757,7 +757,7 @@ export interface FlatResult {
   error?: string;
 }
 
-export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string; /** gövde sırası */ b?: number; /** silindir yarıçapı */ r?: number }
+export interface FaceInfo { c: Vec3; n: Vec3 | null; type: string; /** gövde sırası */ b?: number; /** silindir yarıçapı */ r?: number; /** silindir ekseni yönü ve eksen üzerindeki nokta (yüz merkezinin izdüşümü) */ ax?: Vec3; ac?: Vec3 }
 export interface EdgeInfo {
   m: Vec3;
   d: Vec3 | null;

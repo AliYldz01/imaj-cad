@@ -113,7 +113,15 @@ export class AsmUI {
     this.ctx.viewer.setModel(null);
     this.group.visible = true;
     this.ctx.hint(this.doc.comps.length ? "" : "Montaj: 'Bileşen Ekle' ile parça ekleyin");
+    // parça dosyası değiştiyse (aynı kimlik) önce eski geometriyi kur, sonra güncelle → eşleşmeler taşınır
+    const cur = this.ctx.currentPart();
+    if (cur.key && this.doc.comps.some((c) => c.part.key === cur.key && JSON.stringify(c.part.features) !== JSON.stringify(cur.features))) {
+      await this.refresh();
+      const n = this.syncFromPart(cur);
+      if (n) this.ctx.toast(`"${cur.name}" parçası değişmiş: ${n} bileşen güncellendi`), this.save();
+    }
     await this.refresh();
+    if (this.lost.size || this.doc.mates.length) (this.solve(), this.draw(), this.renderTree());
     this.ctx.viewer.fit();
   }
   leave() {
@@ -133,10 +141,12 @@ export class AsmUI {
       const key = c.id + ":" + JSON.stringify(c.part.features).length + ":" + hash(JSON.stringify(c.part.features));
       if ((this as any)["k_" + c.id] === key && this.meshes.has(c.id)) continue;
       this.ctx.setStatus("busy", `Bileşen kuruluyor: ${c.name}`);
+      const old = (this as any)["k_" + c.id] ? this.meshes.get(c.id) : undefined;
       try {
         const { kfeats } = compile(c.part.features, c.part.profiles ?? {});
         const r = await this.ctx.kernel.build(kfeats);
         this.meshes.set(c.id, r.mesh);
+        if (old && r.mesh) this.remapMates(c, old, r.mesh);
       } catch {
         this.meshes.set(c.id, null);
       }
@@ -146,6 +156,66 @@ export class AsmUI {
     this.ctx.setStatus("ok", `Montaj · ${this.doc.comps.length} bileşen`);
     this.draw();
     v.requestRender();
+  }
+  /** parça değişince eşleşme varlıklarını yeni geometriye taşı (SolidWorks: referans izlenir, kaybolursa ⚠) */
+  lost = new Set<string>();
+  remapMates(c: AsmComp, old: MeshData, nw: MeshData) {
+    if (!old.bbox || !nw.bbox) return;
+    const U = (p: Vec3, b: { min: Vec3; max: Vec3 }) => p.map((v, i) => (v - b.min[i]) / Math.max(b.max[i] - b.min[i], 1e-3)) as Vec3;
+    const d3 = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const par = (a: Vec3, b: Vec3) => Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) > 0.999;
+    const same = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2] > 0.999;
+    const cands = (k: MateEnt["kind"]): { c: Vec3; n: Vec3; r?: number }[] => {
+      const out: { c: Vec3; n: Vec3; r?: number }[] = [];
+      if (k === "plane") nw.faces.forEach((f) => f.n && out.push({ c: f.c, n: f.n }));
+      if (k === "cyl") nw.faces.forEach((f, i) => { const ax = !f.n && f.r ? f.ax ?? cylAxis(nw, i) : null; if (ax) out.push({ c: f.ac ?? f.c, n: ax, r: f.r }); });
+      if (k === "circle") nw.edges.forEach((e: any) => e.c && e.r && e.ax && out.push({ c: e.c, n: e.ax, r: e.r }));
+      if (k === "line") nw.edges.forEach((e: any) => e.d && out.push({ c: e.m, n: e.d }));
+      if (k === "point") nw.edges.forEach((e: any) => { if (e.s) out.push({ c: e.s, n: [0, 0, 1] }); if (e.e) out.push({ c: e.e, n: [0, 0, 1] }); });
+      return out;
+    };
+    const fixedLabels = ["Ön düzlem", "Üst düzlem", "Sağ düzlem", "Orijin"];
+    let moved = 0, lost = 0;
+    for (const m of this.doc.mates) {
+      for (const slot of ["a", "b", "c", "d"] as const) {
+        const e = (m as any)[slot] as MateEnt | undefined;
+        if (!e || e.comp !== c.id || fixedLabels.includes(e.label ?? "")) continue;
+        const cs = cands(e.kind);
+        const dirOk = (x: { n: Vec3 }) => (e.kind === "plane" ? same(x.n, e.n) : e.kind === "point" ? true : par(x.n, e.n));
+        // geometri aynen duruyorsa dokunma
+        if (cs.some((x) => d3(x.c, e.c) < 1e-3 && dirOk(x) && (e.r === undefined || Math.abs((x.r ?? 0) - e.r) < 1e-3))) continue;
+        const u0 = U(e.c, old.bbox), diag = d3(nw.bbox.min, nw.bbox.max) || 1;
+        const sc = cs.filter(dirOk).map((x) => ({ x, v: d3(U(x.c, nw.bbox!), u0) + (e.r !== undefined ? Math.abs((x.r ?? 0) - e.r) / diag : 0) })).sort((p, q) => p.v - q.v);
+        if (sc.length && sc[0].v < 0.35 && (sc.length < 2 || sc[1].v - sc[0].v > 0.03 || d3(sc[1].x.c, sc[0].x.c) < 1e-3)) {
+          const x = sc[0].x;
+          if (e.kind === "plane" || e.kind === "point") e.c = x.c;
+          else {
+            // eksen / doğrultu: yön işaretini koru
+            e.c = x.c;
+            if (e.n[0] * x.n[0] + e.n[1] * x.n[1] + e.n[2] * x.n[2] < 0) e.n = [-x.n[0], -x.n[1], -x.n[2]];
+            else e.n = x.n;
+            if (x.r !== undefined) e.r = x.r;
+          }
+          this.lost.delete(m.id);
+          moved++;
+        } else {
+          this.lost.add(m.id);
+          lost++;
+        }
+      }
+    }
+    if (moved || lost) this.ctx.toast(lost ? `${c.name}: ${moved} eşleşme referansı güncellendi, ${lost} referans bulunamadı (⚠ — düzenleyin)` : `${c.name}: ${moved} eşleşme referansı yeni geometriye taşındı`, lost > 0);
+  }
+  /** parça dosyasındaki değişiklikleri (aynı parça kimliği) montaja getir */
+  syncFromPart(part: AsmPart) {
+    if (!part.key) return 0;
+    let n = 0;
+    for (const c of this.doc.comps)
+      if (c.part.key === part.key && JSON.stringify(c.part.features) !== JSON.stringify(part.features)) {
+        c.part = JSON.parse(JSON.stringify(part));
+        n++;
+      }
+    return n;
   }
   /** çözücü için bileşen boyutu ve yerel merkez (kaydedilmez) */
   private meta() {
@@ -161,8 +231,10 @@ export class AsmUI {
   /** eşleşmeleri çöz (hatalıları işaretle) */
   solve(o: Parameters<typeof solveAll>[1] = {}) {
     this.meta();
-    const r = solveAll(this.doc, o);
-    this.bad = new Set(r.bad);
+    let r = solveAll(this.doc, o);
+    // büyük yer değiştirmelerde (parça değişikliği) bir tur daha
+    if (r.bad.length && !o.drag) r = solveAll(this.doc, o);
+    this.bad = new Set([...r.bad, ...this.lost]);
     return r;
   }
   private poses(): Map<string, Pose> {
@@ -347,8 +419,8 @@ export class AsmUI {
     const f = md.faces[fi];
     if (!f) return { comp: id, ent: null, point: hit.point };
     if (f.n) return { comp: id, ent: { comp: id, kind: "plane", c: f.c, n: f.n, label: "Düz yüz" }, point: hit.point };
-    const ax = cylAxis(md, fi);
-    if (ax && f.r) return { comp: id, ent: { comp: id, kind: "cyl", c: f.c, n: ax, r: f.r, label: `Silindir Ø${(f.r * 2).toFixed(1)}` }, point: hit.point };
+    const ax = f.ax ?? cylAxis(md, fi);
+    if (ax && f.r) return { comp: id, ent: { comp: id, kind: "cyl", c: f.ac ?? f.c, n: ax, r: f.r, label: `Silindir Ø${(f.r * 2).toFixed(1)}` }, point: hit.point };
     return { comp: id, ent: null, point: hit.point };
   }
 
@@ -523,12 +595,110 @@ export class AsmUI {
     for (let i = 0; i < v.length; i += 3) for (let k = 0; k < 3; k++) (mn[k] = Math.min(mn[k], v[i + k])), (mx[k] = Math.max(mx[k], v[i + k]));
     return worldBox(c, { min: mn, max: mx });
   }
-  /** c başka bir görünür bileşenle çakışıyor mu (kutu, 0.05 mm pay) */
+  /** c başka bir görünür bileşenle çakışıyor mu: kutu ön elemesi + gerçek geometri (köşe noktası diğer gövdenin içinde mi) */
   collides(c: AsmComp): boolean {
     const a = this.bbox(c);
     if (!a) return false;
     a.expandByScalar(-0.05);
-    return this.doc.comps.some((o) => o !== c && !o.hidden && !!this.bbox(o)?.intersectsBox(a));
+    return this.doc.comps.some((o) => {
+      if (o === c || o.hidden) return false;
+      const b = this.bbox(o);
+      if (!b?.intersectsBox(a)) return false;
+      const box = a.clone().intersect(b);
+      return this.penetrates(c, o, box) || this.penetrates(o, c, box) || this.gridOverlap(c, o, box);
+    });
+  }
+  /** kesişim kutusunda 5×5×5 ızgara: iki gövdenin de içinde kalan nokta var mı */
+  private gridOverlap(a: AsmComp, b: AsmComp, box: THREE.Box3): boolean {
+    const n = 5, s = box.getSize(new THREE.Vector3());
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++)
+        for (let k = 0; k < n; k++) {
+          const w = new THREE.Vector3(box.min.x + (s.x * (i + 0.5)) / n, box.min.y + (s.y * (j + 0.5)) / n, box.min.z + (s.z * (k + 0.5)) / n);
+          if (this.inside(a, w) && this.inside(b, w)) return true;
+        }
+    return false;
+  }
+  /** dünya noktası bileşenin malzemesi içinde mi (önce tek ışın paritesi, sonra 6 ışınla doğrula) */
+  private inside(c: AsmComp, w: THREE.Vector3): boolean {
+    const rm = this.rayMeshOf(c);
+    if (!rm) return false;
+    const p = w.clone().applyMatrix4(new THREE.Matrix4().compose(V3(c.p), QQ(c), new THREE.Vector3(1, 1, 1)).invert());
+    const rc = new THREE.Raycaster();
+    const dirs = [new THREE.Vector3(1, 0.0123, 0.0071).normalize(), new THREE.Vector3(-0.0091, 1, 0.0137).normalize(), new THREE.Vector3(0.0113, -0.0077, 1).normalize()];
+    rc.set(p, dirs[0]);
+    if (rc.intersectObject(rm, false).length % 2 === 0) return false;
+    for (const d of dirs)
+      for (const sgn of [1, -1]) {
+        rc.set(p, d.clone().multiplyScalar(sgn));
+        const hits = rc.intersectObject(rm, false);
+        if (!hits.length || hits[0].distance < 0.05 || hits.length % 2 === 0) return false;
+      }
+    return true;
+  }
+  private rayMeshOf(b: AsmComp): THREE.Mesh | null {
+    const mb = this.meshes.get(b.id);
+    if (!mb) return null;
+    let rm = this.rayMesh.get(b.id);
+    if (!rm || rm.userData.src !== mb) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(mb.vertices, 3));
+      g.setIndex(new THREE.BufferAttribute(mb.triangles, 1));
+      rm = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      rm.userData.src = mb;
+      this.rayMesh.set(b.id, rm);
+    }
+    return rm;
+  }
+  private rayMesh = new Map<string, THREE.Mesh>();
+  /** a'nın (ve kenar ortalarının) kesişim kutusundaki noktalarından biri b'nin malzemesinin içinde mi (ışın paritesi, 0.05 mm pay) */
+  private penetrates(a: AsmComp, b: AsmComp, box: THREE.Box3): boolean {
+    const ma = this.meshes.get(a.id), mb = this.meshes.get(b.id);
+    if (!ma || !mb) return false;
+    let rm = this.rayMesh.get(b.id);
+    if (!rm || rm.userData.src !== mb) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(mb.vertices, 3));
+      g.setIndex(new THREE.BufferAttribute(mb.triangles, 1));
+      rm = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+      rm.userData.src = mb;
+      this.rayMesh.set(b.id, rm);
+    }
+    const Ma = new THREE.Matrix4().compose(V3(a.p), QQ(a), new THREE.Vector3(1, 1, 1));
+    const MbInv = new THREE.Matrix4().compose(V3(b.p), QQ(b), new THREE.Vector3(1, 1, 1)).invert();
+    const v = ma.vertices, pts: THREE.Vector3[] = [];
+    for (let i = 0; i < v.length; i += 3) {
+      const w = new THREE.Vector3(v[i], v[i + 1], v[i + 2]).applyMatrix4(Ma);
+      if (box.containsPoint(w)) pts.push(w);
+    }
+    // üçgen ağırlık merkezleri de (büyük yüzler köşesiz girebilir)
+    const t = ma.triangles;
+    for (let i = 0; i < t.length && pts.length < 1500; i += 3) {
+      const w = new THREE.Vector3();
+      for (let k = 0; k < 3; k++) w.add(new THREE.Vector3(v[t[i + k] * 3], v[t[i + k] * 3 + 1], v[t[i + k] * 3 + 2]));
+      w.multiplyScalar(1 / 3).applyMatrix4(Ma);
+      if (box.containsPoint(w)) pts.push(w);
+    }
+    const step = Math.max(1, Math.floor(pts.length / 400));
+    const rc = new THREE.Raycaster();
+    const dirs = [new THREE.Vector3(1, 0.0123, 0.0071).normalize(), new THREE.Vector3(-0.0091, 1, 0.0137).normalize(), new THREE.Vector3(0.0113, -0.0077, 1).normalize()];
+    for (let i = 0; i < pts.length; i += step) {
+      const p = pts[i].clone().applyMatrix4(MbInv);
+      let inside = true;
+      for (const d of dirs) {
+        for (const sgn of [1, -1]) {
+          rc.set(p, d.clone().multiplyScalar(sgn));
+          const hits = rc.intersectObject(rm, false);
+          if (!hits.length || hits[0].distance < 0.05 || hits.length % 2 === 0) {
+            inside = false;
+            break;
+          }
+        }
+        if (!inside) break;
+      }
+      if (inside) return true;
+    }
+    return false;
   }
   private collidesAny() {
     const mv = this.press?.start;
@@ -1403,10 +1573,12 @@ export class AsmUI {
     this.renderTree();
   }
   /** bileşeni başka parçayla değiştir: konum ve eşleşmeler korunur */
-  replaceComp(c: AsmComp, part: AsmPart) {
-    c.part = JSON.parse(JSON.stringify(part));
-    c.name = `${part.name}<${this.doc.comps.filter((x) => x.part.name === part.name).length}>`;
-    this.meshes.delete(c.id);
+  replaceComp(c: AsmComp, part: AsmPart, allInstances = false) {
+    // parçayı düzenle: aynı parçanın tüm örnekleri güncellenir (SolidWorks); bileşen değiştir: yalnız seçili
+    const k = c.part.key ?? c.part.name;
+    const targets = allInstances ? this.doc.comps.filter((x) => (x.part.key ?? x.part.name) === k) : [c];
+    for (const t of targets) t.part = JSON.parse(JSON.stringify({ ...part, key: part.key ?? (allInstances ? c.part.key : undefined) }));
+    if (!allInstances) c.name = `${part.name}<${this.doc.comps.filter((x) => x.part.name === part.name).length}>`;
     this.save();
     this.refresh().then(() => {
       const r = this.solve();
@@ -1720,7 +1892,7 @@ export class AsmUI {
     add("Aynala", () => this.openMirror());
     add("Değiştir…", () => this.openAddDialog(c));
     add("Eşleşmeleriyle kopyala", () => this.copyWithMates(c));
-    if (this.ctx.editPart) add("Parçayı düzenle", () => this.ctx.editPart!(c.part, (np) => this.replaceComp(c, np)));
+    if (this.ctx.editPart) add("Parçayı düzenle", () => this.ctx.editPart!(c.part, (np) => this.replaceComp(c, np, true)));
     add("Kütüphaneden güncelle", () => {
       const p = loadLib()[c.part.name];
       if (!p) return this.ctx.toast("Kütüphanede bu adla parça yok", true);
