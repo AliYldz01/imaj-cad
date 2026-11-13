@@ -638,3 +638,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.66 | Parça: çoğaltmada referansa kadar ve eskizi değiştir, katı gövdeyle (takım) süpürme | ✅ |
 
 | v0.67 | Parça: loft bağlayıcıları ve komşu yüze teğet, delik sihirbazında yuva delik ve yakın / uzak taraf havşası | ✅ |
+
+| v0.68 | Parça: referans noktası türleri, ağaç klasörleri, Ne yanlış? + geometri kontrolü, sarı önizleme (3. grup tamam) | ✅ |

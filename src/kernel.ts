@@ -105,6 +105,13 @@ export class Kernel {
     return r.items;
   }
 
+  /** Geometri kontrolü: gövde başına geçerlilik, serbest kenar, kısa kenar, küçük yüz, hacim */
+  async check(): Promise<{ bodies: { i: number; valid: boolean; free: number; short: number; small: number; volume: number; faces: number; edges: number }[]; surfs: number }> {
+    await this.ready;
+    const r = await this.request<{ r: any }>({ type: "check" } as any);
+    return r.r;
+  }
+
   async beam(ax = -1): Promise<BeamSec | null> {
     await this.ready;
     const r = await this.request<{ r: BeamSec | null }>({ type: "beam", ax } as any);

@@ -1,0 +1,51 @@
+# Parça özellikleri 7: referans noktası türleri (yay merkezi, yüz merkezi, köşe, kesişim, izdüşüm, eğri boyunca)
+import cmdpatch, time, math, json
+from h import *
+ok=[]
+def chk(n,c,i=""): ok.append(c); print(("TAMAM " if c else "HATA  ")+n, i)
+with sync_playwright() as p:
+    b = p.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--use-gl=angle","--use-angle=swiftshader","--enable-unsafe-swiftshader"])
+    pg = b.new_page(viewport={"width":1400,"height":900}); logs=[]
+    pg.on("pageerror", lambda e: logs.append(str(e)))
+    pg.goto(URL); wait_ready(pg); time.sleep(0.5)
+    ev = pg.evaluate
+    fr = {"o":[0,0,20],"x":[1,0,0],"n":[0,0,1]}
+    hole = {"id":"h1","type":"hole","name":"D","htype":"simple","size":"custom","d":10,"depth":5,"through":False,"cd":0,"cdepth":0,"cangle":90,"plane":{"k":"face","frame":fr,"face":{"c":[20,20,20],"n":[0,0,1]}},"pts":[[20,20]]}
+    run(pg,"kutu",[sketch("s1","S",FRONT,lambda pt,line,rect,c,t: rect(0,0,40,40)), ext("e1","s1",20), hole])
+    ev("document.querySelector(\"#cmds button[title='Ref. Nokta']\")?.click()"); time.sleep(0.4)
+    chk("nokta PM açık", ev("window.__app.mode.k==='pm' && window.__app.mode.draft.type==='point'"))
+    def setm(m): pg.click(f"#pm button:has-text('{m}')"); time.sleep(0.2)
+    E = lambda js: ev(f"(()=>{{const m=window.__app.viewer.mesh; const near=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2])<1e-3; {js}}})()")
+    edge = lambda c: E(f"return m.edges.findIndex(e=>near(e.m,{c}))")
+    face = lambda c: E(f"return m.faces.findIndex(f=>near(f.c,{c}))")
+    pick = lambda kind, idx, pt=None: ev(f"window.__app.pmPick({{kind:'{kind}', index:{idx}, point:{json.dumps(pt) if pt else 'null'}}})")
+    P = lambda: ev("window.__app.mode.draft.p")
+    setm("Yay merkezi")
+    ci = E("return m.edges.findIndex(e=>e.c&&Math.abs(e.r-5)<1e-6&&Math.abs(e.c[2]-20)<1e-6)")
+    pick("edge", ci); time.sleep(0.2)
+    chk("yay merkezi (20,20,20)", P()==[20,20,20], P())
+    setm("Yüz merkezi"); pick("face", face([20,40,10])); time.sleep(0.2)
+    chk("yüz merkezi (20,40,10)", P()==[20,40,10], P())
+    setm("Köşe"); pick("face", face([20,40,10]), [39.5,40,19.6]); time.sleep(0.2)
+    chk("köşe (40,40,20)", P()==[40,40,20], P())
+    setm("Kesişim"); pick("edge", edge([0,40,10])); pick("edge", edge([40,40,10])); time.sleep(0.2)
+    pk = P(); chk("iki kenar kesişimi → hata yok", pk is not None, pk)
+    setm("Kesişim"); pick("edge", edge([20,40,20])); pick("edge", edge([40,20,20])); time.sleep(0.2)
+    chk("kesişim (40,40,20)", [round(x,4) for x in P()]==[40,40,20], P())
+    setm("İzdüşüm"); pick("face", face([20,40,10]), [40,40,20]); pick("face", face([20,0,10])); time.sleep(0.2)
+    chk("izdüşüm (40,40,20) → alt yüz (40,0,20)", [round(x,4) for x in P()]==[40,0,20], P())
+    setm("Eğri boyunca"); pick("edge", edge([20,40,20])); time.sleep(0.2)
+    pg.fill("#pm .pm-row input >> nth=0", "") if False else None
+    ev("(()=>{const d=window.__app.mode.draft; d._dist=10; d._count=3; return 0})()")
+    pick("edge", edge([20,40,20])); time.sleep(0.2)
+    allp = ev("[window.__app.mode.draft.p, ...(window.__app.mode.draft.more||[])]")
+    xs = sorted(round(q[0],3) for q in allp)
+    chk("eğri boyunca 10 mm × 3 nokta (x 10/20/30 ya da 30/20/10)", len(allp)==3 and xs==[10,20,30] and all(abs(q[1]-40)<1e-6 for q in allp), allp)
+    ev("(()=>{const d=window.__app.mode.draft; d._pct=true; d._dist=25; d._count=1; return 0})()")
+    pick("edge", edge([20,40,20])); time.sleep(0.2)
+    chk("yüzde 25 → x 10 ya da 30", round(P()[0],3) in (10,30) and not ev("window.__app.mode.draft.more"), P())
+    pg.click("#pm-ok"); time.sleep(0.8); wait_ready(pg)
+    f = ev("JSON.stringify(window.__app.doc.features.find(f=>f.type==='point'))")
+    chk("kaydedildi, geçici alanlar temiz", f and "_pm" not in f and "_edge" not in f, f)
+    chk("hata yok", not logs, logs)
+    print("SONUC:", "TAMAM" if all(ok) else "HATA")

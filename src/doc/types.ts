@@ -126,6 +126,8 @@ interface FeatBase {
   name: string;
   /** Bastırılmış (devre dışı) */
   off?: boolean;
+  /** ağaç klasörü adı (SolidWorks FeatureManager klasörü; ardışık özellikler) */
+  folder?: string;
 }
 
 export interface SketchFeature extends FeatBase {
@@ -328,7 +330,7 @@ export interface ScaleFeature extends FeatBase { type: "scale"; factor: number; 
 export interface ImportFeature extends FeatBase { type: "import"; file: string; data: string; /** "stl": data base64 */ fmt?: "step" | "stl" }
 /** Referans eksen / nokta / koordinat sistemi (yalnızca görüntü ve referans) */
 export interface RefAxisFeature extends FeatBase { type: "axis"; p: Vec3; d: Vec3 }
-export interface RefPointFeature extends FeatBase { type: "point"; p: Vec3 }
+export interface RefPointFeature extends FeatBase { type: "point"; p: Vec3; /** eğri boyunca çoklu nokta: ek noktalar */ more?: Vec3[] }
 export interface CoordSysFeature extends FeatBase { type: "csys"; o: Vec3; x: Vec3; y: Vec3 }
 
 export interface DraftFeature extends FeatBase {

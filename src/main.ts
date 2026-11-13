@@ -249,6 +249,8 @@ const builtOk = new Set<string>();
 function setStatus(kind: "ok" | "busy" | "err" | "load" | "under" | "over", text: string) {
   const s = $("#status");
   s.className = kind;
+  s.title = kind === "err" && mode.k === "part" ? "Ayrıntı için dokunun (Ne yanlış?)" : "";
+  if (!(s as any)._ww) ((s as any)._ww = true), s.addEventListener("click", () => s.classList.contains("err") && mode.k === "part" && openWhatsWrong());
   $("#status-text").textContent = text;
 }
 let toastTimer = 0;
@@ -814,6 +816,7 @@ async function rebuild() {
     }
     if (res.heals) applyHeals(res.heals);
     viewer.setModel(res.mesh);
+    void ghostPreview(feats);
     applyLook();
     memberBodies = res.members;
     const errs = new Map(errors);
@@ -851,6 +854,25 @@ let draftError: string | null = null;
 /** son yapımda yapı elemanı anahtarı -> gövde sırası */
 let memberBodies: { key: string; name: string; body: number }[] = [];
 let previewTimer = 0;
+/** SolidWorks sarı önizleme: radyüs / pah / kabuk / koniklik / yüz taşı PM'de seçim varken sonuç sarı hayalet olarak gösterilir (seçim alttaki modelde kalır) */
+let ghostSeq = 0;
+const GHOST_TYPES = ["fillet", "chamfer", "shell", "draft", "dface"];
+async function ghostPreview(base: Feature[]) {
+  const seq = ++ghostSeq;
+  const d = mode.k === "pm" ? (mode.draft as any) : null;
+  const ready = d && GHOST_TYPES.includes(d.type) && (d.edges?.length || d.faces?.length || d.verts?.length || d.multi?.length);
+  if (!ready || ghostOff) return viewer.setGhost(null);
+  try {
+    const { kfeats, errors } = compile([...base, { ...d }], doc.profiles ?? {});
+    if (errors.get(d.id)) return viewer.setGhost(null);
+    const r = await kernel.build(kfeats);
+    if (seq !== ghostSeq || mode.k !== "pm") return;
+    viewer.setGhost(r.errors.some((e: any) => e.featureId === d.id) ? null : r.mesh);
+  } catch {
+    if (seq === ghostSeq) viewer.setGhost(null);
+  }
+}
+let ghostOff = false;
 function schedulePreview() {
   clearTimeout(previewTimer);
   previewTimer = window.setTimeout(() => rebuild(), 220);
@@ -1868,6 +1890,7 @@ function commitFeature(kind: string) {
   if (draft.type === "closecorner" && !draft.faces.length) return toast("Uç yüz seçin", true);
   if ((draft.type === "edgeflange" || draft.type === "hem") && !draft.edges.length) return toast("Flanş eklenecek kenarı seçin", true);
   delete (draft as any)._origin;
+  ["_pm", "_picks", "_edge", "_dist", "_pct", "_count", "_fg"].forEach((k) => delete (draft as any)[k]);
   if ((draft.type === "edgeflange" || draft.type === "hem" || draft.type === "miterflange") && (draft as any)._preview) {
     delete (draft as any)._preview;
     if (draftError) return toast(draftError, true);
@@ -3522,7 +3545,28 @@ function renderFeaturePM(kind: string) {
         (["x", "y", "z"] as const).forEach((a) => bs.appendChild(button(`${a.toUpperCase()} ekseni`, () => ((d.p = [0, 0, 0]), (d.d = [...AXES[a]] as Vec3), renderFeaturePM(kind), drawRefGeom()))));
         body.appendChild(bs);
       } else if (d.type === "point") {
-        body.appendChild(group("Nokta", h("p", "pm-hint", "Bir kenara (orta nokta / daire merkezi) veya yüze (merkez) dokunun ya da koordinat girin."), v3("", d.p, drawRefGeom)));
+        // SolidWorks referans noktası türleri
+        const pmode = d._pm ?? "auto";
+        const PH: Record<string, string> = {
+          auto: "Bir kenara (orta nokta / daire merkezi) veya yüze (merkez) dokunun ya da koordinat girin.",
+          arc: "Dairesel bir kenara dokunun: yay merkezi.",
+          face: "Bir yüze dokunun: yüzün ağırlık merkezi.",
+          vertex: "Bir köşeye dokunun.",
+          isect: `İki kenara dokunun: kesişim (en yakın) noktası (${(d._picks ?? []).length}/2).`,
+          proj: `Önce izdüşürülecek noktaya (köşe / kenar ortası), sonra düz yüze dokunun (${(d._picks ?? []).length}/2).`,
+          along: "Bir kenara dokunun: kenarın başından itibaren mesafe / yüzde ile nokta(lar).",
+        };
+        const g = group("Nokta", segField([{ v: "auto", t: "Otomatik" }, { v: "arc", t: "Yay merkezi" }, { v: "face", t: "Yüz merkezi" }, { v: "vertex", t: "Köşe" }, { v: "isect", t: "Kesişim" }, { v: "proj", t: "İzdüşüm" }, { v: "along", t: "Eğri boyunca" }], pmode, (v) => ((d._pm = v), (d._picks = []), renderFeaturePM(kind))), h("p", "pm-hint", PH[pmode]));
+        if (pmode === "along") {
+          g.append(
+            segField([{ v: "d", t: "Mesafe" }, { v: "p", t: "Yüzde" }], d._pct ? "p" : "d", (v) => ((d._pct = v === "p" || undefined), alongPoints(d), renderFeaturePM(kind))),
+            numField(d._pct ? "Yüzde" : "Mesafe", d._dist ?? (d._pct ? 50 : 10), (v) => ((d._dist = v), alongPoints(d), drawRefGeom()), { min: 0, unit: d._pct ? "%" : "mm" }),
+            numField("Nokta sayısı", d._count ?? 1, (v) => ((d._count = Math.max(1, Math.round(v))), alongPoints(d), drawRefGeom()), { min: 1, int: true }),
+          );
+        }
+        g.appendChild(v3("", d.p, drawRefGeom));
+        if (d.more?.length) g.appendChild(h("p", "pm-hint", `+${d.more.length} nokta daha`));
+        body.appendChild(g);
       } else {
         body.appendChild(group("Koordinat sistemi", h("p", "pm-hint", "Önce başlangıç için kenar/yüze, sonra X ekseni için doğrusal bir kenara dokunun."), v3("Başlangıç", d.o, drawRefGeom)));
       }
@@ -3617,8 +3661,7 @@ function drawRefGeom() {
       refGroup.push(viewer.fatLines([p[0] - d[0] * L, p[1] - d[1] * L, p[2] - d[2] * L, p[0] + d[0] * L, p[1] + d[1] * L, p[2] + d[2] * L], 0x2b7de9, 1.5, true));
     } else if (f.type === "point") {
       const s = size / 60;
-      const p = f.p;
-      refGroup.push(viewer.fatLines([p[0] - s, p[1], p[2], p[0] + s, p[1], p[2], p[0], p[1] - s, p[2], p[0], p[1] + s, p[2], p[0], p[1], p[2] - s, p[0], p[1], p[2] + s], 0x2b7de9, 2.5));
+      for (const p of [f.p, ...(f.more ?? [])]) refGroup.push(viewer.fatLines([p[0] - s, p[1], p[2], p[0] + s, p[1], p[2], p[0], p[1] - s, p[2], p[0], p[1] + s, p[2], p[0], p[1], p[2] - s, p[0], p[1], p[2] + s], 0x2b7de9, 2.5));
     } else if (f.type === "csys") {
       const L = size / 6;
       const z: Vec3 = [f.x[1] * f.y[2] - f.x[2] * f.y[1], f.x[2] * f.y[0] - f.x[0] * f.y[2], f.x[0] * f.y[1] - f.x[1] * f.y[0]];
@@ -4291,6 +4334,119 @@ function updatePlanePreview() {
   viewer.setHighlight({ faces: [], edges: [], planes: ["__draft"] }, null);
 }
 
+const { add: add3, sub: sub3, mul: mul3, dot: dot3 } = MathMod;
+/** Kenarın çizgi ağından sıralı nokta zinciri */
+function edgePoly(m: import("./doc/types").MeshData, ei: number): Vec3[] {
+  const g = m.edgeGroups, L = m.lines;
+  const segs: [Vec3, Vec3][] = [];
+  for (let i = 0; i < g.length; i += 3) {
+    if (g[i + 2] !== ei) continue;
+    for (let k = g[i]; k < g[i] + g[i + 1]; k += 2) segs.push([[L[k * 3], L[k * 3 + 1], L[k * 3 + 2]], [L[k * 3 + 3], L[k * 3 + 4], L[k * 3 + 5]]]);
+  }
+  if (!segs.length) {
+    const e = m.edges[ei];
+    return [e.s, e.e];
+  }
+  const out: Vec3[] = [segs[0][0], segs[0][1]];
+  const used = new Set([0]);
+  while (used.size < segs.length) {
+    const end = out[out.length - 1];
+    let found = false;
+    for (let i = 0; i < segs.length; i++) {
+      if (used.has(i)) continue;
+      const [a, b2] = segs[i];
+      if (dist3(a, end) < 1e-6) (out.push(b2), used.add(i), (found = true));
+      else if (dist3(b2, end) < 1e-6) (out.push(a), used.add(i), (found = true));
+      if (found) break;
+    }
+    if (!found) break;
+  }
+  // kenarın kendi başlangıcından başlasın
+  const e = m.edges[ei];
+  if (dist3(out[0], e.s) > dist3(out[out.length - 1], e.s)) out.reverse();
+  return out;
+}
+/** Eğri boyunca nokta(lar): başlangıçtan mesafe ya da yüzde, adet kadar eşit adım */
+function alongPoints(d: any) {
+  const m = viewer.mesh;
+  if (!m || d._edge === undefined) return;
+  const ei = nearestEdge(d._edge);
+  if (ei < 0) return;
+  const P = edgePoly(m, ei);
+  const cum = [0];
+  for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + dist3(P[i - 1], P[i]));
+  const tot = cum[cum.length - 1];
+  const at = (s: number): Vec3 => {
+    s = Math.max(0, Math.min(tot, s));
+    let i = 1;
+    while (i < P.length - 1 && cum[i] < s) i++;
+    const u = (s - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+    return [0, 1, 2].map((k) => +(P[i - 1][k] + (P[i][k] - P[i - 1][k]) * u).toFixed(6)) as Vec3;
+  };
+  const step = d._pct ? ((d._dist ?? 50) / 100) * tot : d._dist ?? 10;
+  const n = d._count ?? 1;
+  const pts = Array.from({ length: n }, (_, k) => at(step * (k + 1)));
+  d.p = pts[0];
+  d.more = pts.length > 1 ? pts.slice(1) : undefined;
+}
+/** Referans noktası türleri için seçim; false = işlenmedi */
+function refPointPick(d: any, hit: PickHit, m: import("./doc/types").MeshData): boolean {
+  const pm = d._pm;
+  const vertexNear = (q: Vec3) => {
+    let best: Vec3 | null = null, bd = viewer.worldPerPixel() * 16;
+    for (const e of m.edges) for (const v of [e.s, e.e]) if (dist3(v, q) < bd) [bd, best] = [dist3(v, q), v];
+    return best;
+  };
+  d.more = undefined;
+  if (pm === "arc") {
+    if (hit.kind !== "edge" || !m.edges[hit.index].c) return toast("Dairesel bir kenara dokunun", true), false;
+    d.p = [...m.edges[hit.index].c!];
+  } else if (pm === "face") {
+    if (hit.kind !== "face") return toast("Bir yüze dokunun", true), false;
+    d.p = [...m.faces[hit.index].c];
+  } else if (pm === "vertex") {
+    const v = hit.point && vertexNear(hit.point);
+    if (!v) return toast("Bir köşeye dokunun", true), false;
+    d.p = [...v];
+  } else if (pm === "isect") {
+    if (hit.kind !== "edge" || !m.edges[hit.index].d) return toast("Doğrusal bir kenara dokunun", true), false;
+    d._picks = [...(d._picks ?? []), { m: m.edges[hit.index].m, d: m.edges[hit.index].d }];
+    if (d._picks.length === 2) {
+      const [a, b2] = d._picks as { m: Vec3; d: Vec3 }[];
+      // iki doğrunun en yakın noktalarının ortası
+      const w = sub3(a.m, b2.m), A = dot3(a.d, a.d), B = dot3(a.d, b2.d), C = dot3(b2.d, b2.d), D = dot3(a.d, w), E = dot3(b2.d, w);
+      const den = A * C - B * B;
+      if (Math.abs(den) < 1e-12) return (d._picks = []), toast("Kenarlar paralel — kesişim yok", true), false;
+      const s1 = (B * E - C * D) / den, t1 = (A * E - B * D) / den;
+      const p1 = add3(a.m, mul3(a.d, s1)), p2 = add3(b2.m, mul3(b2.d, t1));
+      d.p = mul3(add3(p1, p2), 0.5).map((x) => +x.toFixed(6)) as Vec3;
+      d._picks = [];
+    }
+  } else if (pm === "proj") {
+    const picks = d._picks ?? [];
+    if (!picks.length) {
+      const q = hit.point && (vertexNear(hit.point) ?? (hit.kind === "edge" ? m.edges[hit.index].c ?? m.edges[hit.index].m : null));
+      if (!q) return toast("İzdüşürülecek noktaya dokunun", true), false;
+      d._picks = [q];
+    } else {
+      if (hit.kind !== "face") return toast("Düz bir yüze dokunun", true), false;
+      const f = m.faces[hit.index];
+      const q = picks[0] as Vec3, n = f.n as Vec3;
+      if (!n) return toast("Düz bir yüze dokunun", true), false;
+      const k = dot3(sub3(q, f.c), n);
+      d.p = sub3(q, mul3(n, k)).map((x) => +x.toFixed(6)) as Vec3;
+      d._picks = [];
+    }
+  } else if (pm === "along") {
+    if (hit.kind !== "edge") return toast("Bir kenara dokunun", true), false;
+    const e = m.edges[hit.index];
+    d._edge = { m: e.m, d: e.d };
+    alongPoints(d);
+  }
+  renderFeaturePM(kindOf(d));
+  return true;
+}
+
 function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   if (mode.k !== "pm" || !hit) return;
   const d = mode.draft as any;
@@ -4555,6 +4711,9 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     else if (e.c && e.ax) [d.p, d.d] = [e.c, e.ax];
     else return toast("Doğrusal veya dairesel bir kenar seçin", true);
     drawRefGeom();
+  } else if (d.type === "point" && m && (d._pm ?? "auto") !== "auto") {
+    if (refPointPick(d, hit, m) === false) return;
+    drawRefGeom();
   } else if ((d.type === "point" || d.type === "csys") && m) {
     let p: Vec3;
     if (hit.kind === "edge") {
@@ -4613,6 +4772,7 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else return;
   renderFeaturePM(kind);
   refreshHighlight();
+  if (GHOST_TYPES.includes(d.type)) schedulePreview();
 }
 
 // =====================================================================
@@ -4675,6 +4835,61 @@ function renderMeasurePanel(lines: string[]) {
 
 /** Basit mukavemet analizi (SimulationXpress benzeri, kiriş teorisi): en uzun eksen boyunca kiriş kabulü */
 let anaSt: { sup: BeamSupport; load: "point" | "udl"; F: number; dir: number; self: boolean; ax: number } = { sup: "cant", load: "point", F: 1000, dir: -1, self: false, ax: -1 };
+/** SolidWorks "Ne yanlış?" penceresi: özellik hataları (düzenle / bastır) + isteğe bağlı geometri kontrolü */
+async function openWhatsWrong(check = false) {
+  if (mode.k === "sketch") exitSketch(true);
+  document.querySelector("dialog.whatswrong")?.remove();
+  const dlg = h("dialog", "input-dialog whatswrong") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", "Ne yanlış?"));
+  const list = h("div", "ww-list");
+  const errs = [...featureErrors].filter(([id]) => getFeat(id));
+  if (!errs.length) list.appendChild(h("p", "ww-ok", "✓ Özelliklerde hata yok."));
+  for (const [id, msg] of errs) {
+    const f = getFeat(id)!;
+    const row = h("div", "ww-row");
+    row.append(h("b", "", "⛔ " + f.name), h("div", "small", msg));
+    const bs = h("div", "pm-buttons");
+    bs.append(button("Düzenle", () => (dlg.close(), editFeature(id)), "btn primary"), button(f.off ? "Etkinleştir" : "Bastır", () => (dlg.close(), commitDoc(() => (f.off = !f.off || undefined))), "btn"));
+    row.appendChild(bs);
+    list.appendChild(row);
+  }
+  // eskiz uyarıları: çakışan / gereksiz kısıtlar
+  for (const f of doc.features) {
+    if (f.type !== "sketch" || f.off) continue;
+    try {
+      const r = solveSketch(JSON.parse(JSON.stringify(f.data)), undefined, false);
+      if (r.conflicts.length || r.redundant.length) {
+        const row = h("div", "ww-row warn");
+        row.append(h("b", "", "⚠ " + f.name), h("div", "small", `Eskiz aşırı tanımlı: ${r.conflicts.length} çakışan, ${r.redundant.length} gereksiz ilişki/ölçü`));
+        row.appendChild(button("Eskizi düzenle", () => (dlg.close(), editFeature(f.id)), "btn"));
+        list.appendChild(row);
+      }
+    } catch {}
+  }
+  dlg.appendChild(list);
+  const chk = h("div", "ww-check");
+  const runCheck = async () => {
+    chk.innerHTML = "<p class='small'>Geometri kontrol ediliyor…</p>";
+    const r = await kernel.check();
+    (window as any).__geomCheck = r;
+    chk.innerHTML = "";
+    chk.appendChild(h("div", "pm-sub", "Geometri kontrolü"));
+    if (!r.bodies.length) chk.appendChild(h("p", "small", "Katı gövde yok." + (r.surfs ? ` ${r.surfs} yüzey gövdesi var.` : "")));
+    for (const b of r.bodies) {
+      const bad = !b.valid || b.free || b.short || b.small || b.volume <= 0;
+      chk.appendChild(h("div", "ww-row" + (bad ? " warn" : ""), `${bad ? "⚠" : "✓"} Gövde ${b.i + 1}: ${b.valid ? "geçerli" : "GEÇERSİZ topoloji"} · ${b.faces} yüz, ${b.edges} kenar · hacim ${fmtNum(b.volume, 2)} mm³` + (b.free ? ` · ${b.free} açık (serbest) kenar` : "") + (b.short ? ` · ${b.short} çok kısa kenar` : "") + (b.small ? ` · ${b.small} çok küçük yüz` : "") + (b.volume <= 0 ? " · hacim negatif / sıfır" : "")));
+    }
+  };
+  dlg.appendChild(chk);
+  const row = h("div", "pm-buttons");
+  row.append(button("Geometriyi kontrol et", () => void runCheck(), "btn"), button("Kapat", () => dlg.close(), "btn primary"));
+  dlg.appendChild(row);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+  if (check) await runCheck();
+}
+
 /** Koniklik analizi (SolidWorks): çekme yönüne göre yüzleri renklendirir — yeşil pozitif, kırmızı negatif, sarı koniklik gerekli */
 let draftAna: { ax: number; sgn: number; ang: number; el: HTMLElement } | null = null;
 function draftClass(n: [number, number, number]) {
@@ -5124,13 +5339,32 @@ function renderTree() {
     });
     ul.appendChild(li);
   };
+  let lastFolder: string | undefined;
   doc.features.forEach((f, i) => {
     if (doc.rollback === i) bar();
     if (f.type === "sketch" && consumerOf(f.id)) return;
+    // klasör başlığı (ardışık aynı klasörlü özellikler)
+    if (f.folder !== lastFolder) {
+      lastFolder = f.folder;
+      if (f.folder) {
+        const fn = f.folder;
+        const closed = closedFolders.has(fn);
+        const fl = h("li", "folder" + (treeSel === "folder:" + fn ? " sel" : ""));
+        fl.innerHTML = `<span class="ftog">${closed ? "▸" : "▾"}</span> 📁 <span>${fn.replace(/</g, "&lt;")}</span>`;
+        fl.addEventListener("click", (ev) => {
+          if (mode.k !== "part") return;
+          if ((ev.target as HTMLElement).classList.contains("ftog") || treeSel === "folder:" + fn) closed ? closedFolders.delete(fn) : closedFolders.add(fn);
+          treeSel = "folder:" + fn;
+          renderTree();
+        });
+        ul.appendChild(fl);
+      }
+    }
+    if (f.folder && closedFolders.has(f.folder)) return;
     const err = featureErrors.get(f.id);
     const cls = [err ? "err" : "", f.off ? "off" : "", i >= rollIdx ? "rolled" : ""].join(" ");
     const label = f.type === "hole" && f.htype === "tap" && f.size !== "custom" ? `${f.name} (${threadLabel(f.std ?? "iso", f.size)})` : f.name;
-    const li = row(f.id, label, FEAT_ICON[kindOf(f)] ?? "file", cls);
+    const li = row(f.id, label, FEAT_ICON[kindOf(f)] ?? "file", cls + (f.folder ? " infolder" : ""));
     if (err) li.title = err;
     const kids =
       f.type === "extrude" || f.type === "revolve" || f.type === "rib" || f.type === "wrap"
@@ -5181,11 +5415,56 @@ function moveFeature(id: string, beforeId: string | null) {
   commitDoc(() => (doc.features = next));
 }
 
+/** kapalı klasörler (oturum) */
+const closedFolders = new Set<string>();
+/** özelliği klasöre al: klasörün son özelliğinin arkasına taşınır (sıra geçerliyse) */
+function addToFolder(id: string, name: string) {
+  const f = getFeat(id);
+  if (!f || !name.trim()) return;
+  name = name.trim();
+  const members = doc.features.filter((x) => x.folder === name && x.id !== id);
+  commitDoc(() => {
+    f.folder = name;
+    if (members.length) {
+      const last = members[members.length - 1];
+      const li = doc.features.indexOf(last), fi = doc.features.indexOf(f);
+      if (fi !== li + 1) {
+        const rest = doc.features.filter((x) => x !== f);
+        const at = rest.indexOf(last) + 1;
+        const next = [...rest.slice(0, at), f, ...rest.slice(at)];
+        if (orderOk(next)) doc.features = next;
+      }
+    }
+  });
+}
+function renameFolder(old: string, name: string) {
+  name = name.trim();
+  if (!name || name === old) return;
+  commitDoc(() => doc.features.forEach((x) => x.folder === old && (x.folder = name)));
+  if (closedFolders.delete(old)) closedFolders.add(name);
+  treeSel = "folder:" + name;
+}
 function renderTreeActions() {
   const box = $("#tree-actions");
   box.innerHTML = "";
   if (!treeSel || mode.k !== "part") return;
   const add = (t: string, fn: () => void, cls = "btn") => box.appendChild(button(t, fn, cls));
+  if (treeSel.startsWith("folder:")) {
+    const fn = treeSel.slice(7);
+    const items = doc.features.filter((x) => x.folder === fn);
+    box.appendChild(h("div", "msg", `Klasör "${fn}" · ${items.length} özellik`));
+    add(closedFolders.has(fn) ? "Aç" : "Kapat", () => (closedFolders.has(fn) ? closedFolders.delete(fn) : closedFolders.add(fn), renderTree()));
+    add("Klasörü adlandır", () => {
+      const nm = prompt("Klasör adı:", fn);
+      if (nm) renameFolder(fn, nm);
+    });
+    add(items.every((x) => x.off) ? "Klasörü etkinleştir" : "Klasörü bastır", () => {
+      const off = !items.every((x) => x.off);
+      commitDoc(() => items.forEach((x) => (x.off = off || undefined)));
+    });
+    add("Klasörü kaldır (özellikler kalır)", () => (commitDoc(() => items.forEach((x) => delete x.folder)), (treeSel = null)), "btn danger");
+    return;
+  }
   if (["front", "top", "right"].includes(treeSel)) {
     add("Eskiz", () => startSketch({ k: "std", n: treeSel as StdPlane }));
     add("Normal görünüm", () => viewer.viewNormal(STD_FRAMES[treeSel as StdPlane]));
@@ -5243,6 +5522,12 @@ function renderTreeActions() {
     const par = parentsOf(f).map((p) => getFeat(p)!.name);
     const ch = doc.features.filter((x) => parentsOf(x).includes(f.id)).map((x) => x.name);
     toast(`Ebeveyn: ${par.join(", ") || "—"} · Çocuk: ${ch.join(", ") || "—"}`);
+  });
+  const folders = [...new Set(doc.features.map((x) => x.folder).filter(Boolean))] as string[];
+  add(f.folder ? `Klasörden çıkar (${f.folder})` : "Klasöre ekle…", () => {
+    if (f.folder) return commitDoc(() => delete f.folder);
+    const nm = prompt(`Klasör adı${folders.length ? ` (var olanlar: ${folders.join(", ")})` : ""}:`, folders[folders.length - 1] ?? "Klasör1");
+    if (nm) addToFolder(f.id, nm);
   });
   add("Sil", () => deleteFeature(f.id), "btn danger");
 }
@@ -5397,6 +5682,8 @@ function commands(): Cmd[] {
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => showMassProps() },
       { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
       { id: "analysis", label: "Mukavemet", icon: "measure", run: () => void openAnalysis() },
+      { id: "whatswrong", label: "Ne Yanlış?", icon: "measure", run: () => openWhatsWrong() },
+      { id: "geomcheck", label: "Kontrol", icon: "measure", run: () => void openWhatsWrong(true) },
       { id: "draftana", label: "Koniklik Analizi", icon: "draftf", run: () => toggleDraftAnalysis(), active: () => !!draftAna },
       { id: "section", label: "Kesit", icon: "section", run: () => openSection(), active: () => !!section },
       { id: "material", label: "Malzeme", icon: "material", run: () => chooseMaterial() },

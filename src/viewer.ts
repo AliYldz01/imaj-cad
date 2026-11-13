@@ -801,6 +801,32 @@ export class Viewer {
   }
 
   // ---------- Model ----------
+  /** SolidWorks sarı önizleme: özelliğin sonucu yarı saydam sarı (seçim ana modelde kalır) */
+  ghost: THREE.Group | null = null;
+  setGhost(mesh: MeshData | null) {
+    if (this.ghost) {
+      this.scene.remove(this.ghost);
+      this.ghost.traverse((o: any) => o.geometry?.dispose());
+      this.ghost = null;
+    }
+    if (mesh) {
+      const g = new THREE.Group();
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(mesh.vertices, 3));
+      geo.setAttribute("normal", new THREE.BufferAttribute(mesh.normals, 3));
+      geo.setIndex(new THREE.BufferAttribute(mesh.triangles, 1));
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffd43b, transparent: true, opacity: 0.55, depthWrite: false, metalness: 0, roughness: 0.7 }));
+      m.renderOrder = 5;
+      const eg = new THREE.BufferGeometry();
+      eg.setAttribute("position", new THREE.BufferAttribute(mesh.lines, 3));
+      const l = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0xc99a00 }));
+      g.add(m, l);
+      g.name = "ghost";
+      this.ghost = g;
+      this.scene.add(g);
+    }
+    this.requestRender();
+  }
   setModel(mesh: MeshData | null) {
     for (const c of [...this.model.children]) {
       this.model.remove(c);

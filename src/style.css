@@ -477,3 +477,10 @@ li.plane-tog { cursor: pointer; color: #5c6b7d; }
 .td-edit-row { flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
 .draft-ana { position: absolute; right: 10px; top: 70px; z-index: 30; background: var(--panel, #fff); border: 1px solid #ccd3dc; border-radius: 8px; padding: 8px 10px; width: 230px; box-shadow: 0 4px 14px rgba(0,0,0,.15); font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
 .draft-ana .da-leg span { margin-right: 6px; white-space: nowrap; }
+#tree li.folder { font-weight: 600; cursor: pointer; }
+#tree li.folder .ftog { display: inline-block; width: 14px; }
+#tree li.infolder { padding-left: 22px; }
+dialog.whatswrong { max-width: 560px; width: 92vw; }
+.whatswrong .ww-row { border: 1px solid #e3e7ee; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+.whatswrong .ww-row.warn { border-color: #f2c12e; background: #fff9e6; }
+.whatswrong .ww-ok { color: #2b8a3e; }

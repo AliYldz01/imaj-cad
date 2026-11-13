@@ -32,10 +32,10 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.66 3.6 Katı gövdeyle süpürme (silindirik takım: düz / küresel uç, doğru / yay / eğri yol)
 - ✅ v0.67 3.7 Loft: bağlayıcılar (profil başına başlangıç köşesi + ters), komşu yüzlere teğet (başlangıç / bitiş)
 - ✅ v0.67 3.8 Delik sihirbazı: yuva delik (boy, açı), yakın / uzak taraf havşası
-- ⬜ 3.9 Referans noktası türleri
-- ⬜ 3.10 Ağaçta klasörler
-- ⬜ 3.11 "Ne yanlış?" penceresi, geometri kontrolü
-- ⬜ 3.12 Radyüs / pah / kabuk sarı önizleme
+- ✅ v0.68 3.9 Referans noktası türleri (yay merkezi, yüz merkezi, köşe, kesişim, izdüşüm, eğri boyunca mesafe / yüzde / çoklu)
+- ✅ v0.68 3.10 Ağaçta klasörler (ekle / çıkar, aç / kapat, adlandır, bastır, kaldır)
+- ✅ v0.68 3.11 "Ne yanlış?" penceresi (hatalar + eskiz uyarıları, düzenle / bastır), geometri kontrolü
+- ✅ v0.68 3.12 Radyüs / pah / kabuk / koniklik / yüz taşı sarı önizleme
 
 ## 4. Sac metal
 - ⬜ 4.1 Flanş profilini serbest eskizle düzenleme

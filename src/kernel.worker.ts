@@ -4048,6 +4048,45 @@ function section(id: number, fr: Frame) {
 }
 
 /** Basit mukavemet: gövdenin en uzun ekseni boyunca orta kesit özellikleri (alan, atalet, uç lif) */
+/** Geometri kontrolü (SolidWorks Kontrol): BRepCheck_Analyzer geçerliliği, tek yüze bağlı (serbest) kenarlar, çok kısa kenarlar, çok küçük yüzler */
+function geomCheck(id: number) {
+  const oc = getOC() as any;
+  const out = bodies.map((b, i) => {
+    let valid = true;
+    try {
+      const an = new oc.BRepCheck_Analyzer(b.wrapped, true, false);
+      valid = !!(an.IsValid_2 ? an.IsValid_2() : an.IsValid());
+      an.delete();
+    } catch {
+      valid = true;
+    }
+    // kenar → komşu yüz sayısı (dikiş kenarı aynı yüzde iki kez geçer: o da kapalı sayılır)
+    const cnt = new Map<number, number>();
+    for (const f of b.faces as any[]) {
+      const seen = new Map<number, number>();
+      for (const e of f.edges as any[]) seen.set(e.hashCode, (seen.get(e.hashCode) ?? 0) + 1);
+      for (const [h, k] of seen) cnt.set(h, (cnt.get(h) ?? 0) + Math.min(2, k));
+      for (const e of f.edges as any[])
+        try {
+          if (oc.BRep_Tool.IsClosed(e.wrapped, f.wrapped)) cnt.set(e.hashCode, 2); // dikiş kenarı
+        } catch {}
+    }
+    let free = 0, short = 0, small = 0;
+    for (const e of b.edges as any[]) {
+      if ((cnt.get(e.hashCode) ?? 0) < 2) free++;
+      try {
+        if (measureLength(e) < 1e-3) short++;
+      } catch {}
+    }
+    for (const f of b.faces as any[])
+      try {
+        if (measureArea(f) < 1e-4) small++;
+      } catch {}
+    return { i, valid, free, short, small, volume: volOf(b), faces: (b.faces as any[]).length, edges: (b.edges as any[]).length };
+  });
+  post({ id, type: "check", r: { bodies: out, surfs: surfs.length } } as any);
+}
+
 function beamSec(id: number, axIn: number) {
   try {
     const list = bodies.length ? bodies : [];
@@ -4193,6 +4232,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "props") props(req.id);
     else if (req.type === "section") section(req.id, req.frame);
     else if (req.type === "beam") beamSec(req.id, req.ax ?? -1);
+    else if ((req as any).type === "check") geomCheck(req.id);
     else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
