@@ -3,6 +3,14 @@
 Bu dosya, projeyi sıfırdan açılan bir sohbette kaldığı yerden sürdürmek için gereken her şeyi içerir.
 **Son denetim (v0.35): `docs/DENETIM_v0.35.md`** — kalıcı referans, montaj–parça bağı ve sıradaki paketler buradan · Ayrıntılı özellik listesi: `docs/YOL_HARITASI.md` · Kullanıcı özeti: `README.md` · **SolidWorks fark raporu ve düzeltme planı: `docs/SOLIDWORKS_FARK_RAPORU.md`** (maddeler E/F/S/W/G numaralı; düzeltildikçe ✅ işaretle) · **SolidWorks özellik başvuru listesi (seçenek seviyesinde, ✅/🟡/⬜ durumlu): `docs/SOLIDWORKS_OZELLIKLERI.md`** — yeni özellik yazarken buradaki seçenekleri esas al, bitince durumunu güncelle.
 
+## 0. Yeni sohbette ilk adımlar (devir notu, v0.56 — 2026-11-13)
+
+1. Depo yoksa: `add_repo` ile `AliYldz01/imaj-cad` ekle → `git clone` → `cd imaj-cad && npm install`.
+2. Bu dosyayı oku (yalnız gereken bölümler: §2 kurallar, §5 sıradaki işler, §6 test, §7 yayın). Kod için hedefli `grep`/`sed -n` kullan; büyük dosyaları baştan okuma.
+3. Değişiklik sonrası: `npx vite build && sh tests/e2e/srv.sh`, ilgili testleri `tests/e2e` içinden çalıştır.
+4. Kayıt + yayın tek komutla: `python3 tools/rel.py …` (kayıt dosyaları, sürüm numaraları; kullanım dosyanın başında) ardından `CLAUDE_SESSION=<oturum bağlantısı> sh tools/deploy.sh "<Türkçe commit mesajı>"` (tsc + build + commit + push + gh-pages + canlı sürüm denetimi).
+5. Son durum: canlı **v0.56** (`imajcad-v68`). Son istekler: çeyrek noktası kayması düzeltildi (v0.55), gereksiz ölçü uyarısı (v0.56). Kullanıcının bir sonraki iş için onayı alınmadı; §5 sırasından devam et ya da kullanıcıya sor.
+
 ## 1. Amaç
 
 Ücretsiz (lisans ücreti olmayan), telefon / tablet / bilgisayarda çalışan bir **PWA CAD** uygulaması.
@@ -56,6 +64,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 | `src/asm/` | **Montaj** (durum listesi `docs/MONTAJ_RAPORU.md`): `toolbox.ts` (`fastener(kind,size,len)` ISO cıvata/somun/pul parçası, `FASTENER_SIZES`), `solver.ts` (eşzamanlı LM çözücü `solveAll(doc,{drag})`, artıklar `mateRes`, serbestlik `dofAll`, `wEnt`), `assembly.ts` (AsmDoc, MateEnt plane/cyl/line/circle/point, Mate c/d/ref/L/flipD, ExplodeStep, `MATE_GROUPS`, eski sıralı `solve` kullanılmıyor, serbestlik `dofOf`, BOM, parça kütüphanesi `imajcad.lib`), `asmui.ts` (AsmUI: `pick` kenar/köşe/yüz, `input` eşleşmelere uyan sürükleme / döndürme / Alt SmartMate, `startMate(edit?)`/`pickInto`/`preview`/`commitMate` (taslak `__draft`), `addMate` (çelişkiyi reddeder), `mateAct`, `openMove(rotate)`, `openMirror`, `openExplode`/`toggleExplode`, `massProps`, `picker` (panel seçimleri), Montaj sekmesi, bileşen ağları (kernel.build ile, önbellekli), seçim/sürükleme, eşleşme paneli, ağaç, girişim, patlatma, STEP; montaj localStorage `imajcad.asm`, dosya `.icasm`). Worker: `asmOp` (bileşenleri dörtlük+öteleme ile yerleştir; STEP / girişim). |
 | `src/ui/` | `icons.ts`, `dom.ts` (form yardımcıları), `wizards.ts` (şekil sihirbazları), `keys.ts` (kısayol kaydı: `Act`, `comboOf` (e.code ile "Ctrl+Shift+Z"), `keyOf/setKey/keyMap` localStorage `imajcad.keys`; fare hareketleri `gestCfg/setGest/dirOf` 4/8 yön `imajcad.gest`; `openCustomize` (Klavye / Fare Hareketleri), `printList`). |
 | `tests/e2e/` | Playwright testleri (aşağıda). |
+| `tools/rel.py`, `tools/deploy.sh` | Sürüm kaydı ve yayın yardımcıları (§0, §7). |
 
 ### Replicad / OCC tuzakları
 - `makeCompound` girdileri siler → önce `clone()`. `face.outerWire()` yüzü siler → `face.clone().outerWire()`. `wire.offset2D`, `rotate`, `translate` orijinali tüketebilir.
@@ -136,7 +145,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 0. **SolidWorks fark raporundaki düzeltmeler** (`docs/SOLIDWORKS_FARK_RAPORU.md` §7 paket sırası A→E; montaj = Paket D) — Paket A ✅ (v0.13); Paket B kısmi (v0.14) — kalan B: F3 burulma/kılavuz, F4 loft teğetlik, F5 setback/konik, F18 pah, F19 eksen/nokta seçimi, E4 sanal köşe, E5, E8, E9, E10, E16, E17; Paket C kısmi (v0.15) — kalan C: S2 flanş profili, S5 DXF büküm notları, S6 aç/katla, W1 köşe başına işlem, W3 kesim listesi özellikleri, W4 3B eskiz ilişkileri; Paket D ilk sürüm (v0.16) — kalan D (v0.17 sonrası): gelişmiş/mekanik eşleşmeler (simetrik, açı limiti, genişlik, menteşe, dişli, vida…), gerçek geometriyle çarpışma, ayna bileşen, alt montaj, bağlam içi düzenleme; ardından **Paket E** ve kalan B/C maddeleri. **3B eskiz**: rapordaki maddeler tamamlandı (v0.22; spline/öteleme SolidWorks'te de 3B eskizde yok).
 1. **MONTAJ MODÜLÜ** — v0.32–v0.33'te SolidWorks mantığı (`docs/MONTAJ_RAPORU.md`); kalan ⬜: yapılandırmalar, yol/kam/yuva eşleşmeleri, fiziksel dinamik / animasyon kaydı. Eski not: ilk sürüm v0.16'da; kalanlar Paket D notunda: bileşen ekleme (parça dosyaları / mevcut parça), sabitleme, eşleşmeler (çakışık, paralel, dik, eş merkezli, mesafe, açı, teğet), serbestlik göstergesi, bileşeni sürükleyerek taşıma/döndürme, girişim kontrolü, patlatılmış görünüm, montaj ağacı, BOM (malzeme listesi), STEP montaj dışa aktarma. SolidWorks davranışına uygun olmalı; telefon kontrolleriyle de çalışmalı.
 1b. Masaüstü arayüz ekleri: seçim kırıntıları (breadcrumbs), sağ görev bölmesi (tasarım kütüphanesi / dosyalar), şerit özelleştirme, bağlam araç çubuğunun SW gibi genişletilmesi.
-2. ~~Teknik resim ekleri~~ ✅ v0.54 (kalan: ölçü ekleme/silme, yüzey pürüzlülüğü / tolerans sembolleri, kesit görünüşünü konumlandırma).
+2. ~~Teknik resim ekleri~~ ✅ v0.54 — **sıradaki önerilen iş:** teknik resimde ölçü ekleme/silme, yüzey pürüzlülüğü / tolerans sembolleri, kesit görünüşünü konumlandırma (kullanıcıya önerildi, henüz başlanmadı).
 3. Kalemsiz kullanım ekleri: model üzerinde sürüklenen derinlik oku, üst üste adaylar arasında dokunarak geçiş, sihirbaz eskizlerine tam ölçülendirme, fotoğraftan kenar izleme, sesle ölçü girişi.
 4. Saha özellikleri: fotoğraf ekleme, Bluetooth kumpas.
 
@@ -152,6 +161,8 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 - `navigator.webdriver` iken başlangıç rehberi açılmaz.
 
 ## 7. Yayın prosedürü
+
+Kısa yol: `python3 tools/rel.py …` + `sh tools/deploy.sh "<mesaj>"` (aşağıdaki adımların aynısı). Elle:
 
 ```sh
 npx tsc --noEmit -p . && npx vite build
@@ -173,3 +184,7 @@ Her yayında `public/sw.js` önbellek adını ve `index.html` yardım başlığ�
 - **Gerçek kalemle saha testi** (kullanıcının kalemi gelince): kontrol listesi `docs/YOL_HARITASI.md` → "Bekleyen: gerçek kalemle saha testi". Sonuca göre `src/input/prefs.ts` `DEFAULTS` güncellenecek.
 - Tarayıcı sekmesinde Ctrl+1…8 / Ctrl+N tarayıcıya ayrılmış; PWA olarak kurulunca çalışır (kullanıcıya söylendi).
 - Bilinen eksikler: sihirbaz eskizlerinde yalnız çap ölçüleri var.
+- `tests/e2e/sk1.py` v0.55 öncesinden beri Traceback ile düşüyor (eski test; v0.56 değişikliğiyle ilgisi yok) — fırsat bulunca güncellenmeli.
+- Gereksiz ölçü (v0.56): SolidWorks'teki "sürücü olarak bırak (aşırı tanımlı kalsın)" seçeneği yok; yalnız sürülen ya da vazgeç.
+- v0.55'ten önce çeyrekten ölçülendirilip çapı değiştirilmiş (kaymış) eskiz noktaları otomatik düzelmez; ölçü yeniden verilmeli.
+- IGES içe aktarma yapılamaz (OCC derlemesinde okuyucu yok).
