@@ -2395,16 +2395,34 @@ function renderFeaturePM(kind: string) {
           }),
         );
       body.appendChild(group("Profiller (seçim sırasıyla)", box, h("p", "pm-hint", "Her profil tek bir kapalı kontur olmalı. Sıra, seçim sırasıdır.")));
+      if (d.sketches.length >= 2 && !d.center && !d.guides?.length) {
+        const on = !!d.conn;
+        const gc = group("Bağlayıcılar", checkField("Bağlayıcıları kullan (köşe eşleşmesi)", on, (v) => ((d.conn = v ? d.sketches.map(() => ({ k: 0 })) : undefined), renderFeaturePM(kind), upd())));
+        if (on) {
+          d.conn.length = d.sketches.length;
+          d.sketches.forEach((sid: string, i: number) => {
+            const c = (d.conn[i] = d.conn[i] ?? { k: 0 });
+            const nm = doc.features.find((x) => x.id === sid)?.name ?? sid;
+            const row = h("div", "pm-row");
+            row.append(numField(`${nm}: başlangıç köşesi`, c.k, (v) => ((c.k = Math.round(v)), upd()), { int: true, min: 0 } as any), checkField("Ters", !!c.rev, (v) => ((c.rev = v || undefined), upd())));
+            gc.appendChild(row);
+          });
+          gc.appendChild(h("p", "pm-hint", "Her profilde başlangıç köşesi birbirine bağlanır; köşe sırasını değiştirerek burulmayı denetleyin."));
+        }
+        body.appendChild(gc);
+      }
       body.appendChild(
         group(
           "Seçenekler",
           checkField("Düz yüzeyli (ruled)", d.ruled, (v) => ((d.ruled = v), upd())),
           ...(!d.ruled
             ? [
-                selectField("Başlangıç kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }], d.tanStart ? "1" : "0", (v) => ((d.tanStart = v === "1" ? 1 : undefined), renderFeaturePM(kind), upd())),
+                selectField("Başlangıç kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }, { v: "2", t: "Komşu yüzlere teğet" }], d.faceStart ? "2" : d.tanStart ? "1" : "0", (v) => ((d.tanStart = v === "1" ? 1 : undefined), (d.faceStart = v === "2" ? 1 : undefined), renderFeaturePM(kind), upd())),
                 ...(d.tanStart ? [numField("Başlangıç teğet uzunluğu", d.tanStart, (v) => ((d.tanStart = v), upd()), { min: 0.1 })] : []),
-                selectField("Bitiş kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }], d.tanEnd ? "1" : "0", (v) => ((d.tanEnd = v === "1" ? 1 : undefined), renderFeaturePM(kind), upd())),
+                ...(d.faceStart ? [numField("Başlangıç teğet uzunluğu", d.faceStart, (v) => ((d.faceStart = v), upd()), { min: 0.1 })] : []),
+                selectField("Bitiş kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }, { v: "2", t: "Komşu yüzlere teğet" }], d.faceEnd ? "2" : d.tanEnd ? "1" : "0", (v) => ((d.tanEnd = v === "1" ? 1 : undefined), (d.faceEnd = v === "2" ? 1 : undefined), renderFeaturePM(kind), upd())),
                 ...(d.tanEnd ? [numField("Bitiş teğet uzunluğu", d.tanEnd, (v) => ((d.tanEnd = v), upd()), { min: 0.1 })] : []),
+                ...(d.faceEnd ? [numField("Bitiş teğet uzunluğu", d.faceEnd, (v) => ((d.faceEnd = v), upd()), { min: 0.1 })] : []),
               ]
             : []),
           checkField("Sac geçiş parçası (loft büküm)", !!d.sheetT, (v) => ((d.sheetT = v ? lastSheetBase(doc.features)?.t ?? 2 : undefined), (d.ruled = v ? true : d.ruled), renderFeaturePM(kind), upd())),
@@ -2511,6 +2529,16 @@ function renderFeaturePM(kind: string) {
         g.appendChild(checkField("Kozmetik diş göster", !!hf.cosmetic, (v) => ((hf.cosmetic = v), drawRefGeom())));
       }
       body.appendChild(g);
+      // SolidWorks delik sihirbazı: yuva delik + havşa seçenekleri
+      const gs = group("Yuva ve havşa seçenekleri", checkField("Yuva delik", !!hf.slot, (v) => ((hf.slot = v ? hf.slot || 10 : undefined), renderFeaturePM(kind), upd())));
+      if (hf.slot) gs.append(numField("Yuva boyu (merkezler arası)", hf.slot, (v) => ((hf.slot = v), upd()), { min: 0.01, unit: "mm" }), numField("Yuva açısı", hf.slotAng ?? 0, (v) => ((hf.slotAng = v || undefined), upd()), { unit: "°" }));
+      gs.appendChild(checkField("Yakın taraf havşası", !!hf.nearCs, (v) => ((hf.nearCs = v ? { d: +(Math.max(hf.cd || 0, hf.d) * 1.3).toFixed(2), angle: 90 } : undefined), renderFeaturePM(kind), upd())));
+      if (hf.nearCs) gs.append(numField("Yakın havşa çapı", hf.nearCs.d, (v) => ((hf.nearCs!.d = v), upd()), { min: 0.01, unit: "mm" }), numField("Yakın havşa açısı", hf.nearCs.angle, (v) => ((hf.nearCs!.angle = v), upd()), { min: 1, unit: "°" }));
+      if (hf.through) {
+        gs.appendChild(checkField("Uzak taraf havşası", !!hf.farCs, (v) => ((hf.farCs = v ? { d: +(hf.d * 1.6).toFixed(2), angle: 90 } : undefined), renderFeaturePM(kind), upd())));
+        if (hf.farCs) gs.append(numField("Uzak havşa çapı", hf.farCs.d, (v) => ((hf.farCs!.d = v), upd()), { min: 0.01, unit: "mm" }), numField("Uzak havşa açısı", hf.farCs.angle, (v) => ((hf.farCs!.angle = v), upd()), { min: 1, unit: "°" }));
+      }
+      body.appendChild(gs);
       const pos = group("Konumlar", h("p", "pm-hint", hf.plane ? "Yüze dokunarak delik ekleyin. Konumları aşağıdan düzenleyebilirsiniz." : "Önce deliğin açılacağı düz yüze dokunun."));
       if (hf.sketch) {
         const sk = getFeat(hf.sketch) as SketchFeature | undefined;

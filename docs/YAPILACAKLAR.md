@@ -30,8 +30,8 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.65 3.4 Koniklik: ayırma çizgisi (yüz başına menteşe → basamaklı da), koniklik analizi (renkli)
 - ✅ v0.66 3.5 Çoğaltma: referansa kadar (adet / aralık sabit, öteleme), eskizi değiştir (sabit geometriye bağlı ölçüler uyar)
 - ✅ v0.66 3.6 Katı gövdeyle süpürme (silindirik takım: düz / küresel uç, doğru / yay / eğri yol)
-- ⬜ 3.7 Loft: bağlayıcılar, komşu yüze teğet
-- ⬜ 3.8 Delik sihirbazı: yuva delik, havşa seçenekleri
+- ✅ v0.67 3.7 Loft: bağlayıcılar (profil başına başlangıç köşesi + ters), komşu yüzlere teğet (başlangıç / bitiş)
+- ✅ v0.67 3.8 Delik sihirbazı: yuva delik (boy, açı), yakın / uzak taraf havşası
 - ⬜ 3.9 Referans noktası türleri
 - ⬜ 3.10 Ağaçta klasörler
 - ⬜ 3.11 "Ne yanlış?" penceresi, geometri kontrolü

@@ -262,6 +262,11 @@ export interface LoftFeature extends FeatBase {
   sheetT?: number;
   /** kılavuz eğri eskizleri (isteğe bağlı) */
   guides?: string[];
+  /** bağlayıcılar (SolidWorks connectors): profil başına başlangıç köşesi sırası ve yön (kesitler arası eşleşme / burulma denetimi) */
+  conn?: { k: number; rev?: boolean }[];
+  /** başlangıç / bitişte komşu yüzlere teğet (profil model yüzündeyse; köşelerden geçen model kenarlarının uzantısı) — teğet uzunluğu */
+  faceStart?: number;
+  faceEnd?: number;
 }
 
 export type HoleType = "simple" | "cbore" | "csink" | "tap";
@@ -290,6 +295,12 @@ export interface HoleFeature extends FeatBase {
   plane: PlaneRef | null;
   /** yüz düzlemindeki merkez noktaları */
   pts: Vec2[];
+  /** yuva delik: merkezler arası boy (0 / yok = yuvarlak delik) ve yuva açısı (yüz x eksenine göre °) */
+  slot?: number;
+  slotAng?: number;
+  /** yakın taraf havşası (girişte), uzak taraf havşası (boydan boya delikte çıkışta): çap ve açı */
+  nearCs?: { d: number; angle: number };
+  farCs?: { d: number; angle: number };
 }
 /** Kaburga: açık eskizden, gövdeye kadar uzanan ince duvar */
 export interface RibFeature extends FeatBase {
@@ -738,8 +749,8 @@ export type KFeature =
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean }; tool?: { d: number; len: number; ball?: boolean; flip?: boolean } }
-  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number }
-  | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
+  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number; conn?: { k: number; rev?: boolean }[]; faceStart?: number; faceEnd?: number }
+  | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number; slot?: number; slotAng?: number; nearCs?: { d: number; angle: number }; farCs?: { d: number; angle: number } }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean; multi?: { ref: FaceRef; t: number }[] }
   | { id: string; type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }

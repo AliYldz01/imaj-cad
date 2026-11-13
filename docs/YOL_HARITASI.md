@@ -636,3 +636,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.65 | Parça: yüz radyüsü, yüz–yüz pah, köşe pahı (3 mesafe), kabukta yüz başına kalınlık, ayırma çizgisi / basamaklı koniklik, koniklik analizi | ✅ |
 
 | v0.66 | Parça: çoğaltmada referansa kadar ve eskizi değiştir, katı gövdeyle (takım) süpürme | ✅ |
+
+| v0.67 | Parça: loft bağlayıcıları ve komşu yüze teğet, delik sihirbazında yuva delik ve yakın / uzak taraf havşası | ✅ |

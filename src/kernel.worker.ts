@@ -671,6 +671,7 @@ function loftTool(f: Extract<KFeature, { type: "loft" }>) {
     return cast(ps.Shape());
   }
   const frs = f.profiles.map((p) => resolvePlane(p.pl));
+  if (f.conn?.length || f.faceStart || f.faceEnd) return loftAdvanced(f, frs);
   const sk = (i: number, off = 0) => loopDrawing(f.profiles[i].loops[0]).sketchOnPlane(makePlane(frs[i], off)) as any;
   const sks = f.profiles.map((_, i) => sk(i));
   // başlangıç / bitiş kısıtı "profile dik": profile paralel yardımcı kesit (teğet uzunluğuyla orantılı)
@@ -695,6 +696,59 @@ function loftTool(f: Extract<KFeature, { type: "loft" }>) {
   return sks[0].loftWith(sks.slice(1), { ruled: f.ruled });
 }
 
+/** Döngüyü k. köşeden başlat (ve gerekirse ters çevir) — bağlayıcılar */
+function rotLoop(l: Loop, c?: { k: number; rev?: boolean }): Loop {
+  if (!c || !("segs" in l)) return l;
+  let segs = l.segs.slice();
+  if (c.rev) segs = segs.reverse().map(revSeg);
+  const k = ((c.k % segs.length) + segs.length) % segs.length;
+  return { ...l, segs: [...segs.slice(k), ...segs.slice(0, k)] };
+}
+/** Bağlayıcılı / komşu yüze teğet loft: ham ThruSections (bağlayıcılarda uyumluluk düzeltmesi kapalı) */
+function loftAdvanced(f: Extract<KFeature, { type: "loft" }>, frs: Frame[]): Shape {
+  const oc = getOC() as any;
+  const loops = f.profiles.map((p, i) => rotLoop(p.loops[0], f.conn?.[i]));
+  const wireOf = (i: number) => (loopDrawing(loops[i]).sketchOnPlane(makePlane(frs[i])) as any).wire;
+  const wires: any[] = loops.map((_, i) => wireOf(i));
+  // komşu yüze teğet: profil köşelerinden çıkan (profil düzleminde olmayan) model kenarlarının uzantısında yardımcı kesit
+  const faceAux = (i: number, j: number, t: number) => {
+    const l = loops[i];
+    if (!("segs" in l) || l.segs.some((sg) => sg.t !== "l")) throw new Error("Komşu yüze teğet: profil yalnız doğrulardan oluşmalı");
+    const n = frs[i].n;
+    const V = l.segs.map((sg) => toWorld(frs[i], sg.a));
+    const cj = toWorld(frs[j], ("segs" in loops[j] ? (loops[j] as any).segs[0].a : (loops[j] as any).circle?.c ?? (loops[j] as any).ellipse.c) as Vec2);
+    const span = Math.abs(vdot(vsub(cj, V[0]), n)) || 10;
+    const sgn = vdot(vsub(cj, V[0]), n) >= 0 ? 1 : -1;
+    const delta = 0.25 * t * span;
+    const edges = allEdges().filter((e: any) => String(e.geomType) === "LINE");
+    const aux = V.map((v) => {
+      let dir: Vec3 | null = null;
+      for (const e of edges) {
+        const A = tup(e.pointAt(0)), B = tup(e.pointAt(1));
+        const other = vlen(vsub(A, v)) < 1e-3 ? B : vlen(vsub(B, v)) < 1e-3 ? A : null;
+        if (!other || Math.abs(vdot(vsub(other, v), n)) < 1e-6) continue;
+        const d = vnorm(vsub(v, other)); // gövdeden dışarı uzantı
+        if (vdot(d, n) * sgn <= 1e-6) continue;
+        dir = d;
+        break;
+      }
+      if (!dir) throw new Error("Komşu yüze teğet: profil köşesinde model kenarı yok (profil model yüzünde olmalı)");
+      return vadd(v, vmul(dir, delta / Math.abs(vdot(dir, n))));
+    });
+    return (makePolygon(aux as any) as any).clone().outerWire();
+  };
+  const list = [...wires];
+  if (f.faceEnd) list.splice(list.length - 1, 0, faceAux(loops.length - 1, loops.length - 2, f.faceEnd));
+  if (f.faceStart) list.splice(1, 0, faceAux(0, 1, f.faceStart));
+  const same = loops.every((l) => "segs" in l && (l as any).segs.length === (loops[0] as any).segs?.length);
+  const b = new oc.BRepOffsetAPI_ThruSections(true, !!f.ruled, 1e-6);
+  if (f.conn?.length && same) b.CheckCompatibility(false);
+  for (const w of list) b.AddWire(w.wrapped);
+  b.Build(new oc.Message_ProgressRange());
+  if (!b.IsDone()) throw new Error("Loft oluşturulamadı (bağlayıcıları / profilleri kontrol edin)");
+  return cast(b.Shape()) as Shape;
+}
+
 function holeTool(f: Extract<KFeature, { type: "hole" }>) {
   if (!f.pts.length) throw new Error("Delik konumu seçin (yüze dokunun)");
   const frame = resolvePlane(f.pl);
@@ -706,21 +760,70 @@ function holeTool(f: Extract<KFeature, { type: "hole" }>) {
   const D = f.through ? bodySize() : f.depth;
   const tip = f.through ? 0 : R / Math.tan((59 * Math.PI) / 180);
   const e = 0.05;
-  let pts: Vec2[];
+  const cone = (Ro: number, Ri: number, ang: number) => (Ro - Ri) / Math.tan(((ang || 90) * Math.PI) / 360);
+  // yarım kesit (r, derinlik) — girişten aşağı
+  let head: Vec2[];
+  let Rtop = R;
   if (f.htype === "cbore") {
     const Rc = Math.max(f.cd / 2, R + 0.01);
-    pts = [[0, -e], [Rc, -e], [Rc, f.cdepth], [R, f.cdepth], [R, D], [0, D + tip]];
+    head = [[Rc, f.cdepth], [R, f.cdepth]];
+    Rtop = Rc;
   } else if (f.htype === "csink") {
     const Rc = Math.max(f.cd / 2, R + 0.01);
-    const h = (Rc - R) / Math.tan(((f.cangle || 90) * Math.PI) / 360);
-    pts = [[0, -e], [Rc + e, -e], [Rc, 0], [R, h], [R, D], [0, D + tip]];
-  } else pts = [[0, -e], [R, -e], [R, D], [0, D + tip]];
+    head = [[Rc, 0], [R, cone(Rc, R, f.cangle)]];
+    Rtop = Rc;
+  } else head = [];
+  // yakın taraf havşası: girişte koni (düz havşa / düz delik üstünde)
+  if (f.nearCs && f.nearCs.d / 2 > Rtop + 1e-6) {
+    const Rn = f.nearCs.d / 2, hn = cone(Rn, Rtop, f.nearCs.angle);
+    head = [[Rn, 0], [Rtop, hn], ...head.filter((q) => q[1] > hn + 1e-9 || (q[0] < Rtop - 1e-9 && q[1] >= hn))];
+    if (f.htype === "cbore") head = [[Rn, 0], [Rtop, hn], [Rtop, f.cdepth], [R, f.cdepth]];
+    Rtop = Rn;
+  }
+  const profAt = (T: number | null): Vec2[] => {
+    const body: Vec2[] = [[0, -e], [Rtop + e, -e], ...(head.length ? (head[0][1] > 1e-9 ? [[Rtop, 0] as Vec2, ...head] : head) : [[R, 0] as Vec2])];
+    if (T !== null && f.farCs && f.farCs.d / 2 > R + 1e-6) {
+      const Rf = f.farCs.d / 2, hf = cone(Rf, R, f.farCs.angle);
+      return [...body, [R, T - hf], [Rf, T], [Rf + e, T + e], [0, T + e]];
+    }
+    return [...body, [R, D], [0, D + tip]];
+  };
+  // uzak taraf havşası için çıkış derinliği (gövdeyle kesişen ince silindirin eksen boyunca en uzak noktası)
+  const exitDepth = (P: Vec3) => {
+    const a = all();
+    if (!a) return D;
+    const probe = makeCylinder(Math.min(R, 0.2), bodySize() * 2, P as any, v as any) as any;
+    const com = (a as any).intersect(probe);
+    let T = 0;
+    for (const ed of com.edges as any[]) for (const q of [0, 0.5, 1]) T = Math.max(T, vdot(vsub(tup(ed.pointAt(q)), P), v));
+    if (!(T > 0)) throw new Error("Uzak taraf havşası: delik çıkışı bulunamadı");
+    return T;
+  };
+  const L = f.slot && f.slot > 0 ? f.slot : 0;
+  const sa = ((f.slotAng ?? 0) * Math.PI) / 180;
+  const sd = vadd(vmul(u, Math.cos(sa)), vmul(nrm, Math.sin(sa))); // yuva yönü (yüz düzleminde)
   let res: Shape | null = null;
   for (const p of f.pts) {
-    const P = toWorld(frame, p);
-    let pen: any = draw(pts[0]);
-    for (let i = 1; i < pts.length; i++) pen = pen.lineTo(pts[i]);
-    const t = pen.close().sketchOnPlane(new Plane(P, u, nrm)).revolve(v, { origin: P, angle: 360 });
+    const Pc = toWorld(frame, p);
+    const T = f.through && f.farCs ? exitDepth(Pc) : null;
+    const pts = profAt(T);
+    const rev = (P: Vec3) => {
+      let pen: any = draw(pts[0]);
+      for (let i = 1; i < pts.length; i++) pen = pen.lineTo(pts[i]);
+      return pen.close().sketchOnPlane(new Plane(P, u, nrm)).revolve(v, { origin: P, angle: 360 }) as Shape;
+    };
+    let t: Shape;
+    if (L > 0) {
+      // yuva: iki uçta döndürülmüş kesit + aradaki tam kesitin yuva yönünde ekstrüzyonu
+      const P1 = vadd(Pc, vmul(sd, -L / 2)), P2 = vadd(Pc, vmul(sd, L / 2));
+      const w = vnorm(vcross(v, sd));
+      const full: Vec2[] = [...pts.map((q) => [q[0], q[1]] as Vec2), ...pts.slice().reverse().map((q) => [-q[0], q[1]] as Vec2)].filter((q, i, arr) => i === 0 || Math.hypot(q[0] - arr[i - 1][0], q[1] - arr[i - 1][1]) > 1e-9);
+      let pen: any = draw(full[0]);
+      for (let i = 1; i < full.length; i++) pen = pen.lineTo(full[i]);
+      // çizim düzlemi: x = w, y = v (derinlik), normal = w × v = yuva yönü
+      const mid = pen.close().sketchOnPlane(new Plane(P1, w, vcross(w, v))).extrude(L) as Shape;
+      t = rev(P1).fuse(rev(P2)).fuse(mid);
+    } else t = rev(Pc);
     res = res ? res.fuse(t) : t;
   }
   return res!;

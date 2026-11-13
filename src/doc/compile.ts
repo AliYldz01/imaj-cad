@@ -374,7 +374,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
               return pts;
             });
           }
-          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd });
+          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd, conn: f.conn, faceStart: f.faceStart, faceEnd: f.faceEnd });
           break;
         }
         case "rib": {
@@ -639,7 +639,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
             pts = sf.data.ents.filter((e: any) => e.t === "point" && !e.cons).map((e: any) => toLocal(pl.frame, toWorld(fr, pointPos(sf.data, e.p))));
             if (!pts.length) throw new Error("Konum eskizinde nokta yok");
           }
-          kfeats.push({ id: f.id, type: "hole", pl, pts, htype: f.htype, d: f.d, depth: f.depth, through: f.through, cd: f.cd, cdepth: f.cdepth, cangle: f.cangle });
+          kfeats.push({ id: f.id, type: "hole", pl, pts, htype: f.htype, d: f.d, depth: f.depth, through: f.through, cd: f.cd, cdepth: f.cdepth, cangle: f.cangle, slot: f.slot, slotAng: f.slotAng, nearCs: f.nearCs, farCs: f.farCs });
           break;
         }
         case "draft": {
