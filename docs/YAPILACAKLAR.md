@@ -40,7 +40,7 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 ## 4. Sac metal
 - ✅ v0.69 4.1 Flanş profilini serbest eskizle düzenleme (yerel x kenar / y flanş; dikdörtgen eskiz oluştur)
 - ✅ v0.69 4.2 Kaynaklı köşe (açınımda bastırılır), köşe boşaltma türü (dikdörtgen / dairesel; 2–3 büküm köşesi), büküm boşaltma türü (dikdörtgen / oval / yırtma)
-- ⬜ 4.3 Çapraz kırma, havalandırma, şekillendirme araçları, sac köşe takviyesi
+- ✅ v0.70 4.3 Çapraz kırma (kozmetik), havalandırma (sınır + kaburga / kiriş), şekillendirme araçları (yuvarlak / dikdörtgen kabartma, panjur; açınımda bastırılır), sac köşe takviyesi
 
 ## 5. Kaynaklı yapı
 - ⬜ 5.1 Kesim listesi özellik penceresi

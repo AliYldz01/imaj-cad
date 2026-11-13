@@ -3120,6 +3120,128 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
   bodies = out;
 }
 
+/** Eksen etrafında döndürülmüş (r, z) profil katısı */
+function revSolid(P: Vec3, axis: Vec3, pts: Vec2[]): Shape {
+  const a = vnorm(axis);
+  const u = vnorm(Math.abs(a[0]) < 0.9 ? vcross(a, [1, 0, 0]) : vcross(a, [0, 1, 0]));
+  let pen: any = draw(pts[0]);
+  for (let i = 1; i < pts.length; i++) pen = pen.lineTo(pts[i]);
+  return pen.close().sketchOnPlane(new Plane(P, u, vcross(u, a))).revolve(a, { origin: P, angle: 360 }) as Shape;
+}
+/** Sac şekillendirme aracı: dış biçim eklenir, sac kalınlığı kadar içeri ötelenmiş biçim çıkarılır (sabit et kalınlığı) */
+function sheetForm(f: Extract<KFeature, { type: "sform" }>) {
+  if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
+  if (!f.pts.length) throw new Error("Konum seçin (sac yüzüne dokunun)");
+  const fr = resolvePlane(f.pl);
+  const t = f.t, H = f.H;
+  if (!(H > t)) throw new Error("Yükseklik sac kalınlığından büyük olmalı");
+  const dir = f.down ? vmul(fr.n, -1) : fr.n; // kabartma yönü
+  // yüz sacın hangi tarafı? alt yüzdeyse kalınlık yönü ters
+  const yv = vcross(fr.n, fr.x);
+  const ang = ((f.ang ?? 0) * Math.PI) / 180;
+  const xd = vadd(vmul(fr.x, Math.cos(ang)), vmul(yv, Math.sin(ang))), yd = vcross(fr.n, xd);
+  const tn = Math.tan(((f.draft ?? 0) * Math.PI) / 180);
+  for (const p of f.pts) {
+    // yüz alt taraftaysa (kabartma sacın içine doğru) taban yüzeyi kalınlık kadar kaydır
+    const P0 = toWorld(fr, p);
+    const P = f.down ? vsub(P0, vmul(fr.n, t)) : P0;
+    let outer: Shape, inner: Shape;
+    if (f.kind === "dimple") {
+      const R = f.D / 2, Rt = Math.max(0.05, R - H * tn);
+      if (R - t <= 0.05) throw new Error("Çap sac kalınlığına göre çok küçük");
+      outer = revSolid(P, dir, [[0, 0], [R, 0], [Rt, H], [0, H]]);
+      inner = revSolid(vsub(P, vmul(dir, t)), dir, [[0, 0], [R - t, 0], [Math.max(0.05, Rt - t), H], [0, H]]);
+    } else if (f.kind === "emboss") {
+      const W = f.D, L = f.L, d = H * tn;
+      if (W - 2 * t <= 0.1 || L - 2 * t <= 0.1) throw new Error("Kabartma ölçüleri sac kalınlığına göre küçük");
+      const frust = (O: Vec3, w: number, l: number, h: number) => {
+        const b = [[-w / 2, -l / 2], [w / 2, -l / 2], [w / 2, l / 2], [-w / 2, l / 2]].map(([a, c]) => vadd(vadd(O, vmul(xd, a)), vmul(yd, c)));
+        const q = [[-w / 2 + d, -l / 2 + d], [w / 2 - d, -l / 2 + d], [w / 2 - d, l / 2 - d], [-w / 2 + d, l / 2 - d]].map(([a, c]) => vadd(vadd(vadd(O, vmul(xd, a)), vmul(yd, c)), vmul(dir, h)));
+        return loft([assembleWire([0, 1, 2, 3].map((i) => makeLine(b[i] as any, b[(i + 1) % 4] as any))) as any, assembleWire([0, 1, 2, 3].map((i) => makeLine(q[i] as any, q[(i + 1) % 4] as any))) as any], {}, false) as Shape;
+      };
+      outer = frust(P, W, L, H);
+      inner = frust(vsub(P, vmul(dir, t)), W - 2 * t, L - 2 * t, H);
+    } else {
+      // panjur: uzunluk boyunca yükselen kama, yüksek ucu açık
+      const W = f.D, L = f.L;
+      if (W - 2 * t <= 0.1) throw new Error("Panjur genişliği sac kalınlığına göre küçük");
+      const wedge = (O: Vec3, w: number, l0: number, l1: number, h: number) => {
+        const pts: Vec3[] = [vadd(O, vmul(yd, l0)), vadd(O, vmul(yd, l1)), vadd(vadd(O, vmul(yd, l1)), vmul(dir, h))];
+        const face = makePolygon(pts.map((q) => vsub(q, vmul(xd, w / 2))) as any) as any;
+        return basicFaceExtrusion(face, new Vector(vmul(xd, w) as any)) as any as Shape;
+      };
+      outer = wedge(P, W, -L / 2, L / 2, H);
+      inner = wedge(vsub(P, vmul(dir, t)), W - 2 * t, -L / 2, L / 2 + t + 0.05, H);
+      // ön (yüksek) uç açık: iç kama dış kamanın ön duvarını keser
+      inner = inner.fuse(boxIn(vsub(P, vmul(dir, t)), xd, dir, yd, -(W - 2 * t) / 2, (W - 2 * t) / 2, 0, H, L / 2 - 0.01, L / 2 + t + 0.05));
+    }
+    let bi = bodies.findIndex((b) => {
+      const [mn, mx] = b.boundingBox.bounds as [Vec3, Vec3];
+      return [0, 1, 2].every((k) => P0[k] >= mn[k] - 1e-3 && P0[k] <= mx[k] + 1e-3);
+    });
+    if (bi < 0) bi = 0;
+    bodies[bi] = bodies[bi].fuse(outer).cut(inner);
+  }
+  bodies = bodies.flatMap(solidsOf);
+}
+/** Havalandırma: sınır bölgesinden kaburga / kiriş şeritleri çıkarılır, kalan sacdan kesilir */
+function ventCut(f: Extract<KFeature, { type: "vent" }>) {
+  if (!bodies.length) throw new Error("Önce bir katı oluşturun");
+  const fr = resolvePlane(f.pl);
+  let region: any = profile(f.loops);
+  const w = Math.max(0.01, f.rw);
+  for (const [a, b] of f.ribs) {
+    const d = [b[0] - a[0], b[1] - a[1]], L = Math.hypot(d[0], d[1]);
+    if (L < 1e-6) continue;
+    const n: Vec2 = [(-d[1] / L) * (w / 2), (d[0] / L) * (w / 2)];
+    const e: Vec2 = [(d[0] / L) * w, (d[1] / L) * w]; // sınırı biraz aşsın
+    const A: Vec2 = [a[0] - e[0], a[1] - e[1]], B: Vec2 = [b[0] + e[0], b[1] + e[1]];
+    const rib = draw([A[0] + n[0], A[1] + n[1]]).lineTo([B[0] + n[0], B[1] + n[1]]).lineTo([B[0] - n[0], B[1] - n[1]]).lineTo([A[0] - n[0], A[1] - n[1]]).close();
+    region = region.cut(rib);
+  }
+  const big = bodySize();
+  const tool = region.sketchOnPlane(makePlane({ ...fr, o: vsub(fr.o, vmul(fr.n, big)) })).extrude(2 * big) as Shape;
+  bodies = bodies.map((b) => b.cut(tool)).flatMap(solidsOf);
+}
+/** Sac köşe takviyesi: iç büküm yüzünün iki doğrusal sınır kenarından bacaklar boyunca L, üçgen kesitli w genişliğinde takviye */
+function sheetGusset(f: Extract<KFeature, { type: "sgusset" }>) {
+  const hs = matchFaces([f.face]);
+  const bi = bodies.findIndex((b) => (b.faces as any[]).some((x) => hs.has(x.hashCode)));
+  if (bi < 0) throw new Error("Büküm yüzü bulunamadı");
+  const body = bodies[bi];
+  const face = (body.faces as any[]).find((x) => hs.has(x.hashCode));
+  if (String(face.geomType) !== "CYLINDRE") throw new Error("İç büküm (silindirik) yüzünü seçin");
+  const cp = cylinderParams(face);
+  const a = vnorm(cp.a);
+  const lines = (face.edges as any[]).filter((e) => String(e.geomType) === "LINE");
+  if (lines.length < 2) throw new Error("Büküm yüzünün doğrusal kenarları bulunamadı");
+  // büküm boyunca konum
+  let lo = Infinity, hi = -Infinity;
+  for (const e of lines) for (const q of [0, 1]) { const s = vdot(vsub(tup(e.pointAt(q)), cp.L), a); lo = Math.min(lo, s); hi = Math.max(hi, s); }
+  const s0 = lo + (hi - lo) * Math.max(0, Math.min(1, f.pos));
+  const legs = lines.slice(0, 2).map((e) => {
+    const A = tup(e.pointAt(0));
+    const P = vadd(A, vmul(a, s0 - vdot(vsub(A, cp.L), a))); // istasyondaki teğet noktası
+    const adj = facesOfEdge(body, e.hashCode).find((x) => x.hashCode !== face.hashCode && String(x.geomType) === "PLANE");
+    if (!adj) throw new Error("Büküme komşu düz yüz bulunamadı");
+    const n = vnorm(tup(adj.normalAt(tup(adj.center))));
+    let d = vnorm(vcross(a, n));
+    if (vdot(d, vsub(tup(adj.center), P)) < 0) d = vmul(d, -1);
+    return { P, d };
+  });
+  // iç sanal keskin köşe: iki bacak doğrusunun kesişimi
+  const [g1, g2] = legs;
+  const w0 = vsub(g1.P, g2.P), B = vdot(g1.d, g2.d), D = vdot(g1.d, w0), E = vdot(g2.d, w0), den = 1 - B * B;
+  if (Math.abs(den) < 1e-9) throw new Error("Bacaklar paralel (büküm açısı 180°)");
+  const sA = (B * E - D) / den;
+  const S = vadd(g1.P, vmul(g1.d, sA));
+  const A1 = vadd(S, vmul(g1.d, f.L)), A2 = vadd(S, vmul(g2.d, f.L));
+  const half = f.w / 2;
+  const tri = makePolygon([A1, S, A2].map((q) => vsub(q, vmul(a, half))) as any) as any;
+  const rib = basicFaceExtrusion(tri, new Vector(vmul(a, f.w) as any)) as any as Shape;
+  bodies[bi] = body.fuse(rib);
+}
+
 /** Aç / katla ile kesme: eskiz açınım düzleminde (sabit yüz) yorumlanır, katlı parçaya eşlenip kesilir */
 function flatCut(f: Extract<KFeature, { type: "flatcut" }>) {
   if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
@@ -3660,6 +3782,12 @@ async function buildFeature(f: KFeature) {
       surfs = [...keep, { id: f.id, s: r }];
       return;
     }
+    case "sform":
+      return sheetForm(f);
+    case "vent":
+      return ventCut(f);
+    case "sgusset":
+      return sheetGusset(f);
     case "dface": {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       const set = matchFaces(f.faces);

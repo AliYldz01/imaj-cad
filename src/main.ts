@@ -107,6 +107,10 @@ const FEAT_NAMES: Record<string, string> = {
   thread: "Diş",
   flex: "Esnet",
   vchamfer: "Köşe-Pahı",
+  sform: "Şekillendirme",
+  vent: "Havalandırma",
+  crossbreak: "Çapraz-Kırma",
+  sgusset: "Sac-Takviye",
   sketch3d: "3B-Eskiz",
   weld: "Kaynak-Dikişi",
   member: "Yapı-Elemanı",
@@ -1206,6 +1210,7 @@ function pickWant() {
     if (t === "closecorner") return { face: true };
     if (t === "draft" && (mode.draft as any).mode === "parting") return { edge: true };
     if (t === "lpattern" && (mode.draft as any)._pick === "upTo") return { edge: true, face: true };
+    if (t === "sform" || t === "crossbreak" || t === "sgusset") return { face: true };
     if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
@@ -1601,6 +1606,18 @@ function newFeature(kind: string) {
     case "knit":
       draft = { id, type: "knit", name: "", surf: "", side: 1, surfs: surfaceFeats().map((x) => x.id), solid: false } as any;
       break;
+    case "sform":
+      draft = { id, type: "sform", name: "", kind: "dimple", plane: null, pts: [], D: 20, L: 30, H: 4, draft: 15 } as any;
+      break;
+    case "vent":
+      draft = { id, type: "vent", name: "", sketch: lastFreeSketch()?.id ?? "", rw: 2 } as any;
+      break;
+    case "crossbreak":
+      draft = { id, type: "crossbreak", name: "", face: psel.faces.size ? faceRef([...psel.faces][0]) : null, angle: 3, r: 1 } as any;
+      break;
+    case "sgusset":
+      draft = { id, type: "sgusset", name: "", face: null, L: 10, w: 3, pos: 0.5 } as any;
+      break;
     case "dface":
       draft = { id, type: "dface", name: "", mode: "move", d: 5, faces: [...psel.faces].map((i) => faceRef(i)) } as any;
       break;
@@ -1871,6 +1888,8 @@ function commitFeature(kind: string) {
   if (draft.type === "draft" && ((draft as any).mode === "parting" ? !(draft as any).edges?.length : !draft.faces.length)) return toast((draft as any).mode === "parting" ? "Ayırma çizgisi kenarlarını seçin" : "Koniklik verilecek yüzleri seçin", true);
   if (draft.type === "shell" && !draft.faces.length) return toast("Kaldırılacak en az bir yüz seçin", true);
   if ((draft as any).type === "dface" && !(draft as any).faces.length) return toast("En az bir yüz seçin", true);
+  if ((draft as any).type === "sform" && !(draft as any).pts.length) return toast("Sac yüzüne dokunarak konum seçin", true);
+  if (((draft as any).type === "crossbreak" || (draft as any).type === "sgusset") && !(draft as any).face) return toast("Yüz seçin", true);
   if ((draft.type === "lpattern" || draft.type === "cpattern") && !draft.feats.length) return toast("Çoğaltılacak özelliği seçin", true);
   if (draft.type === "mirror" && !draft.body && !draft.feats.length) return toast("Aynalanacak özelliği seçin veya 'Tüm gövde'yi işaretleyin", true);
   if (draft.type === "revolve" && !draft.axis) return toast("Döndürme ekseni için eskize bir merkez çizgisi çizin", true);
@@ -2244,6 +2263,36 @@ function renderFeaturePM(kind: string) {
       for (const s of surfaceFeats().filter((x) => x.id !== d.id))
         box.appendChild(checkField(s.name, d.surfs.includes(s.id), (on) => ((d.surfs = on ? [...d.surfs, s.id] : d.surfs.filter((x: string) => x !== s.id)), upd())));
       body.appendChild(group("Yüzey dik", box, checkField("Kapalıysa katı oluştur", !!d.solid, (v) => ((d.solid = v), upd())), h("p", "pm-hint", "Kenarları çakışan yüzeyler tek kabukta birleştirilir; kapalı hacim katıya çevrilebilir.")));
+      break;
+    }
+    case "sform": {
+      const K = d.kind;
+      body.appendChild(group("Şekillendirme aracı", segField([{ v: "dimple", t: "Yuvarlak kabartma" }, { v: "emboss", t: "Dikdörtgen kabartma" }, { v: "louver", t: "Panjur" }], K, (v) => ((d.kind = v), renderFeaturePM(kind), upd())),
+        numField(K === "dimple" ? "Çap" : "Genişlik", d.D, (v) => ((d.D = v), upd()), { min: 0.1, unit: "mm" }),
+        ...(K !== "dimple" ? [numField("Uzunluk", d.L, (v) => ((d.L = v), upd()), { min: 0.1, unit: "mm" }), numField("Açı (yüzde)", d.ang ?? 0, (v) => ((d.ang = v || undefined), upd()), { unit: "°" })] : []),
+        numField("Yükseklik", d.H, (v) => ((d.H = v), upd()), { min: 0.1, unit: "mm" }),
+        ...(K !== "louver" ? [numField("Koniklik", d.draft, (v) => ((d.draft = Math.max(0, v)), upd()), { min: 0, unit: "°" })] : []),
+        checkField("Ters yöne (sacın öbür tarafına)", !!d.down, (v) => ((d.down = v || undefined), upd())),
+      ));
+      const g = group("Konumlar", h("div", "pm-picks", d.plane ? `${d.pts.length} konum` : "Sacın düz yüzüne dokunun (her dokunuş bir konum)"));
+      if (d.pts.length) g.appendChild(button("Konumları temizle", () => ((d.pts = []), (d.plane = null), renderFeaturePM(kind), upd())));
+      body.appendChild(g);
+      hint("Şekillendirme konumları için sac yüzüne dokunun");
+      break;
+    }
+    case "vent": {
+      const sks = doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }));
+      body.appendChild(group("Havalandırma", selectField("Eskiz", sks, d.sketch, (v) => ((d.sketch = v), upd())), numField("Kaburga / kiriş genişliği", d.rw, (v) => ((d.rw = v), upd()), { min: 0.01, unit: "mm" }), h("p", "pm-hint", "Eskizin kapalı konturları açılır (iç konturlar ada kalır); yapı (kesikli) çizgileri kaburga ve kiriş olarak verilen genişlikte dolu bırakılır.")));
+      break;
+    }
+    case "crossbreak": {
+      body.appendChild(group("Çapraz kırma", h("div", "pm-picks", d.face ? "Yüz seçili" : "Düz sac yüzüne dokunun"), numField("Kırma açısı", d.angle, (v) => ((d.angle = v), drawRefGeom()), { min: 0.1, unit: "°" }), numField("Kırma yarıçapı", d.r, (v) => ((d.r = v), drawRefGeom()), { min: 0, unit: "mm" }), checkField("Yönü ters (içe)", !!d.flip, (v) => ((d.flip = v || undefined), drawRefGeom())), h("p", "pm-hint", "Kozmetik: yüzde köşegen kırma çizgileri gösterilir, geometri değişmez; teknik resim / açınım notu içindir.")));
+      drawRefGeom();
+      break;
+    }
+    case "sgusset": {
+      body.appendChild(group("Sac köşe takviyesi", h("div", "pm-picks", d.face ? "Büküm yüzü seçili" : "İç büküm (silindirik) yüzüne dokunun"), numField("Bacak uzunluğu (iç köşeden)", d.L, (v) => ((d.L = v), upd()), { min: 0.1, unit: "mm" }), numField("Takviye genişliği", d.w, (v) => ((d.w = v), upd()), { min: 0.1, unit: "mm" }), numField("Büküm boyunca konum (%)", Math.round(d.pos * 100), (v) => ((d.pos = Math.max(0, Math.min(100, v)) / 100), upd()), { min: 0, unit: "%" })));
+      hint("İç büküm yüzüne dokunun");
       break;
     }
     case "dface": {
@@ -3677,12 +3726,33 @@ function drawRefGeom() {
   refGroup = [];
   const size = viewer.bbox ? Math.max(40, viewer.bbox.getSize(new THREE.Vector3()).length() * 0.6) : 80;
   const list = [...viewFeatures().feats];
-  if (mode.k === "pm" && ["axis", "point", "csys", "hole"].includes(mode.draft.type)) list.push(mode.draft);
+  if (mode.k === "pm" && ["axis", "point", "csys", "hole", "crossbreak"].includes(mode.draft.type)) list.push(mode.draft);
   for (const f of list) {
     if (f.off) continue;
     if (f.type === "axis") {
       const d = f.d, p = f.p, L = size / 2;
       refGroup.push(viewer.fatLines([p[0] - d[0] * L, p[1] - d[1] * L, p[2] - d[2] * L, p[0] + d[0] * L, p[1] + d[1] * L, p[2] + d[2] * L], 0x2b7de9, 1.5, true));
+    } else if (f.type === "crossbreak" && f.face && viewer.mesh) {
+      // yüz sınırının kendi düzlemindeki sınır kutusu köşegenleri
+      const fi = nearestFace(f.face);
+      const m = viewer.mesh;
+      if (fi >= 0) {
+        const fc = m.faces[fi], n = fc.n as Vec3;
+        const fr = frameFromNormal(fc.c, n);
+        const fg = m.faceGroups, tri = m.triangles, V = m.vertices;
+        let mn = [Infinity, Infinity], mx = [-Infinity, -Infinity];
+        for (let i = 0; i < fg.length; i += 3) {
+          if (fg[i + 2] !== fi) continue;
+          for (let k = fg[i]; k < fg[i] + fg[i + 1]; k++) {
+            const q = toLocal(fr, [V[tri[k] * 3], V[tri[k] * 3 + 1], V[tri[k] * 3 + 2]]);
+            mn = [Math.min(mn[0], q[0]), Math.min(mn[1], q[1])];
+            mx = [Math.max(mx[0], q[0]), Math.max(mx[1], q[1])];
+          }
+        }
+        const W = (x: number, y: number) => toWorld(fr, [x, y]).map((v, k) => v + n[k] * 0.02);
+        const a = W(mn[0], mn[1]), b2 = W(mx[0], mx[1]), c = W(mx[0], mn[1]), dd = W(mn[0], mx[1]);
+        refGroup.push(viewer.fatLines([...a, ...b2, ...c, ...dd], f.flip ? 0xd33f3f : 0x2f9e44, 1.5, true));
+      }
     } else if (f.type === "point") {
       const s = size / 60;
       for (const p of [f.p, ...(f.more ?? [])]) refGroup.push(viewer.fatLines([p[0] - s, p[1], p[2], p[0] + s, p[1], p[2], p[0], p[1] - s, p[2], p[0], p[1] + s, p[2], p[0], p[1], p[2] - s, p[0], p[1], p[2] + s], 0x2b7de9, 2.5));
@@ -4671,6 +4741,27 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     if (!f.n) return toast("Düz bir yüz seçin", true);
     d.face = { c: f.c, n: f.n };
     schedulePreview();
+  } else if (d.type === "sform" && hit.kind === "face" && m) {
+    const f = m.faces[hit.index];
+    if (!d.plane) {
+      if (!f.n) return toast("Düz bir sac yüzü seçin", true);
+      d.plane = { k: "face", frame: frameFromNormal(f.c, f.n), label: "Yüz", face: { c: f.c, n: f.n } };
+    }
+    const fr = d.plane.frame;
+    const w = ev ? viewer.pickFrame(ev.clientX, ev.clientY, fr) : null;
+    const lp: Vec2 = w ? toLocal(fr, [w.x, w.y, w.z]) : toLocal(fr, hit.point);
+    d.pts.push([Math.round(lp[0] * 10) / 10, Math.round(lp[1] * 10) / 10]);
+    schedulePreview();
+  } else if (d.type === "crossbreak" && hit.kind === "face" && m) {
+    const f = m.faces[hit.index];
+    if (!f.n) return toast("Düz bir yüz seçin", true);
+    d.face = { c: f.c, n: f.n };
+    drawRefGeom();
+  } else if (d.type === "sgusset" && hit.kind === "face" && m) {
+    const f = m.faces[hit.index];
+    if (f.type !== "CYLINDRE") return toast("İç büküm (silindirik) yüzünü seçin", true);
+    d.face = { c: f.c, n: f.n, r: f.r } as any;
+    schedulePreview();
   } else if (d.type === "hole" && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     if (!d.plane) {
@@ -5098,8 +5189,9 @@ async function computeFlat(bodyIdx: number): Promise<FlatResult | null> {
   setStatus("busy", "Açınım hesaplanıyor…");
   // SolidWorks: kaynaklı köşeler düz desende bastırılır (boşluklu kapalı köşe olarak açılır)
   const feats = viewFeatures().feats;
-  const welded = feats.some((f) => f.type === "closecorner" && f.weld && !f.off);
-  if (welded) await kernel.build(compile(feats.map((f) => (f.type === "closecorner" && f.weld ? { ...f, weld: false } : f)), doc.profiles ?? {}).kfeats);
+  // şekillendirme araçları ve sac takviyeleri de düz desende bastırılır
+  const welded = feats.some((f) => ((f.type === "closecorner" && f.weld) || f.type === "sform" || f.type === "sgusset") && !f.off);
+  if (welded) await kernel.build(compile(feats.map((f) => (f.type === "closecorner" && f.weld ? { ...f, weld: false } : f.type === "sform" || f.type === "sgusset" ? { ...f, off: true } : f)), doc.profiles ?? {}).kfeats);
   const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r);
   if (welded) await kernel.build(compile(feats, doc.profiles ?? {}).kfeats);
   setStatus("ok", "Hazır");
@@ -5260,6 +5352,10 @@ const FEAT_ICON: Record<string, string> = {
   thread: "thread",
   flex: "flex",
   vchamfer: "vchamfer",
+  sform: "dome",
+  vent: "cutExtrude",
+  crossbreak: "sketchbend",
+  sgusset: "gusset",
   sketch3d: "sketch3d",
   weld: "weld",
   member: "member",
@@ -5696,6 +5792,10 @@ function commands(): Cmd[] {
       { id: "sheetjog", label: "Kademe", icon: "sheetjog", run: () => newFeature("sheetjog") },
       { id: "miterflange", label: "Gönye Flanş", icon: "miterflange", run: () => newFeature("miterflange") },
       { id: "closecorner", label: "Köşe Kapat", icon: "closecorner", run: () => newFeature("closecorner") },
+      { id: "sform", label: "Şekillendirme", icon: "dome", run: () => newFeature("sform") },
+      { id: "vent", label: "Havalandırma", icon: "cutExtrude", run: () => newFeature("vent") },
+      { id: "crossbreak", label: "Çapraz Kırma", icon: "sketchbend", run: () => newFeature("crossbreak") },
+      { id: "sgusset", label: "Sac Takviye", icon: "gusset", run: () => newFeature("sgusset") },
       { id: "breakR", label: "Köşe Kır (R)", icon: "fillet", run: () => (newFeature("fillet"), hint("Sac köşesi: kalınlık boyunca uzanan köşe kenarlarına dokunun")) },
       { id: "breakC", label: "Köşe Kır (pah)", icon: "chamfer", run: () => (newFeature("chamfer"), hint("Sac köşesi: kalınlık boyunca uzanan köşe kenarlarına dokunun")) },
       { id: "tosheet", label: "Saca Dönüştür", icon: "tosheet", run: () => newFeature("tosheet") },

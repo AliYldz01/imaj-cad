@@ -365,6 +365,14 @@ export interface SurfaceUseFeature extends FeatBase { type: "thicken" | "surfcut
 export interface SurfaceEditFeature extends FeatBase { type: "surftrim" | "knit"; surf: string; /** kırpma aracı: yüzey özelliği kimliği ya da "std:front|top|right" */ tool?: string; side: 1 | -1; surfs?: string[]; solid?: boolean }
 /** doğrudan düzenleme (SolidWorks Yüz Taşı / Yüz Sil–doldur): düz yüzü normali boyunca ötele, silindirik deliği doldur */
 export interface DirectFaceFeature extends FeatBase { type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
+/** sac şekillendirme aracı (SolidWorks Forming Tools): yuvarlak kabartma / dikdörtgen kabartma / panjur; sac yüzündeki noktalara */
+export interface SheetFormFeature extends FeatBase { type: "sform"; kind: "dimple" | "emboss" | "louver"; plane: PlaneRef | null; pts: Vec2[]; D: number; L: number; H: number; draft: number; down?: boolean; ang?: number }
+/** havalandırma: eskizdeki en büyük kapalı kontur sınır, iç kapalı konturlar boşluk değil dolu ada, yapı çizgileri kaburga / kiriş (genişlik rw) */
+export interface VentFeature extends FeatBase { type: "vent"; sketch: string; rw: number }
+/** çapraz kırma (kozmetik): düz sac yüzünde köşegen kırma çizgileri */
+export interface CrossBreakFeature extends FeatBase { type: "crossbreak"; face: FaceRef | null; angle: number; r: number; flip?: boolean }
+/** sac köşe takviyesi: iç büküm yüzünde, büküm boyunca konumda (0–1) üçgen takviye */
+export interface SheetGussetFeature extends FeatBase { type: "sgusset"; face: FaceRef | null; L: number; w: number; pos: number }
 export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[]; /** dışa kabuk */ out?: boolean; /** yüz başına farklı kalınlık (düz yüzler) */ multi?: { ref: FaceRef; t: number }[] }
 
 export type AxisName = "x" | "y" | "z";
@@ -701,6 +709,10 @@ export type Feature =
   | RefPointFeature
   | CoordSysFeature
   | DirectFaceFeature
+  | SheetFormFeature
+  | VentFeature
+  | CrossBreakFeature
+  | SheetGussetFeature
   | SurfaceFeature
   | SurfaceUseFeature
   | SurfaceEditFeature;
@@ -764,6 +776,9 @@ export type KFeature =
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean; multi?: { ref: FaceRef; t: number }[] }
   | { id: string; type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
+  | { id: string; type: "sform"; kind: "dimple" | "emboss" | "louver"; pl: KPlane; pts: Vec2[]; D: number; L: number; H: number; draft: number; down?: boolean; ang?: number; t: number }
+  | { id: string; type: "vent"; pl: KPlane; loops: Loop[]; ribs: [Vec2, Vec2][]; rw: number }
+  | { id: string; type: "sgusset"; face: FaceRef; L: number; w: number; pos: number }
   | { id: string; type: "surface"; mode: "extrude" | "planar" | "loft" | "fill"; pl: KPlane | null; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null; d: number; mid?: boolean; secs?: { pl: KPlane; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null }[]; edges?: EdgeRef[] }
   | { id: string; type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }
   | { id: string; type: "surftrim"; surf: string; tool?: string; tpl?: KPlane; side: 1 | -1 }

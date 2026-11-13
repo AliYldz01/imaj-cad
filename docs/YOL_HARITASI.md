@@ -642,3 +642,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.68 | Parça: referans noktası türleri, ağaç klasörleri, Ne yanlış? + geometri kontrolü, sarı önizleme (3. grup tamam) | ✅ |
 
 | v0.69 | Sac: flanş profilini serbest eskizle düzenleme, büküm boşaltma türleri, dairesel köşe boşaltması, kaynaklı köşe | ✅ |
+
+| v0.70 | Sac: şekillendirme araçları (kabartma, panjur), havalandırma, çapraz kırma, sac köşe takviyesi (4. grup tamam) | ✅ |

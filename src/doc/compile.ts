@@ -718,6 +718,32 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           if ((f.surfs ?? []).length < 1) throw new Error("Dikilecek yüzeyleri seçin");
           kfeats.push({ id: f.id, type: "knit", surfs: f.surfs!, solid: !!f.solid });
           break;
+        case "sform": {
+          if (!f.plane) throw new Error("Şekillendirme için sac yüzünü seçin");
+          const pl = kplane(f.plane, feats);
+          if (!pl) throw new Error("Yüz bulunamadı");
+          const sp = sheetParamsBefore(feats, f.id);
+          kfeats.push({ id: f.id, type: "sform", kind: f.kind, pl, pts: f.pts, D: f.D, L: f.L, H: f.H, draft: f.draft, down: f.down, ang: f.ang, t: sp?.t ?? 1 });
+          break;
+        }
+        case "vent": {
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Havalandırma eskizini seçin");
+          const pl = kplane(sk.plane, feats, sk.id);
+          if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+          const { loops, error } = extractLoops(sk.data);
+          if (error) throw new Error(`${sk.name}: ${error}`);
+          if (!loops.length) throw new Error(`${sk.name}: sınır konturu yok`);
+          const ribs = sk.data.ents.filter((e: any) => e.t === "line" && e.cons).map((e: any) => [pointPos(sk.data, e.p1), pointPos(sk.data, e.p2)] as [Vec2, Vec2]);
+          kfeats.push({ id: f.id, type: "vent", pl, loops, ribs, rw: f.rw });
+          break;
+        }
+        case "crossbreak":
+          break;
+        case "sgusset":
+          if (!f.face) throw new Error("İç büküm yüzünü seçin");
+          kfeats.push({ id: f.id, type: "sgusset", face: f.face, L: f.L, w: f.w, pos: f.pos });
+          break;
         case "dface":
           kfeats.push({ id: f.id, type: "dface", mode: f.mode, d: f.d, faces: f.faces });
           break;
@@ -818,6 +844,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend" || f.type === "flatcut") && f.sketch === sketchId) ||
       (f.type === "member" && ([...f.segs, ...(f.groups ?? []).flatMap((g) => g.segs)].some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
       ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId) ||
-      (f.type === "edgeflange" && f.prof === sketchId),
+      (f.type === "edgeflange" && f.prof === sketchId) ||
+      (f.type === "vent" && f.sketch === sketchId),
   );
 }
