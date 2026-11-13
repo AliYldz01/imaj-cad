@@ -1687,7 +1687,7 @@ function closeCorner(f: Extract<KFeature, { type: "closecorner" }>) {
       if (d > 1e-6 && d < best) best = d;
     }
     if (!isFinite(best)) throw new Error("Uç yüzün karşısında komşu flanş bulunamadı");
-    const dist = best - (f.overlap ? 0 : f.gap);
+    const dist = best - (f.overlap || f.weld ? 0 : f.gap);
     if (dist <= 1e-6) continue;
     let prism = basicFaceExtrusion(pf.face.clone(), new Vector(vmul(n, dist)));
     // yalnızca düz flanş kısmı uzatılır: tabandan büküm (r + t) yüksekliğinin altı kırpılır
@@ -3045,6 +3045,24 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
       if (tp1 > 1e-6) flange = flange.cut(tri([[0, 0], [tp1 * k, H], [-5, H], [-5, 0]]));
       if (tp2 > 1e-6) flange = flange.cut(tri([[W, 0], [W - tp2 * k, H], [W + 5, H], [W + 5, 0]]));
     }
+    // serbest flanş profili: düz bölüm kaldırılır, eskiz konturu (y ≥ 0) sac kalınlığında eklenir
+    if (f.prof?.length) {
+      const yD = vnorm(vcross(pn, g.s));
+      const Dw = vnorm(vadd(vmul(g.s, T[0]), vmul(yD, T[1])));
+      const Fs = vadd(vadd(vadd(O, vmul(g.e, z0)), vmul(g.s, Ai1[0])), vmul(yD, Ai1[1]));
+      const tn = vnorm(vadd(vmul(g.s, Math.sin(th)), vmul(yD, -Math.cos(th)))); // iç → dış yüz
+      const ex = g.e;
+      const nPl = vcross(ex, Dw); // çizim düzlemi normali: x = ex, y = Dw
+      const plane = new Plane(Fs, ex, nPl);
+      const tSign = vdot(nPl, tn) > 0 ? 1 : -1;
+      // düz bölümü kaldır (y > 0 yarı uzayı, kalınlık boyunca)
+      const cutBox = (draw([-big, 0]).lineTo([big, 0]).lineTo([big, big]).lineTo([-big, big]).close() as any).sketchOnPlane(new Plane(vsub(Fs, vmul(nPl, big)), ex, nPl)).extrude(2 * big) as Shape;
+      flange = flange.cut(cutBox);
+      let pr: Shape = (profile(f.prof) as any).sketchOnPlane(plane).extrude(tSign * t) as Shape;
+      // büküm teğetinin altına (y < 0) taşan kısım kırpılır
+      pr = pr.cut((draw([-big, -big]).lineTo([big, -big]).lineTo([big, 0]).lineTo([-big, 0]).close() as any).sketchOnPlane(new Plane(vsub(Fs, vmul(nPl, big)), ex, nPl)).extrude(2 * big) as Shape);
+      flange = flange.fuse(pr);
+    }
     // birlikte seçilen komşu kenarlar: dışbükey köşede gönye
     infos.forEach((h, jdx) => {
       if (jdx === idx || h.bi !== g.bi || vdot(g.nF, h.nF) < 0.999) return;
@@ -3060,7 +3078,11 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
           // geldiği kareyi kaldır; böylece açınımda bükümler birbirine geçmez (malzeme içte/dışta/büküm dışı hepsinde)
           const Q = vadd(V, vmul(vadd(g.s, h.s), shift));
           const w = r + t + f.gap;
-          flange = flange.cut(boxIn(Q, g.s, h.s, u, -0.01, w, -0.01, w, -t - 0.01, r + 0.001));
+          if (f.ctype === "circ") {
+            // dairesel köşe boşaltması: üst üste gelen kareyi çevreleyen daire
+            const C = vadd(Q, vmul(vadd(g.s, h.s), w / 2));
+            flange = flange.cut(makeCylinder((w / 2) * Math.SQRT2 + 0.01, r + 2 * t + 0.02, vsub(C, vmul(u, t + 0.01)) as any, u as any) as any);
+          } else flange = flange.cut(boxIn(Q, g.s, h.s, u, -0.01, w, -0.01, w, -t - 0.01, r + 0.001));
         }
     });
     const cuts: Shape[] = [];
@@ -3068,8 +3090,20 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
       cuts.push(boxIn(O, g.s, u, g.e, shift, 0.01, -t - 0.01, 0.01, z0, z1));
       const rr = f.relief * t;
       if (rr > 0) {
-        if (z0 > 1e-6) cuts.push(boxIn(O, g.s, u, g.e, shift - rr, 0.01, -t - 0.01, 0.01, Math.max(0, z0 - rr), z0));
-        if (g.Le - z1 > 1e-6) cuts.push(boxIn(O, g.s, u, g.e, shift - rr, 0.01, -t - 0.01, 0.01, z1, Math.min(g.Le, z1 + rr)));
+        // büküm boşaltması: dikdörtgen / oval (iç ucu yuvarlak) / yırtma (ince yarık, malzeme kaldırılmaz sayılır)
+        const relief = (za: number, zb: number) => {
+          if (f.rtype === "tear") {
+            const zc = za === Math.max(0, z0 - rr) ? z0 : z1;
+            cuts.push(boxIn(O, g.s, u, g.e, shift, 0.01, -t - 0.01, 0.01, Math.max(0, zc - 0.05), Math.min(g.Le, zc + 0.05)));
+          } else if (f.rtype === "obround") {
+            const wz = zb - za, rc = wz / 2;
+            cuts.push(boxIn(O, g.s, u, g.e, shift - rr + rc, 0.01, -t - 0.01, 0.01, za, zb));
+            const Cc = vadd(vadd(O, vmul(g.s, shift - rr + rc)), vmul(g.e, za + rc));
+            cuts.push(makeCylinder(rc, t + 0.02, vsub(Cc, vmul(u, t + 0.01)) as any, u as any) as any);
+          } else cuts.push(boxIn(O, g.s, u, g.e, shift - rr, 0.01, -t - 0.01, 0.01, za, zb));
+        };
+        if (z0 > 1e-6) relief(Math.max(0, z0 - rr), z0);
+        if (g.Le - z1 > 1e-6) relief(z1, Math.min(g.Le, z1 + rr));
       }
     }
     ops.push({ bi: g.bi, cut: cuts, add: flange });

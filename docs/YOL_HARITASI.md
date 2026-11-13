@@ -640,3 +640,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.67 | Parça: loft bağlayıcıları ve komşu yüze teğet, delik sihirbazında yuva delik ve yakın / uzak taraf havşası | ✅ |
 
 | v0.68 | Parça: referans noktası türleri, ağaç klasörleri, Ne yanlış? + geometri kontrolü, sarı önizleme (3. grup tamam) | ✅ |
+
+| v0.69 | Sac: flanş profilini serbest eskizle düzenleme, büküm boşaltma türleri, dairesel köşe boşaltması, kaynaklı köşe | ✅ |

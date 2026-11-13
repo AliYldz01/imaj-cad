@@ -55,14 +55,14 @@ export function sheetOpenRegion(segsIn: Seg[], t: number, r: number, rev: boolea
   return thinRegion([{ segs: out, closed: false }], t, rev ? "rev" : "one");
 }
 
-export interface SheetParams { t: number; r: number; k: number; relief: number }
+export interface SheetParams { t: number; r: number; k: number; relief: number; rtype?: "rect" | "obround" | "tear"; ctype?: "rect" | "circ" }
 
 /** Bir özellikten önceki son taban flanşın sac parametreleri */
 export function sheetParamsBefore(feats: Feature[], id: string | null): SheetParams | null {
   let p: SheetParams | null = null;
   for (const f of feats) {
     if (f.id === id) break;
-    if ((f.type === "sheetbase" || f.type === "tosheet") && !f.off) p = { t: f.t, r: f.r, k: effK(f as any), relief: f.relief };
+    if ((f.type === "sheetbase" || f.type === "tosheet") && !f.off) p = { t: f.t, r: f.r, k: effK(f as any), relief: f.relief, rtype: (f as any).rtype, ctype: (f as any).ctype };
   }
   return p;
 }

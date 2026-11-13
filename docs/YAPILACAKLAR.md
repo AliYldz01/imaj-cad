@@ -38,8 +38,8 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.68 3.12 Radyüs / pah / kabuk / koniklik / yüz taşı sarı önizleme
 
 ## 4. Sac metal
-- ⬜ 4.1 Flanş profilini serbest eskizle düzenleme
-- ⬜ 4.2 Kaynaklı köşe, 3 bükümlü köşe boşaltması, boşaltma türü (yırtma / oval)
+- ✅ v0.69 4.1 Flanş profilini serbest eskizle düzenleme (yerel x kenar / y flanş; dikdörtgen eskiz oluştur)
+- ✅ v0.69 4.2 Kaynaklı köşe (açınımda bastırılır), köşe boşaltma türü (dikdörtgen / dairesel; 2–3 büküm köşesi), büküm boşaltma türü (dikdörtgen / oval / yırtma)
 - ⬜ 4.3 Çapraz kırma, havalandırma, şekillendirme araçları, sac köşe takviyesi
 
 ## 5. Kaynaklı yapı

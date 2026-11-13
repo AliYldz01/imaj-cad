@@ -208,6 +208,15 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
     if (!loops.length && !texts.length) throw new Error(`${sk.name}: kapalı kontur yok`);
     return { sk, pl, loops, texts };
   };
+  /** flanş profil eskizi: yerel (düzlemden bağımsız) kapalı konturlar */
+  const flangeProf = (id: string) => {
+    const sk = sketchOf(id);
+    if (!sk) throw new Error("Flanş profili eskizi bulunamadı");
+    const { loops, error } = extractLoops(sk.data);
+    if (error) throw new Error(`${sk.name}: ${error}`);
+    if (!loops.length) throw new Error(`${sk.name}: kapalı kontur yok`);
+    return loops;
+  };
   /** İnce özellik: açık veya kapalı konturdan kalınlıklı bölge */
   const thinOf = (id: string, t: number, mode: "one" | "rev" | "mid") => {
     const sk = sketchOf(id);
@@ -418,11 +427,11 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
             if (!(f.L > 0)) throw new Error("Flanş uzunluğu sıfırdan büyük olmalı");
             if (!(f.angle > 0 && f.angle <= 180)) throw new Error("Büküm açısı 0–180° arasında olmalı");
             const r = f.useDef ? sp.r : f.r;
-            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: f.angle, pos: f.pos, lenRef: f.lenRef, flip: f.flip, r, t: sp.t, o1: f.o1, o2: f.o2, gap: f.gap, relief: sp.relief, tp1: f.tp1, tp2: f.tp2 });
+            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: f.angle, pos: f.pos, lenRef: f.lenRef, flip: f.flip, r, t: sp.t, o1: f.o1, o2: f.o2, gap: f.gap, relief: sp.relief, tp1: f.tp1, tp2: f.tp2, ...(f.prof ? { prof: flangeProf(f.prof) } : {}), rtype: sp.rtype, ctype: sp.ctype });
           } else {
             if (!(f.L > 0)) throw new Error("Kenet uzunluğu sıfırdan büyük olmalı");
             const r = f.kind === "open" ? Math.max(0.05, f.gap / 2) : 0.05;
-            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: 180, pos: f.pos, lenRef: "tangent", flip: f.flip, r, t: sp.t, o1: 0, o2: 0, gap: 0, relief: sp.relief });
+            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: 180, pos: f.pos, lenRef: "tangent", flip: f.flip, r, t: sp.t, o1: 0, o2: 0, gap: 0, relief: sp.relief, rtype: sp.rtype });
           }
           break;
         }
@@ -575,7 +584,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           const sp = sheetParamsBefore(feats, f.id);
           if (!sp) throw new Error("Önce bir taban flanş oluşturun");
           if (!f.faces.length) throw new Error("Uzatılacak flanş uç yüzlerini seçin");
-          kfeats.push({ id: f.id, type: "closecorner", faces: f.faces, overlap: f.overlap, gap: f.gap, t: sp.t, r: sp.r });
+          kfeats.push({ id: f.id, type: "closecorner", faces: f.faces, overlap: f.overlap, gap: f.gap, t: sp.t, r: sp.r, weld: f.weld });
           break;
         }
         case "tosheet":
@@ -808,6 +817,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
       ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend" || f.type === "flatcut") && f.sketch === sketchId) ||
       (f.type === "member" && ([...f.segs, ...(f.groups ?? []).flatMap((g) => g.segs)].some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
-      ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId),
+      ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId) ||
+      (f.type === "edgeflange" && f.prof === sketchId),
   );
 }

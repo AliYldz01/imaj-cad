@@ -4,7 +4,7 @@ import { Kernel } from "./kernel";
 import type { RefHeals } from "./doc/types";
 import { initSolver } from "./sketch/solver";
 import { SketchEditor, TOOL_NAMES, type SkTool } from "./sketch/editor";
-import { newSketch, nid, addPt } from "./sketch/model";
+import { newSketch, nid, addPt, addLine } from "./sketch/model";
 import { pointPos } from "./sketch/profile";
 import { compile, resolveFrame, sketchUsers, contourRegions, planeFrame } from "./doc/compile";
 import { STD_FRAMES, STD_NAMES, dist3, fmtNum, frameFromNormal, toWorld, toLocal, evalNum, setVarResolver, AXES, setUnits, units as unitsVar } from "./doc/math";
@@ -3355,7 +3355,9 @@ function renderFeaturePM(kind: string) {
         group(
           "Büküm boşaltma",
           numField("Oran (× kalınlık)", d.relief, (v) => ((d.relief = Math.max(0, v)), upd()), { min: 0 }),
-          h("p", "pm-hint", "Kısaltılmış kenar flanşlarının iki ucuna dikdörtgen boşaltma açılır."),
+          selectField("Büküm boşaltma türü", [{ v: "rect", t: "Dikdörtgen" }, { v: "obround", t: "Oval (yuvarlak uçlu)" }, { v: "tear", t: "Yırtma" }], d.rtype ?? "rect", (v) => ((d.rtype = v === "rect" ? undefined : v), upd())),
+          selectField("Köşe boşaltma türü", [{ v: "rect", t: "Dikdörtgen" }, { v: "circ", t: "Dairesel" }], d.ctype ?? "rect", (v) => ((d.ctype = v === "rect" ? undefined : v), upd())),
+          h("p", "pm-hint", "Kısaltılmış kenar flanşlarının uçlarına büküm boşaltması; birlikte seçilen flanşların köşesinde (iki / üç büküm) köşe boşaltması açılır."),
         ),
       );
       break;
@@ -3417,6 +3419,27 @@ function renderFeaturePM(kind: string) {
             numField("Sondan kısalt", d.o2, (v) => ((d.o2 = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.o2` }),
             numField("Profil: uçta baştan daralt", d.tp1 ?? 0, (v) => ((d.tp1 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm" }),
             numField("Profil: uçta sondan daralt", d.tp2 ?? 0, (v) => ((d.tp2 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm" }),
+            selectField("Serbest profil eskizi", [{ v: "", t: "Yok (dikdörtgen)" }, ...doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }))], d.prof ?? "", (v) => ((d.prof = v || undefined), upd())),
+            button("Profil eskizi oluştur (dikdörtgen)", () => {
+              const m = viewer.mesh, e = m && d.edges[0] ? m.edges[nearestEdge(d.edges[0])] : null;
+              if (!e) return toast("Önce flanş kenarını seçin", true);
+              const sb = lastSheetBase(doc.features) as any;
+              const t = sb?.t ?? 2, r = d.useDef ? sb?.r ?? t : d.r, th = (d.angle * Math.PI) / 180;
+              const R = d.lenRef === "outer" ? r + t : d.lenRef === "inner" ? r : 0;
+              const W = Math.max(1, dist3(e.s, e.e) - (d.o1 ?? 0) - (d.o2 ?? 0)), H = +Math.max(1, d.L - (R ? (d.angle <= 90 ? R * Math.tan(th / 2) : R) : 0)).toFixed(4);
+              const data = newSketch();
+              const P = (x: number, y: number) => addPt(data, [x, y]);
+              const a = P(0, 0), b2 = P(W, 0), c = P(W, H), q = P(0, H);
+              for (const [u, v] of [[a, b2], [b2, c], [c, q], [q, a]]) addLine(data, u, v);
+              const sk: SketchFeature = { id: uid(), type: "sketch", name: nextName("sketch") + " (flanş profili)", plane: { k: "std", n: "front" }, data };
+              const at = mode.k === "pm" && mode.editingId ? featIndex(mode.editingId) : doc.features.length;
+              doc.features.splice(at, 0, sk);
+              d.prof = sk.id;
+              saveDoc();
+              renderFeaturePM(kind);
+              upd();
+              toast("Profil eskizi eklendi: x kenar boyunca, y flanş boyunca. Ağaçtan düzenleyin.");
+            }),
             numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
             h("p", "pm-hint", "Birlikte seçilen komşu kenarların flanşları köşede gönyelenir."),
           ),
@@ -3455,6 +3478,7 @@ function renderFeaturePM(kind: string) {
           h("div", "pm-picks", d.faces.length ? `${d.faces.length} uç yüz seçili` : "Uzatılacak flanşın köşedeki uç yüzüne dokunun"),
           segField([{ v: "under", t: "Alın (iç yüze kadar)" }, { v: "over", t: "Bindirme (dış yüze kadar)" }], d.overlap ? "over" : "under", (v) => ((d.overlap = v === "over"), upd())),
           numField("Boşluk", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+          checkField("Kaynaklı köşe (boşluk kaynakla doldurulur; açınımda bastırılır)", !!d.weld, (v) => ((d.weld = v || undefined), upd())),
         ),
       );
       hint("Uzatılacak flanş uç yüzüne dokunun");
@@ -5072,7 +5096,12 @@ async function computeFlat(bodyIdx: number): Promise<FlatResult | null> {
     return null;
   }
   setStatus("busy", "Açınım hesaplanıyor…");
+  // SolidWorks: kaynaklı köşeler düz desende bastırılır (boşluklu kapalı köşe olarak açılır)
+  const feats = viewFeatures().feats;
+  const welded = feats.some((f) => f.type === "closecorner" && f.weld && !f.off);
+  if (welded) await kernel.build(compile(feats.map((f) => (f.type === "closecorner" && f.weld ? { ...f, weld: false } : f)), doc.profiles ?? {}).kfeats);
   const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r);
+  if (welded) await kernel.build(compile(feats, doc.profiles ?? {}).kfeats);
   setStatus("ok", "Hazır");
   if (res.error) {
     toast(res.error, true);
@@ -5373,7 +5402,9 @@ function renderTree() {
           ? [f.sketch, f.path]
           : f.type === "loft"
             ? [...f.sketches, ...(f.center ? [f.center] : [])]
-            : [];
+            : f.type === "edgeflange" && f.prof
+              ? [f.prof]
+              : [];
     for (const kid of kids) {
       const sk = getFeat(kid);
       if (sk && consumerOf(kid) === f) {
