@@ -698,6 +698,18 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           kfeats.push({ id: f.id, type: "flatcut", pl, loops, t: sp.t, k: sp.k });
           break;
         }
+        case "tabslot":
+          if (!f.face) throw new Error("Tırnakların çıkacağı dar uç yüzünü seçin");
+          kfeats.push({ id: f.id, type: "tabslot", face: f.face, n: f.n, L: f.L, H: f.H, c: f.c });
+          break;
+        case "lip":
+          if (!f.face) throw new Error("Ağız (halka) yüzünü seçin");
+          kfeats.push({ id: f.id, type: "lip", face: f.face, groove: f.groove, w: f.w, h: f.h, side: f.side, gap: f.gap ?? 0 });
+          break;
+        case "snaphook":
+          if (!f.face || !f.p) throw new Error("Mandalın konacağı yüze dokunun");
+          kfeats.push({ id: f.id, type: "snaphook", face: f.face, p: f.p, ang: f.ang, L: f.L, t: f.t, w: f.w, hd: f.hd, hh: f.hh });
+          break;
         case "dome":
           if (!f.face) throw new Error("Kubbe yapılacak düz yüzü seçin");
           kfeats.push({ id: f.id, type: "dome", face: f.face, h: f.h });

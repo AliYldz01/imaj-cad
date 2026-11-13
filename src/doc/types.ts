@@ -335,6 +335,12 @@ export interface RibFeature extends FeatBase {
   flip: boolean;
 }
 export interface DomeFeature extends FeatBase { type: "dome"; face: FaceRef | null; h: number }
+/** Sac tırnak ve yuva: dar uç yüzünden n tırnak çıkar, karşı gövdede boşluklu yuvalar açılır */
+export interface TabSlotFeature extends FeatBase { type: "tabslot"; face: FaceRef | null; n: number; L: number; H: number; c: number }
+/** Plastik dudak / yiv: kabuk ağız yüzünde (halka) iç ya da dış kenar boyunca şerit ekle (dudak) / oy (yiv) */
+export interface LipFeature extends FeatBase { type: "lip"; face: FaceRef | null; groove: boolean; w: number; h: number; side: "in" | "out"; gap?: number }
+/** Mandal (snap hook): yüzde noktadan yükselen kiriş + kanca */
+export interface SnapHookFeature extends FeatBase { type: "snaphook"; face: FaceRef | null; p: Vec3 | null; ang: number; L: number; t: number; w: number; hd: number; hh: number }
 /** Sarma (projeksiyon yöntemi): eskiz silindirik yüze kabartma / oyma */
 export interface WrapFeature extends FeatBase {
   type: "wrap";
@@ -735,6 +741,9 @@ export type Feature =
   | DraftFeature
   | RibFeature
   | DomeFeature
+  | TabSlotFeature
+  | LipFeature
+  | SnapHookFeature
   | WrapFeature
   | ScaleFeature
   | ImportFeature
@@ -812,6 +821,9 @@ export type KFeature =
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean }; tool?: { d: number; len: number; ball?: boolean; flip?: boolean }; path3?: { segs: { k: "l" | "a" | "p"; pts: Vec3[] }[]; closed: boolean } }
+  | { id: string; type: "tabslot"; face: FaceRef; n: number; L: number; H: number; c: number }
+  | { id: string; type: "lip"; face: FaceRef; groove: boolean; w: number; h: number; side: "in" | "out"; gap: number }
+  | { id: string; type: "snaphook"; face: FaceRef; p: Vec3; ang: number; L: number; t: number; w: number; hd: number; hh: number }
   | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number; conn?: { k: number; rev?: boolean }[]; faceStart?: number; faceEnd?: number; closed?: boolean; thinT?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number; slot?: number; slotAng?: number; nearCs?: { d: number; angle: number }; farCs?: { d: number; angle: number } }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }

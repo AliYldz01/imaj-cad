@@ -130,7 +130,7 @@ Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, bo
 | Kaburga, Kubbe, Sarma, Ölçekle, Esnet (flex), Girinti, Diş | — | ✅ |
 | Birleştir / Böl / Taşı-Kopyala / Sil gövde | — | ✅ |
 | **Yüz taşı / yüz sil / yüz değiştir** (doğrudan düzenleme) | — | ✅ v0.45 |
-| Kenarlık / delik / vent / kilit (plastik) | — | ⬜ |
+| Kenarlık / delik / vent / kilit (plastik) | — | ✅ v0.81 dudak / yiv, mandal; havalandırma v0.70 |
 
 ### 2.9 Çoğaltma ve ayna
 - Doğrusal: iki yön, aralık veya **kadar** (up to reference), **örnekleri atla**, **eskizi değiştir (vary sketch)**, özellik / gövde / yüz çoğaltma, geometri çoğaltma, görsel özellikleri yay
@@ -168,7 +168,7 @@ Kalınlık, büküm yarıçapı, **kalınlık tablosu (gauge table)**, **büküm
 | Kademe (jog) | — | ✅ |
 | **Loft büküm** (geçiş: kare→yuvarlak huni) | Bükülmüş / şekillendirilmiş, yüz sayısı | ✅ v0.15 |
 | **Çapraz kırma**, **havalandırma (vent)**, **şekillendirme aletleri** (louver, kabartma, kılavuz) | — | ✅ v0.70 |
-| **Tırnak ve yuva** | — | ⬜ S4 |
+| **Tırnak ve yuva** | — | ✅ v0.81 |
 | Köşe kapat, **köşe kırma/kesme** (radyüs/pah), **kaynaklı köşe**, köşe boşaltma | — | 🟡 S3 |
 | **Aç / Katla (unfold/fold)**, düzleştir, **normal kesim** | — | 🟡 S6 |
 | Sac köşe takviyesi (gusset), ayırma (rip), katıdan saca, kalıp sacı | — | 🟡 S8 |

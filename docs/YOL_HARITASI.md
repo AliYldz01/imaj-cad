@@ -664,3 +664,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.79 | İnce özellik iki yön / köşe radyüsü / uçları kapat, sacda normal kesim, sağ tıkla bitiş koşulu | ✅ |
 
 | v0.80 | Kapalı / ince loft, konik radyüs, öteleme yüzü pahı, teğet düzlem | ✅ |
+
+| v0.81 | Sac tırnak ve yuva, plastik dudak / yiv, mandal | ✅ |

@@ -83,6 +83,6 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.78 12.1 Eskiz ilişkileri: eş yarıçaplı, eşit eğri uzunluğu, eşit kanallar, çift mesafe; ölçüyü sürükleyerek çap ↔ yarıçap
 - ✅ v0.79 12.2 İnce özellik: iki yön farklı kalınlık, köşeleri yuvarla, uçları kapat; sacda normal kesim; ekstrüzyonda sağ tıkla bitiş koşulu
 - ✅ v0.80 12.3 Loft kapalı / ince; radyüs değişken / tam yuvarlak / setback / konik; pah öteleme yüzü; delik serisi; teğet düzlem (setback OCC'de yok; konik radyüs çokgen yaklaşımı)
-- ⬜ 12.4 Sac tırnak ve yuva; plastik kenarlık / kilit
+- ✅ v0.81 12.4 Sac tırnak ve yuva; plastik kenarlık / kilit
 
 Yapılamaz: IGES içe aktarma (OCC derlemesinde okuyucu yok).

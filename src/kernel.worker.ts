@@ -1211,6 +1211,97 @@ function conicFillet(f: Extract<KFeature, { type: "fillet" }>, set: Set<number>)
   });
 }
 
+/** dikdörtgen prizma: köşe o, kenarlar u, v, yükseklik vektörü h */
+function boxPrism(o: Vec3, u: Vec3, v: Vec3, h: Vec3): Shape {
+  const face = makePolygon([o, vadd(o, u), vadd(vadd(o, u), v), vadd(o, v)] as any) as any;
+  return basicFaceExtrusion(face, new Vector(h)) as any;
+}
+/** düz yüzün uzun kenar yönü d, kalınlık yönü e, ölçüleri ve merkezi */
+function faceRectFrame(pf: { c: Vec3; n: Vec3; face: any }) {
+  let d: Vec3 | null = null, best = 0;
+  for (const e of pf.face.edges as any[]) {
+    if (String(e.geomType) !== "LINE") continue;
+    const A = tup(e.pointAt(0)), B = tup(e.pointAt(1)), L = vlen(vsub(B, A));
+    if (L > best) (best = L), (d = vnorm(vsub(B, A)));
+  }
+  if (!d) throw new Error("Yüzde düz kenar yok");
+  const e = vnorm(vcross(pf.n, d));
+  let d0 = Infinity, d1 = -Infinity, e0 = Infinity, e1 = -Infinity;
+  for (const ed of pf.face.edges as any[])
+    for (const t of [0, 0.5, 1]) {
+      const q = tup(ed.pointAt(t)), w = vsub(q, pf.c);
+      (d0 = Math.min(d0, vdot(w, d))), (d1 = Math.max(d1, vdot(w, d))), (e0 = Math.min(e0, vdot(w, e))), (e1 = Math.max(e1, vdot(w, e)));
+    }
+  const c = vadd(vadd(pf.c, vmul(d, (d0 + d1) / 2)), vmul(e, (e0 + e1) / 2));
+  return { d, e, W: d1 - d0, T: e1 - e0, c };
+}
+function tabSlot(f: Extract<KFeature, { type: "tabslot" }>) {
+  const pf = planarFace(f.face);
+  if (!pf) throw new Error("Tırnak yüzü bulunamadı");
+  const fr = faceRectFrame(pf);
+  if (!(f.n >= 1) || !(f.L > 0) || !(f.H > 0)) throw new Error("Adet, tırnak boyu ve yükseklik sıfırdan büyük olmalı");
+  if (!(f.c > 0)) throw new Error("Yuva boşluğu sıfırdan büyük olmalı");
+  if (f.n * f.L >= fr.W) throw new Error("Tırnaklar kenara sığmıyor (adet × boy < kenar boyu)");
+  const owner = bodies.find((b) => (b.faces as any[]).some((x) => x.hashCode === pf.face.hashCode));
+  const tabs: Shape[] = [], slots: Shape[] = [];
+  for (let i = 1; i <= f.n; i++) {
+    const s = vadd(fr.c, vmul(fr.d, (i / (f.n + 1) - 0.5) * fr.W));
+    tabs.push(boxPrism(vsub(vsub(s, vmul(fr.d, f.L / 2)), vmul(fr.e, fr.T / 2)), vmul(fr.d, f.L), vmul(fr.e, fr.T), vmul(pf.n, f.H)));
+    slots.push(boxPrism(vsub(vsub(vsub(s, vmul(fr.d, f.L / 2 + f.c)), vmul(fr.e, fr.T / 2 + f.c)), vmul(pf.n, 0.001)), vmul(fr.d, f.L + 2 * f.c), vmul(fr.e, fr.T + 2 * f.c), vmul(pf.n, f.H + f.c + 0.002)));
+  }
+  // yuvalar: tırnak yüzünün sahibi dışındaki gövdelerden
+  bodies = bodies.flatMap((b) => {
+    if (b === owner) return [b];
+    let r = b;
+    for (const sl of slots) if (bbOverlap(r, sl)) r = r.cut(sl.clone());
+    return solidsOf(r);
+  });
+  const own = bodies.find((b) => b === owner);
+  if (!own) throw new Error("Tırnak gövdesi bulunamadı");
+  let m: Shape = own;
+  for (const t of tabs) m = m.fuse(t);
+  bodies = bodies.flatMap((b) => (b === own ? solidsOf(m) : [b]));
+}
+function lipGroove(f: Extract<KFeature, { type: "lip" }>) {
+  const pf = planarFace(f.face);
+  if (!pf) throw new Error("Ağız yüzü bulunamadı");
+  const fc = pf.face.clone();
+  const inner = (fc.innerWires?.() ?? []) as any[];
+  if (f.side === "in" && !inner.length) throw new Error("Bu yüzde iç kenar yok — kabuk ağzı (halka yüz) gerekli");
+  if (!(f.w > 0) || !(f.h > 0)) throw new Error("Genişlik ve yükseklik sıfırdan büyük olmalı");
+  const base = f.side === "in" ? inner[0] : pf.face.clone().outerWire();
+  const sg = f.side === "in" ? 1 : -1;
+  // öteleme yönü tel yönüne bağlı: iç kenarda büyüyen, dış kenarda küçülen seçilir
+  const wireAt = (d: number) => {
+    if (Math.abs(d) < 1e-9) return base.clone();
+    const a = base.clone().offset2D(d), b = base.clone().offset2D(-d);
+    const A = measureArea(makeFace(a.clone())), B = measureArea(makeFace(b.clone()));
+    return (sg > 0) === A > B ? a : b;
+  };
+  const big = makeFace(wireAt(f.gap + f.w)), small = makeFace(wireAt(f.gap));
+  const dir = vmul(pf.n, f.groove ? -f.h : f.h);
+  const pb = basicFaceExtrusion(sg > 0 ? big : small, new Vector(dir)) as any as Shape;
+  const ps = basicFaceExtrusion(sg > 0 ? small : big, new Vector(dir)) as any as Shape;
+  const ring = pb.cut(ps);
+  applyTool(ring, f.groove);
+}
+function snapHook(f: Extract<KFeature, { type: "snaphook" }>) {
+  const pf = planarFace(f.face);
+  if (!pf) throw new Error("Mandal yüzü bulunamadı");
+  const n = vnorm(pf.n);
+  let x0 = vcross([0, 0, 1], n);
+  if (vlen(x0) < 1e-6) x0 = vcross([0, 1, 0], n);
+  x0 = vnorm(x0);
+  const a = (f.ang * Math.PI) / 180;
+  const u = vnorm(vadd(vmul(x0, Math.cos(a)), vmul(vcross(n, x0), Math.sin(a))));
+  const v = vnorm(vcross(n, u));
+  if (!(f.L > f.hh) || !(f.t > 0) || !(f.w > 0) || !(f.hd > 0) || !(f.hh > 0)) throw new Error("Mandal ölçüleri geçersiz (boy > kanca yüksekliği)");
+  const P = (a2: number, b2: number): Vec3 => vadd(vadd(vsub(f.p, vmul(v, f.w / 2)), vmul(u, a2)), vmul(n, b2));
+  const prof = [P(0, -0.01), P(f.t, -0.01), P(f.t, f.L - f.hh), P(f.t + f.hd, f.L - f.hh), P(f.t, f.L), P(0, f.L)];
+  const face = makePolygon(prof as any) as any;
+  applyTool(basicFaceExtrusion(face, new Vector(vmul(v, f.w))) as any, false);
+}
+
 function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number } {
   const face = allFaces().find((f) => faceSet.has(f.hashCode));
   if (!face) throw new Error("Tam yuvarlak için orta yüzü seçin");
@@ -3592,6 +3683,16 @@ async function buildFeature(f: KFeature) {
       applyTool(solid, true);
       return;
     }
+    case "tabslot":
+      if (!bodies.length) throw new Error("Önce bir katı oluşturun");
+      tabSlot(f);
+      return;
+    case "lip":
+      lipGroove(f);
+      return;
+    case "snaphook":
+      snapHook(f);
+      return;
     case "dome": {
       const solid = domeTool(f);
       applyTool(solid, false);

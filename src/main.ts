@@ -286,6 +286,9 @@ const FEAT_NAMES: Record<string, string> = {
   draft: "Koniklik",
   rib: "Kaburga",
   dome: "Kubbe",
+  tabslot: "Tırnak-Yuva",
+  lip: "Dudak-Yiv",
+  snaphook: "Mandal",
   wrap: "Sarma",
   scale: "Ölçekle",
   import: "İçeAktarılan",
@@ -1438,7 +1441,7 @@ function pickWant() {
     if (t === "lpattern" && (mode.draft as any)._pick === "upTo") return { edge: true, face: true };
     if (t === "sform" || t === "crossbreak" || t === "sgusset") return { face: true };
     if (t === "member" && String((mode.draft as any)._pick ?? "").startsWith("ptl:")) return { face: true, edge: true };
-    if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
+    if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap" || t === "tabslot" || t === "lip" || t === "snaphook") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
     if (t === "point" || t === "csys") return { edge: true, face: true };
@@ -1960,6 +1963,19 @@ function newFeature(kind: string) {
       draft = { id, type: "rib", name: "", sketch: sk.id, t: 5, side: "mid", dir: "parallel", flip: false };
       break;
     }
+    case "tabslot":
+    case "lip":
+    case "snaphook": {
+      const fi = [...psel.faces][0];
+      const fr = fi !== undefined && viewer.mesh?.faces[fi].n ? faceRef(fi) : null;
+      draft =
+        kind === "tabslot"
+          ? ({ id, type: "tabslot", name: "", face: fr, n: 2, L: 10, H: 3, c: 0.2 } as any)
+          : kind === "lip"
+            ? ({ id, type: "lip", name: "", face: fr, groove: false, w: 1.5, h: 2, side: "in", gap: 0 } as any)
+            : ({ id, type: "snaphook", name: "", face: fr, p: fr ? viewer.mesh!.faces[fi].c : null, ang: 0, L: 15, t: 2, w: 6, hd: 1.5, hh: 3 } as any);
+      break;
+    }
     case "dome": {
       const fi = [...psel.faces][0];
       draft = { id, type: "dome", name: "", face: fi !== undefined && viewer.mesh?.faces[fi].n ? faceRef(fi) : null, h: 10 };
@@ -2190,7 +2206,7 @@ function commitFeature(kind: string) {
   if (draft.type === "mirror" && !draft.body && !draft.feats.length) return toast("Aynalanacak özelliği seçin veya 'Tüm gövde'yi işaretleyin", true);
   if (draft.type === "revolve" && !draft.axis) return toast("Döndürme ekseni için eskize bir merkez çizgisi çizin", true);
   if (draft.type === "hole" && (!draft.plane || !draft.pts.length)) return toast("Deliğin konumunu seçin: yüze dokunun", true);
-  if ((draft.type === "dome" || draft.type === "wrap") && !draft.face) return toast("Yüzü seçin", true);
+  if ((draft.type === "dome" || draft.type === "wrap" || draft.type === "tabslot" || draft.type === "lip" || draft.type === "snaphook") && !draft.face) return toast("Yüzü seçin", true);
   if (draft.type === "sketch3d" && !draft.lines.length) return toast("3B eskizde en az bir çizgi olmalı", true);
   if (draft.type === "sketch3d") ["_link", "_len", "_d", "_act", "_abs"].forEach((k) => delete (draft as any)[k]);
   if (draft.type === "weld" && !draft.pairs.length) return toast("Kaynak için en az bir yüz çifti seçin", true);
@@ -3936,6 +3952,51 @@ function renderFeaturePM(kind: string) {
       body.appendChild(group("Kesim eskizi", sketchSel(), h("p", "pm-hint", "Aç / katla: eskiz sacın düz yüzünde, açınım düzleminde yorumlanır (flanşlar açılmış gibi çizin). Kontur bükümleri geçebilir; katlanınca bükümle birlikte kesilir.")));
       break;
     }
+    case "tabslot": {
+      body.appendChild(group("Yüz", h("div", "pm-picks", d.face ? "Dar uç yüzü seçili" : "Tırnakların çıkacağı dar uç yüzüne dokunun (karşı levhaya bakan)")));
+      body.appendChild(
+        group(
+          "Tırnak",
+          numField("Adet", d.n, (v) => ((d.n = Math.max(1, Math.round(v))), upd()), { min: 1 }),
+          numField("Tırnak boyu", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Yükseklik (karşı levha kalınlığı)", d.H, (v) => ((d.H = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Yuva boşluğu", d.c, (v) => ((d.c = v), upd()), { min: 0.01, unit: "mm" }),
+        ),
+      );
+      hint("Tırnakların çıkacağı dar uç yüzüne dokunun");
+      break;
+    }
+    case "lip": {
+      body.appendChild(group("Yüz", h("div", "pm-picks", d.face ? "Ağız yüzü seçili" : "Kabuğun ağız (halka) yüzüne dokunun")));
+      body.appendChild(segField([{ v: "lip", t: "Dudak (ekle)" }, { v: "groove", t: "Yiv (oy)" }], d.groove ? "groove" : "lip", (v) => ((d.groove = v === "groove"), upd())));
+      body.appendChild(segField([{ v: "in", t: "İç kenar" }, { v: "out", t: "Dış kenar" }], d.side, (v) => ((d.side = v), upd())));
+      body.appendChild(
+        group(
+          "Ölçüler",
+          numField("Genişlik", d.w, (v) => ((d.w = v), upd()), { min: 0.01, unit: "mm" }),
+          numField(d.groove ? "Derinlik" : "Yükseklik", d.h, (v) => ((d.h = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Kenardan boşluk", d.gap ?? 0, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+        ),
+      );
+      hint("Kabuğun ağız (halka) yüzüne dokunun");
+      break;
+    }
+    case "snaphook": {
+      body.appendChild(group("Konum", h("div", "pm-picks", d.p ? "Konum seçili (değiştirmek için yüze dokunun)" : "Mandalın konacağı düz yüze dokunun")));
+      body.appendChild(
+        group(
+          "Mandal",
+          numField("Yön açısı (yüzde)", d.ang, (v) => ((d.ang = v), upd()), { unit: "°", any: true } as any),
+          numField("Boy", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Genişlik", d.w, (v) => ((d.w = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Kanca çıkıntısı", d.hd, (v) => ((d.hd = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Kanca yüksekliği", d.hh, (v) => ((d.hh = v), upd()), { min: 0.01, unit: "mm" }),
+        ),
+      );
+      hint("Mandalın konacağı yüze dokunun");
+      break;
+    }
     case "dome": {
       body.appendChild(group("Yüz", h("div", "pm-picks", d.face ? "Yüz seçili" : "Kubbe yapılacak düz yüze dokunun")));
       body.appendChild(group("Parametreler", numField("Yükseklik", d.h, (v) => ((d.h = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.h` })));
@@ -5232,6 +5293,13 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const lp: Vec2 = w ? toLocal(fr, [w.x, w.y, w.z]) : toLocal(fr, hit.point);
     d.pts.push([Math.round(lp[0] * 10) / 10, Math.round(lp[1] * 10) / 10]);
     schedulePreview();
+  } else if ((d.type === "tabslot" || d.type === "lip" || d.type === "snaphook") && hit.kind === "face" && m) {
+    const f = m.faces[hit.index];
+    if (!f.n) return toast("Düz bir yüz seçin", true);
+    d.face = { c: f.c, n: f.n };
+    if (d.type === "snaphook") d.p = hit.point;
+    renderFeaturePM(d.type);
+    schedulePreview();
   } else if (d.type === "dome" && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     if (!f.n) return toast("Kubbe için düz bir yüz seçin", true);
@@ -6054,6 +6122,9 @@ const FEAT_ICON: Record<string, string> = {
   draft: "draftf",
   rib: "rib",
   dome: "dome",
+  tabslot: "dome",
+  lip: "dome",
+  snaphook: "rib",
   wrap: "wrapf",
   scale: "scalef",
   import: "importf",
@@ -6402,6 +6473,8 @@ function commands(): Cmd[] {
       { id: "draft", label: "Koniklik", icon: "draftf", run: () => newFeature("draft") },
       { id: "rib", label: "Kaburga", icon: "rib", run: () => newFeature("rib") },
       { id: "dome", label: "Kubbe", icon: "dome", run: () => newFeature("dome") },
+      { id: "lip", label: "Dudak / Yiv", icon: "dome", run: () => newFeature("lip") },
+      { id: "snaphook", label: "Mandal", icon: "rib", run: () => newFeature("snaphook") },
       { id: "wrap", label: "Sarma", icon: "wrapf", run: () => newFeature("wrap") },
       { id: "scale", label: "Ölçekle", icon: "scalef", run: () => newFeature("scale") },
       "sep",
@@ -6456,6 +6529,7 @@ function commands(): Cmd[] {
       { id: "miterflange", label: "Gönye Flanş", icon: "miterflange", run: () => newFeature("miterflange") },
       { id: "closecorner", label: "Köşe Kapat", icon: "closecorner", run: () => newFeature("closecorner") },
       { id: "sform", label: "Şekillendirme", icon: "dome", run: () => newFeature("sform") },
+      { id: "tabslot", label: "Tırnak ve Yuva", icon: "dome", run: () => newFeature("tabslot") },
       { id: "vent", label: "Havalandırma", icon: "cutExtrude", run: () => newFeature("vent") },
       { id: "crossbreak", label: "Çapraz Kırma", icon: "sketchbend", run: () => newFeature("crossbreak") },
       { id: "sgusset", label: "Sac Takviye", icon: "gusset", run: () => newFeature("sgusset") },
