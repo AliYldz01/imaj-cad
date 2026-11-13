@@ -316,7 +316,17 @@ export interface DraftFeature extends FeatBase {
   rev: boolean;
 }
 /** yüzey modelleme: yüzey ekstrüzyon (açık / kapalı eskiz, kapaksız) ve düzlemsel yüzey (kapalı eskiz) */
-export interface SurfaceFeature extends FeatBase { type: "surface"; mode: "extrude" | "planar"; sketch: string; d: number; mid?: boolean }
+export interface SurfaceFeature extends FeatBase {
+  type: "surface";
+  mode: "extrude" | "planar" | "loft" | "fill";
+  sketch: string;
+  d: number;
+  mid?: boolean;
+  /** loft: kesit eskizleri (açık yol ya da kapalı kontur) */
+  sketches?: string[];
+  /** doldurma: kapalı sınır oluşturan model kenarları */
+  edges?: EdgeRef[];
+}
 /** yüzeyi kalınlaştır (katıya) / yüzeyle kes (bir taraf kaldırılır) */
 export interface SurfaceUseFeature extends FeatBase { type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }
 /** doğrudan düzenleme (SolidWorks Yüz Taşı / Yüz Sil–doldur): düz yüzü normali boyunca ötele, silindirik deliği doldur */
@@ -703,7 +713,7 @@ export type KFeature =
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean }
   | { id: string; type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
-  | { id: string; type: "surface"; mode: "extrude" | "planar"; pl: KPlane; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null; d: number; mid?: boolean }
+  | { id: string; type: "surface"; mode: "extrude" | "planar" | "loft" | "fill"; pl: KPlane | null; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null; d: number; mid?: boolean; secs?: { pl: KPlane; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null }[]; edges?: EdgeRef[] }
   | { id: string; type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }
   | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[]; skip?: string[] }
   | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number; skip?: string[] }

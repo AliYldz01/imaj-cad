@@ -591,6 +591,29 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, angle: f.angle, flip: f.flip });
           break;
         case "surface": {
+          const sec = (id: string) => {
+            const s2 = sketchOf(id);
+            if (!s2) throw new Error("Eskiz bulunamadı");
+            const pl2 = kplane(s2.plane, feats, s2.id);
+            if (!pl2) throw new Error("Eskiz düzlemi bulunamadı");
+            const lp = extractLoops(s2.data).loops;
+            if (lp.length) return { pl: pl2, loops: lp.slice(0, 1), path: null };
+            const p = extractPath(s2.data);
+            if (p.error) throw new Error(`${s2.name}: ${p.error}`);
+            return { pl: pl2, loops: [], path: { segs: p.segs, closed: p.closed } };
+          };
+          if (f.mode === "loft") {
+            if ((f.sketches ?? []).length < 2) throw new Error("Yüzey loft için en az iki kesit eskizi seçin");
+            const secs = f.sketches!.map(sec);
+            if (new Set(secs.map((x) => !!x.path && !x.path.closed)).size > 1) throw new Error("Kesitlerin hepsi açık ya da hepsi kapalı olmalı");
+            kfeats.push({ id: f.id, type: "surface", mode: "loft", pl: null, loops: [], path: null, d: 0, secs });
+            break;
+          }
+          if (f.mode === "fill") {
+            if ((f.edges ?? []).length < 1) throw new Error("Doldurulacak sınırın kenarlarını seçin");
+            kfeats.push({ id: f.id, type: "surface", mode: "fill", pl: null, loops: [], path: null, d: 0, edges: f.edges });
+            break;
+          }
           const sk = sketchOf(f.sketch);
           if (!sk) throw new Error("Eskiz seçin");
           const pl = kplane(sk.plane, feats, sk.id);

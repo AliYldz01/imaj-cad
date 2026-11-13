@@ -606,3 +606,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.50 | Flanş profili (yamuk), aç/katla ile kesme (bükümü geçen kontur dahil) | ✅ |
 
 | v0.51 | Diş hızlandırma (yapıştırmalı birleştirme), kozmetik diş | ✅ |
+
+| v0.52 | Yüzey loft, sınır doldurma yüzeyi; kalınlaştırma yön düzeltmesi | ✅ |

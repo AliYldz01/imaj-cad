@@ -3246,8 +3246,29 @@ async function buildFeature(f: KFeature) {
       return;
     }
     case "surface": {
-      const frame = resolvePlane(f.pl);
       const oc = getOC() as any;
+      if (f.mode === "loft") {
+        const wires = f.secs!.map((sc) => {
+          const fr = resolvePlane(sc.pl);
+          return sc.path ? pathWire(sc.path.segs, sc.path.closed, fr) : (loopDrawing(sc.loops[0]).sketchOnPlane(makePlane(fr)) as any).wire;
+        });
+        surfs.push({ id: f.id, s: loft(wires, {}, true) as Shape });
+        return;
+      }
+      if (f.mode === "fill") {
+        const hs = matchEdges(f.edges!);
+        const src = [...bodies, ...welds, ...surfs.map((x) => x.s)];
+        const es: any[] = [];
+        for (const b of src) for (const e of b.edges as any[]) if (hs.has(e.hashCode) && !es.some((x) => x.hashCode === e.hashCode)) es.push(e);
+        if (es.length < f.edges!.length) throw new Error("Sınır kenarlarından bazıları bulunamadı");
+        const mk = new oc.BRepOffsetAPI_MakeFilling(3, 15, 2, false, 1e-5, 1e-4, 0.01, 0.1, 8, 9);
+        for (const e of es) mk.Add(e.wrapped, oc.GeomAbs_Shape.GeomAbs_C0, true);
+        mk.Build(new oc.Message_ProgressRange());
+        if (!mk.IsDone()) throw new Error("Sınır doldurulamadı (kenarlar kapalı bir döngü oluşturmalı)");
+        surfs.push({ id: f.id, s: cast(mk.Shape()) as Shape });
+        return;
+      }
+      const frame = resolvePlane(f.pl!);
       const off = f.mid ? -f.d / 2 : 0;
       let res: Shape;
       if (f.mode === "planar") res = (profile(f.loops).sketchOnPlane(makePlane(frame)) as any).face();
@@ -3273,7 +3294,9 @@ async function buildFeature(f: KFeature) {
         mk.MakeThickSolidBySimple(shape.wrapped, t);
         mk.Build(new oc.Message_ProgressRange());
         if (!mk.IsDone()) throw new Error("Kalınlaştırma başarısız");
-        return cast(mk.Shape()) as Shape;
+        const r = cast(mk.Shape()) as Shape;
+        // yüzey yönü ters ise katı içi dışa döner: çevir
+        return volOf(r) < 0 ? (cast(r.wrapped.Reversed()) as Shape) : r;
       };
       const S = surfs[i].s;
       if (f.type === "thicken") {
