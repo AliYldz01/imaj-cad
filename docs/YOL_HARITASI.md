@@ -668,3 +668,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.81 | Sac tırnak ve yuva, plastik dudak / yiv, mandal | ✅ |
 
 | v0.82 | Eskiz radyüsünde gereksiz ölçü hatası düzeltildi, R ölçüsü Akıllı Ölçü ile düzenlenir | ✅ |
+
+| v0.83 | Kurumsal Şerit arayüzü: İmaj logosu ve renkleri, sekmeler şeridin üstünde, başlıklı / sık şerit grupları, telefonda alt komut tepsisi | ✅ |

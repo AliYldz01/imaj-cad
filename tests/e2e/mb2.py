@@ -56,7 +56,7 @@ with sync_playwright() as p:
     if cands:
         pg.locator(".cand-bar button").first.click(); time.sleep(0.3)
         chk("aday seçilince çubuk kalkar", pg.locator(".cand-bar").count()==0)
-    pg.mouse.click(700, 120); time.sleep(0.3)
+    pg.mouse.click(r[0]+40, r[1]+120); time.sleep(0.3)
     chk("fareyle tıklamada aday çubuğu yok", pg.locator(".cand-bar").count()==0)
 
     # --- 8.4 fotoğraftan kenar izleme: 600×400 px, siyah 300×200 dikdörtgen + Ø80 beyaz delik

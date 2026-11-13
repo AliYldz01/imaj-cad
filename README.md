@@ -55,6 +55,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.80: kapalı ve ince loft, konik radyüs (rho), öteleme yüzü pahı, silindire teğet referans düzlem.
 - v0.81: sac tırnak ve yuva, plastik dudak / yiv, mandal (snap hook).
 - v0.82: eskiz radyüsünde 'gereksiz ölçü' hatası düzeltildi; yayın R ölçüsüne Akıllı Ölçü ile dokununca değeri düzenlenir.
+- v0.83: Yeni arayüz (Kurumsal Şerit): İmaj logosu ve renkleri, gruplu şerit, telefonda komutlar alttaki tepside.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

@@ -1756,11 +1756,16 @@ function showPM(title: string, ok: () => void, cancel: () => void) {
   pmCancel = cancel;
   // B9: montaj panelleri telefonda daha alçak; ipucu üstte (seçilecek yüzler görünsün)
   document.body.classList.toggle("asm-pm", !!asmUI?.on);
+  syncTrayPM();
   syncMgr();
+}
+/** telefonda özellik paneli açıkken komut tepsisi gizlenir (eskiz, 3B eskiz ve montajda araçlar gerekli) */
+function syncTrayPM() {
+  document.body.classList.toggle("pm-only", !$("#pm").hidden && mode.k !== "sketch" && !s3tool?.active() && !asmUI?.on);
 }
 function hidePM() {
   $("#pm").hidden = true;
-  document.body.classList.remove("asm-pm");
+  document.body.classList.remove("asm-pm", "pm-only");
   $("#pm-body").innerHTML = "";
   $("#side").classList.remove("pm-open");
   syncMgr();
@@ -6462,6 +6467,14 @@ function commands(): Cmd[] {
       { id: "chamfer", label: "Pah", icon: "chamfer", run: () => newFeature("chamfer") },
       { id: "shell", label: "Kabuk", icon: "shell", run: () => newFeature("shell") },
       { id: "dface", label: "Yüz Taşı / Sil", icon: "movebody", run: () => newFeature("dface") },
+      { id: "draft", label: "Koniklik", icon: "draftf", run: () => newFeature("draft") },
+      { id: "rib", label: "Kaburga", icon: "rib", run: () => newFeature("rib") },
+      { id: "dome", label: "Kubbe", icon: "dome", run: () => newFeature("dome") },
+      { id: "lip", label: "Dudak / Yiv", icon: "dome", run: () => newFeature("lip") },
+      { id: "snaphook", label: "Mandal", icon: "rib", run: () => newFeature("snaphook") },
+      { id: "wrap", label: "Sarma", icon: "wrapf", run: () => newFeature("wrap") },
+      { id: "scale", label: "Ölçekle", icon: "scalef", run: () => newFeature("scale") },
+      "sep",
       { id: "surface", label: "Yüzey Ekstrüzyon", icon: "extrude", run: () => newFeature("surface") },
       { id: "planarSurface", label: "Düzlemsel Yüzey", icon: "plane", run: () => newFeature("planarSurface") },
       { id: "loftSurface", label: "Yüzey Loft", icon: "loft", run: () => newFeature("loftSurface") },
@@ -6470,13 +6483,6 @@ function commands(): Cmd[] {
       { id: "knit", label: "Yüzey Dik", icon: "combine", run: () => newFeature("knit") },
       { id: "thicken", label: "Kalınlaştır", icon: "shell", run: () => newFeature("thicken") },
       { id: "surfcut", label: "Yüzeyle Kes", icon: "cutExtrude", run: () => newFeature("surfcut") },
-      { id: "draft", label: "Koniklik", icon: "draftf", run: () => newFeature("draft") },
-      { id: "rib", label: "Kaburga", icon: "rib", run: () => newFeature("rib") },
-      { id: "dome", label: "Kubbe", icon: "dome", run: () => newFeature("dome") },
-      { id: "lip", label: "Dudak / Yiv", icon: "dome", run: () => newFeature("lip") },
-      { id: "snaphook", label: "Mandal", icon: "rib", run: () => newFeature("snaphook") },
-      { id: "wrap", label: "Sarma", icon: "wrapf", run: () => newFeature("wrap") },
-      { id: "scale", label: "Ölçekle", icon: "scalef", run: () => newFeature("scale") },
       "sep",
       { id: "thread", label: "Diş", icon: "thread", run: () => newFeature("thread") },
       { id: "flex", label: "Esnet", icon: "flex", run: () => newFeature("flex") },
@@ -6695,14 +6701,39 @@ let lastCmd: (() => void) | null = null;
 
 /** komut grupları: ilk grup hep görünür, diğerleri sekme düğmeleriyle açılır */
 const GROUP_NAMES: Record<string, string[]> = {
-  features: ["", "Detay", "Gelişmiş", "Gövde", "Çoğalt", "Referans"],
+  features: ["", "Detay", "Yüzey", "Gelişmiş", "Gövde", "Çoğalt", "Referans"],
   sketch: ["", "Çiz", "Düzenle", "Özel çizim", "Araçlar", "Desen", "İlişki"],
   weld: ["", "Eskiz / Kesme", "Liste"],
   sheet: ["", "Kesme", "Açınım"],
   evaluate: ["", "Eskiz", "Diğer"],
   asm: ["", "Değerlendir", "Dosya"],
 };
+const TAB_CAPS: Record<string, string> = { features: "Ekle / Kes", sketch: "Eskiz", weld: "Yapı", sheet: "Sac", evaluate: "Ölç", asm: "Montaj" };
 const groupSel: Record<string, number> = {};
+/** telefonda komut şeridi ekranın altındaki tepsiye, masaüstünde başlığa (Kurumsal Şerit) */
+function placeRibbon() {
+  const cmds = $("#cmds"), gb = document.getElementById("cmdgroups");
+  let tray = document.getElementById("tray");
+  if (innerWidth <= 820) {
+    if (!tray) {
+      tray = h("nav", "");
+      tray.id = "tray";
+      $("#main").after(tray);
+      // yüzen ekran çubuğu alt panelin üstünde kalsın: tepsi yüksekliği CSS değişkeninde
+      const t = tray;
+      new ResizeObserver(() => document.documentElement.style.setProperty("--tray-h", (t.isConnected ? t.offsetHeight : 0) + "px")).observe(t);
+    }
+    if (cmds.parentElement !== tray) {
+      if (gb) tray.appendChild(gb);
+      tray.appendChild(cmds);
+    }
+  } else if (cmds.parentElement !== $("#cmdbar")) {
+    $("#tabs").after(cmds);
+    if (gb) cmds.before(gb);
+    tray?.remove();
+    document.documentElement.style.setProperty("--tray-h", "0px");
+  }
+}
 let lastGroupTool = "";
 /** şerit özelleştirme: sekme başına gizli komutlar (localStorage imajcad.ribbon) */
 function ribbonHidden(): Record<string, string[]> {
@@ -6826,9 +6857,23 @@ function renderCommands() {
     });
     list.push(...groups[gi]);
   }
+  // masaüstü (Kurumsal Şerit): her grup başlıklı bir kutu
+  const desk = innerWidth > 820;
+  let host: HTMLElement = box;
+  let gk = 0;
+  const newGroup = () => {
+    const g = h("div", "rgrp");
+    host = h("div", "rbt");
+    g.appendChild(host);
+    g.appendChild(h("div", "rcap", names[gk] || (gk === 0 ? TAB_CAPS[tab] ?? "" : "")));
+    box.appendChild(g);
+    gk++;
+  };
+  if (desk) newGroup();
   for (const c of list) {
     if (c === "sep") {
-      box.appendChild(h("div", "cmd-sep"));
+      if (desk) newGroup();
+      else box.appendChild(h("div", "cmd-sep"));
       continue;
     }
     const b = h("button", "cmd" + (c.active?.() ? " active" : "") + (c.disabled?.() ? " disabled" : ""));
@@ -6837,7 +6882,7 @@ function renderCommands() {
     b.appendChild(h("span", "lbl", c.label));
     b.title = c.label;
     b.addEventListener("click", () => runCmd(c, tab));
-    box.appendChild(b);
+    host.appendChild(b);
   }
   let gbar = document.getElementById("cmdgroups");
   if (!gbar) {
@@ -6854,6 +6899,9 @@ function renderCommands() {
       else box.prepend(chips);
     }
   }
+  if (desk) box.querySelectorAll(".rgrp").forEach((g, i) => i > 0 && g.querySelectorAll(".cmd").length > 4 && g.classList.add("dense"));
+  placeRibbon();
+  if (!$("#pm").hidden) syncTrayPM();
   updateUndo();
 }
 

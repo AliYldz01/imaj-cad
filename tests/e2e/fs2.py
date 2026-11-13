@@ -32,7 +32,7 @@ with sync_playwright() as p:
     pg.click("dialog.photo-dlg button:has-text('Kapat')"); time.sleep(0.3)
     chk("not kaydedildi", ev("window.__app.doc.photos[0].note")=="Mil yatağı, sol taraf")
     # konumsuz
-    ev(mkfile); time.sleep(0.6); pg.mouse.click(1300, 150); time.sleep(0.4)
+    ev(mkfile); time.sleep(0.6); pg.mouse.click(1300, 230); time.sleep(0.4)
     chk("boşluğa dokununca konumsuz", ev("window.__app.doc.photos.length")==2 and not ev("window.__app.doc.photos[1].p"))
     # Esc vazgeçer
     ev(mkfile); time.sleep(0.6); pg.keyboard.press("Escape"); time.sleep(0.2)
@@ -63,7 +63,7 @@ with sync_playwright() as p:
     pg.click("#pm-ok"); time.sleep(0.6); wait_ready(pg)
     chk("model 42.5", abs(ev("window.__app.viewer.mesh.bbox.max[1]")-42.5)<0.01)
     ev("window.__app.caliper.setHid(true)")
-    pg.mouse.click(1300, 150); time.sleep(0.2)
+    pg.mouse.click(1300, 230); time.sleep(0.2)
     pg.keyboard.type("33.5", delay=15); pg.keyboard.press("Enter"); time.sleep(0.3)
     chk("klavye (HID) kumpası okunur", ev("window.__app.caliper.last")==33.5)
     chk("rozet görünür", pg.locator(".cal-badge").is_visible() and "33.50" in pg.inner_text(".cal-badge"))

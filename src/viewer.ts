@@ -66,7 +66,22 @@ export class Viewer {
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0xf3f5f8);
+    this.renderer.setClearColor(0xe3e8f0);
+    // Kurumsal Şerit: ortası açık, kenarları mavi-gri ışınsal zemin (dışa aktarılan görüntülerde de opak)
+    {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const g = c.getContext("2d")!;
+      const gr = g.createRadialGradient(128, 102, 0, 128, 128, 190);
+      gr.addColorStop(0, "#fbfcfe");
+      gr.addColorStop(0.7, "#e3e8f0");
+      gr.addColorStop(1, "#d5dce7");
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 256, 256);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      this.scene.background = t;
+    }
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.touchAction = "none";
     this.labels = document.createElement("div");
