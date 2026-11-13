@@ -3,7 +3,7 @@ import { init_planegcs_module, GcsWrapper } from "@salusoft89/planegcs";
 import wasmUrl from "@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url";
 import type { SDim, SEnt, SRel, SketchData } from "../doc/types";
 import { ORIGIN } from "../doc/types";
-import { updateDerived } from "./model";
+import { updateDerived, curveLength } from "./model";
 
 let gcs: GcsWrapper | null = null;
 
@@ -84,6 +84,13 @@ function relPrims(r: SRel, ents: Map<string, SEnt>, sk: SketchData): Prim[] {
   switch (r.t) {
     case "coincident":
       return [{ id, type: "p2p_coincident", p1_id: a, p2_id: b }];
+    case "eqcurve": {
+      // ortak serbest parametre L: her iki eğrinin uzunluğu L
+      const name = "L_" + id;
+      const len = (e: SEnt | undefined, k: string): Prim[] =>
+        e?.t === "line" ? [{ id: id + k, type: "p2p_distance", p1_id: e.p1, p2_id: e.p2, distance: name }] : e?.t === "arc" ? [{ id: id + k, type: "arc_length", a_id: e.id, dist: name }] : [];
+      return [{ type: "param", name, value: Math.max(1e-6, curveLength(sk, ea)), free: true } as any, ...len(ea, ""), ...len(eb, "#b")];
+    }
     case "onLine":
       return [{ id, type: "point_on_line_pl", p_id: a, l_id: b }];
     case "onCircle":
@@ -178,9 +185,10 @@ function dimPrims(d: SDim, ents: Map<string, SEnt>, _sk: SketchData): Prim[] {
       return [{ id, type: "c2cdistance", c1_id: a, c2_id: b, dist: d.v }];
     }
     case "pldist": {
-      if (eb?.t === "line" && ea?.t === "line") return [{ id, type: "p2l_distance", p_id: (eb as any).p1, l_id: a, distance: d.v }];
-      if (isCurve(ea) && eb?.t === "line") return [{ id, type: "p2l_distance", p_id: (ea as any).c, l_id: b, distance: d.v }];
-      return [{ id, type: "p2l_distance", p_id: a, l_id: b, distance: d.v }];
+      const dv = d.dbl ? d.v / 2 : d.v;
+      if (eb?.t === "line" && ea?.t === "line") return [{ id, type: "p2l_distance", p_id: (eb as any).p1, l_id: a, distance: dv }];
+      if (isCurve(ea) && eb?.t === "line") return [{ id, type: "p2l_distance", p_id: (ea as any).c, l_id: b, distance: dv }];
+      return [{ id, type: "p2l_distance", p_id: a, l_id: b, distance: dv }];
     }
   }
   return [];
@@ -202,11 +210,21 @@ function tangentDir(e: SEnt, pid: string, sk: SketchData): [number, number] {
   return [1, 0];
 }
 
+/** serbest parametreler (eşit eğri uzunluğu) önce serbest olarak eklenir */
+function pushAll(list: Prim[]) {
+  const rest: Prim[] = [];
+  for (const p of list as any[]) {
+    if (p.type === "param" && p.free) gcs!.push_sketch_param(p.name, p.value, false);
+    else rest.push(p);
+  }
+  gcs!.push_primitives_and_params(rest as any);
+}
+
 /** Eskizi çözer; başarılıysa koordinatları yerinde günceller */
 export function solve(sk: SketchData, drag?: DragTarget, apply = true): SolveResult {
   if (!gcs) return { ok: true, dof: 0, conflicts: [], redundant: [] };
   gcs.clear_data();
-  gcs.push_primitives_and_params(primitives(sk, drag) as any);
+  pushAll(primitives(sk, drag));
   const st = gcs.solve();
   const conflicts = [...new Set(gcs.get_gcs_conflicting_constraints().map(baseId))];
   const redundant = [...new Set(gcs.get_gcs_redundant_constraints().map(baseId))];
@@ -252,7 +270,7 @@ export function analyze(sk: SketchData, dof: number): { pts: Set<string>; radii:
   const base = primitives(sk);
   const movable = (extra: Prim): boolean => {
     gcs!.clear_data();
-    gcs!.push_primitives_and_params([...base, extra] as any);
+    pushAll([...base, extra]);
     const st = gcs!.solve();
     if (st !== 0 && st !== 1) return false;
     return gcs!.get_gcs_conflicting_constraints().length === 0 && gcs!.get_gcs_redundant_constraints().every((c: string) => !c.startsWith("probe"));

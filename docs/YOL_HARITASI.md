@@ -658,3 +658,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.76 | Sonlu eleman analizi (doğrusal statik, voksel ağ, kuvvet / basınç / öz ağırlık, von Mises / yer değiştirme, abartılı şekil) | ✅ |
 
 | v0.77 | Bakım: sürücü olarak bırak, eski testler onarıldı, belgeler arşivlendi | ✅ |
+
+| v0.78 | Eşit eğri uzunluğu, eşit kanallar, çap ↔ yarıçap, çift mesafe | ✅ |

@@ -8450,6 +8450,7 @@ function fixedActs(): Act[] {
     }),
     S("sk.exit", "Eskizden çık", "", () => (mode.k === "sketch" ? exitSketch(true) : undefined), "exitSketch"),
     S("sk.toggle", "Çizgi ↔ teğet yay", "A", () => sk()?.toggleLineArc(), "tarc"),
+    S("sk.diarad", "Ölçü: çap ↔ yarıçap", "D", () => void sk()?.toggleDiaRad(), "dim"),
     S("sk.snaps", "Hızlı yakalama…", "", () => mode.k === "sketch" && openSnapMenu(mouseXY[0], mouseXY[1])),
     V("v.front", "Önden", "Ctrl+1", () => viewer.viewStd("front"), "front"),
     V("v.back", "Arkadan", "Ctrl+2", () => viewer.viewStd("back"), "front"),

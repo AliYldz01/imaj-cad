@@ -3217,6 +3217,31 @@ export class SketchEditor implements InputHandler {
     });
   }
 
+  /** çap ↔ yarıçap gösterimi (SolidWorks: ölçünün ok tarafı / "yarıçap olarak göster") */
+  toggleDiaRad(id?: string) {
+    const d = this.data.dims.find((x) => x.id === (id ?? [...this.sel][0]) && (x.t === "dia" || x.t === "rad"));
+    if (!d) return false;
+    this.op(() => {
+      const toRad = d.t === "dia";
+      d.t = toRad ? "rad" : "dia";
+      d.v = toRad ? d.v / 2 : d.v * 2;
+      if (d.expr) d.expr = toRad ? `(${d.expr})/2` : `(${d.expr})*2`;
+    });
+    this.host.changed();
+    return true;
+  }
+  /** çift mesafe: merkez çizgisine olan mesafe iki katı (çap) olarak gösterilir / girilir */
+  toggleDouble(id: string) {
+    const d = this.data.dims.find((x) => x.id === id && x.t === "pldist");
+    if (!d) return false;
+    this.op(() => {
+      d.dbl = !d.dbl || undefined;
+      d.v = d.dbl ? d.v * 2 : d.v / 2;
+      if (d.expr) d.expr = d.dbl ? `(${d.expr})*2` : `(${d.expr})/2`;
+    });
+    this.host.changed();
+    return true;
+  }
   toggleRefDim(id: string) {
     const d = this.data.dims.find((x) => x.id === id);
     if (!d) return;
@@ -3822,8 +3847,15 @@ export class SketchEditor implements InputHandler {
       return { t: "dist", refs: [a, b], sub: subFor(P(sk, a), P(sk, b)), lp };
     }
     const curve = (e?: SEnt) => e && (e.t === "circle" || e.t === "arc");
-    if (isPt(0) && e1?.t === "line") return { t: "pldist", refs: [ptOf(0), e1.id], lp };
-    if (isPt(1) && e0?.t === "line") return { t: "pldist", refs: [ptOf(1), e0.id], lp };
+    // SolidWorks çift mesafe: merkez çizgisine (yapı çizgisi) ölçüde etiket çizginin öbür yanına konursa Ø
+    const dblOf = (q: Vec2, l: SLine) => {
+      if (!l.cons) return {};
+      const A = P(sk, l.p1), u = sub2(P(sk, l.p2), A);
+      const s1 = crs2(u, sub2(q, A)), s2 = crs2(u, sub2(lp, A));
+      return s1 * s2 < 0 ? { dbl: true } : {};
+    };
+    if (isPt(0) && e1?.t === "line") return { t: "pldist", refs: [ptOf(0), e1.id], lp, ...dblOf(P(sk, ptOf(0)), e1) };
+    if (isPt(1) && e0?.t === "line") return { t: "pldist", refs: [ptOf(1), e0.id], lp, ...dblOf(P(sk, ptOf(1)), e0) };
     if (e0?.t === "line" && e1?.t === "line") {
       const u = sub2(P(sk, e0.p2), P(sk, e0.p1)), v = sub2(P(sk, e1.p2), P(sk, e1.p1));
       if (Math.abs(crs2(norm2(u), norm2(v))) < 1e-4) return { t: "pldist", refs: [e0.id, e1.id], lp };
@@ -4434,7 +4466,7 @@ export class SketchEditor implements InputHandler {
       const dirAB = norm2(sub2(B2, A2));
       this.arrow(A2, mul2(dirAB, -1), color);
       this.arrow(B2, dirAB, color);
-      text = lenTxt(Math.abs(d.v));
+      text = (d.dbl ? "Ø" : "") + lenTxt(Math.abs(d.v));
     } else if (d.t === "dia" || d.t === "rad") {
       const e = getEnt(sk, d.refs[0]) as SCircle | SArc;
       if (!e) return;
@@ -4912,6 +4944,16 @@ export class SketchEditor implements InputHandler {
           const b = h("button", "btn", dd.ref ? "Sürücü ölçü yap" : "Referans ölçü yap");
           b.addEventListener("click", () => this.toggleRefDim(dd.id));
           box.appendChild(b);
+          if (dd.t === "pldist") {
+            const db = h("button", "btn" + (dd.dbl ? " primary" : ""), "Çift mesafe (Ø, döndürme profili)");
+            db.addEventListener("click", () => this.toggleDouble(dd.id));
+            box.appendChild(db);
+          }
+          if (dd.t === "dia" || dd.t === "rad") {
+            const tb = h("button", "btn", dd.t === "dia" ? "Yarıçap olarak göster (D)" : "Çap olarak göster (D)");
+            tb.addEventListener("click", () => this.toggleDiaRad(dd.id));
+            box.appendChild(tb);
+          }
           if (dd.expr) box.appendChild(h("p", "pm-hint", `Denklem: ${dd.expr}`));
           const ac = this.arcDimOf(dd);
           if (ac) {

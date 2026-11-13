@@ -59,6 +59,7 @@ export type RelType =
   | "concentric"
   | "midpoint" // nokta, çizgi
   | "symmetric" // nokta, nokta, merkez çizgisi
+  | "eqcurve" // eşit eğri uzunluğu (çizgi / yay)
   | "fix"; // nokta
 
 export type DimType =
@@ -93,6 +94,8 @@ export interface SDim {
   ref?: boolean;
   /** değer bir denklemden geliyorsa ifadesi */
   expr?: string;
+  /** çift mesafe (nokta / çizgi – merkez çizgisi): gösterilen değer mesafenin iki katı (Ø) */
+  dbl?: boolean;
   /** daire / yay ölçü koşulu (cl / cc): en yakın (varsayılan) / merkez / en uzak */
   cond?: "min" | "c" | "max";
 }

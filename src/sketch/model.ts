@@ -289,7 +289,7 @@ export function measure(sk: SketchData, d: { t: DimType; refs: string[]; sub?: s
       const A = P(sk, l.p1), B = P(sk, l.p2);
       const u = sub(B, A);
       const L = Math.hypot(u[0], u[1]) || 1;
-      return Math.abs((u[0] * (p[1] - A[1]) - u[1] * (p[0] - A[0])) / L);
+      return Math.abs((u[0] * (p[1] - A[1]) - u[1] * (p[0] - A[0])) / L) * ((d as any).dbl ? 2 : 1);
     }
   }
 }
@@ -316,6 +316,7 @@ export const REL_NAMES: Record<RelType, string> = {
   concentric: "Eş merkezli",
   midpoint: "Orta nokta",
   symmetric: "Simetrik",
+  eqcurve: "Eşit eğri uzunluğu",
   fix: "Sabit",
 };
 export const REL_GLYPH: Record<RelType, string> = {
@@ -332,10 +333,31 @@ export const REL_GLYPH: Record<RelType, string> = {
   concentric: "◎",
   midpoint: "◇",
   symmetric: "⇋",
+  eqcurve: "≗",
   fix: "⚓",
 };
 
 export interface RelOption { t: RelType; label: string; build: () => { t: RelType; refs: string[]; fx?: number; fy?: number }[] }
+
+/** öğenin ait olduğu kanal (2 yay + 2 çizgi, isteğe bağlı merkez yapı çizgisi); değilse null */
+export function slotOf(sk: SketchData, id: string): { arcs: SArc[]; lines: SLine[]; cl?: SLine; key: string } | null {
+  const e = getEnt(sk, id);
+  if (!e || (e.t !== "arc" && e.t !== "line")) return null;
+  const solid = sk.ents.filter((x) => (x.t === "arc" || x.t === "line") && !(x as any).cons);
+  const ptsOf = (x: any): string[] => (x.t === "line" ? [x.p1, x.p2] : x.t === "arc" ? [x.s, x.e] : []);
+  const seen = new Set<string>([e.id]), stack: SEnt[] = [e];
+  while (stack.length) {
+    const x = stack.pop()!;
+    const ps = new Set(ptsOf(x));
+    for (const y of solid) if (!seen.has(y.id) && ptsOf(y).some((q) => ps.has(q))) seen.add(y.id), stack.push(y);
+    if (seen.size > 4) return null;
+  }
+  const comp = [...seen].map((k) => getEnt(sk, k)!) as SEnt[];
+  const arcs = comp.filter((x) => x.t === "arc") as SArc[], lines = comp.filter((x) => x.t === "line") as SLine[];
+  if (arcs.length !== 2 || lines.length !== 2 || (lines[0] as any).cons) return null;
+  const cl = sk.ents.find((x) => x.t === "line" && (x as any).cons && ((x.p1 === arcs[0].c && x.p2 === arcs[1].c) || (x.p1 === arcs[1].c && x.p2 === arcs[0].c))) as SLine | undefined;
+  return { arcs, lines, cl, key: [...seen].sort().join(",") };
+}
 
 /** Seçime uygulanabilecek ilişkiler (SolidWorks "İlişki Ekle") */
 export function applicableRelations(sk: SketchData, sel: string[]): RelOption[] {
@@ -371,6 +393,11 @@ export function applicableRelations(sk: SketchData, sel: string[]): RelOption[] 
       out.push({ t: "tangent", label: "Teğet", build: () => [{ t: "tangent", refs: [curves[0].id, curves[1].id] }] });
     }
   }
+  {
+    const arcs = ents.filter((e) => e.t === "arc");
+    if (nE === 2 && !allPts.length && arcs.length >= 1 && lines.length + arcs.length === 2)
+      out.push({ t: "eqcurve", label: "Eşit eğri uzunluğu", build: () => [{ t: "eqcurve", refs: [ents[0].id, ents[1].id] }] });
+  }
   if (lines.length === 1 && curves.length === 1 && nE === 2 && !allPts.length)
     out.push({ t: "tangent", label: "Teğet", build: () => [{ t: "tangent", refs: [lines[0].id, curves[0].id] }] });
   if (allPts.length === 2 && nE === 0) {
@@ -404,6 +431,30 @@ export function applicableRelations(sk: SketchData, sel: string[]): RelOption[] 
         ],
       });
   }
+  // eşit kanallar: seçilen öğeler tam iki kanala aitse
+  if (nE >= 2 && !allPts.length) {
+    const slots = new Map<string, NonNullable<ReturnType<typeof slotOf>>>();
+    let all = true;
+    for (const e of ents) {
+      const q = e.t === "line" && (e as any).cons ? null : slotOf(sk, e.id);
+      if (!q) {
+        const host = e.t === "line" && (e as any).cons ? [...sk.ents].map((x) => slotOf(sk, x.id)).find((q2) => q2?.cl?.id === e.id) : null;
+        if (host) slots.set(host.key, host);
+        else all = false;
+      } else slots.set(q.key, q);
+    }
+    if (all && slots.size === 2) {
+      const [A, B] = [...slots.values()];
+      out.push({
+        t: "equal",
+        label: "Eşit kanallar",
+        build: () => [
+          { t: "equal", refs: [A.arcs[0].id, B.arcs[0].id] },
+          A.cl && B.cl ? { t: "equal", refs: [A.cl.id, B.cl.id] } : { t: "equal", refs: [A.lines[0].id, B.lines[0].id] },
+        ],
+      });
+    }
+  }
   if (allPts.length >= 1 && nE === 0 && !allPts.includes(ORIGIN))
     out.push({ t: "fix", label: "Sabitle", build: () => allPts.map((p) => ({ t: "fix" as RelType, refs: [p], fx: P(sk, p)[0], fy: P(sk, p)[1] })) });
   if (ents.length >= 1 && allPts.length === 0)
@@ -421,6 +472,14 @@ export function applicableRelations(sk: SketchData, sel: string[]): RelOption[] 
 }
 
 /** Bir varlık veya noktayla ilgili ilişkiler */
+/** çizgi uzunluğu ya da yay uzunluğu */
+export function curveLength(sk: SketchData, e: SEnt | undefined): number {
+  if (!e) return 0;
+  if (e.t === "line") return d2(P(sk, e.p1), P(sk, e.p2));
+  if (e.t === "arc") return measure(sk, { t: "alen", refs: [e.id] });
+  return 0;
+}
+
 export function relationsOf(sk: SketchData, id: string): SRel[] {
   const e = getEnt(sk, id);
   const ids = new Set([id, ...(e ? entPoints(e) : [])]);

@@ -44,14 +44,14 @@ Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) vars
 | Yatay / Dikey (çizgi veya iki nokta) | çizgi, noktalar | 🟡 (iki nokta arası yatay/dikey E6) |
 | Doğrusal (collinear), Paralel, Dik | çizgiler | ✅ |
 | Eşit (uzunluk / yarıçap) | çizgiler, yaylar | ✅ |
-| **Eş yarıçaplı (coradial)** — aynı merkez ve yarıçap | yaylar | ⬜ E6 |
+| **Eş yarıçaplı (coradial)** — aynı merkez ve yarıçap | yaylar | ✅ v0.14 |
 | Eş merkezli, Teğet, Çakışık, Orta nokta, Kesişim, Simetrik | — | ✅ |
 | Sabit (fix), Sabit kanal | — | 🟡 (sabit kanal yok) |
 | **Birleştir (merge points)** — iki nokta tek noktaya | noktalar | ✅ v0.14 |
 | **Delme (pierce)** — nokta, eğrinin eskiz düzlemini deldiği yerde (süpürme kılavuzu için) | nokta + eğri | ✅ v0.62 |
-| **Eşit eğri uzunluğu** | iki eğri | ⬜ E6 |
+| **Eşit eğri uzunluğu** | iki eğri | ✅ v0.78 |
 | **Eşit eğrilik**, düzgünlük (G2/G3) | spline | 🟡 G2 v0.64 |
-| Eşit kanallar, Kenar üzerinde (dönüştürmeden), Çift mesafe | — | ⬜ |
+| Eşit kanallar, Kenar üzerinde (dönüştürmeden), Çift mesafe | — | ✅ v0.78 (kenar üzerinde v0.12.1) |
 | 3B'de: X/Y/Z boyunca, düzleme paralel (ParallelYZ/ZX), normal | 3B eskiz | 🟡 W4 |
 
 ### 1.4 Ölçülendirme
@@ -60,7 +60,7 @@ Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) vars
 | Akıllı ölçü (uzunluk, nokta-nokta, nokta-çizgi, açı, çap/yarıçap, yay uzunluğu) | ✅ |
 | Yatay / dikey / koordinat (ordinate) ölçü, zincir ölçü | 🟡 (zincir yok) |
 | Yay koşulu: merkez / min / maks (Shift ile) | ✅ v0.62 |
-| Ölçünün ok tarafına sürükleyerek çap ↔ yarıçap | ⬜ |
+| Ölçünün ok tarafına sürükleyerek çap ↔ yarıçap | ✅ v0.78 (D tuşu / panel düğmesi) |
 | Sürülen (referans) ölçü, aşırı tanım uyarısı | ✅ |
 | Değiştir kutusu: ✓ ✗ **⟳ yeniden oluştur**, ± ters, tekerlek artımı, denklem girişi (=), "Çizimler için işaretle" | 🟡 E3 |
 | Tam tanımla (otomatik ölçü + ilişki, taban noktası seçimi) | ✅ |
