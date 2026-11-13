@@ -646,3 +646,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.70 | Sac: şekillendirme araçları (kabartma, panjur), havalandırma, çapraz kırma, sac köşe takviyesi (4. grup tamam) | ✅ |
 
 | v0.71 | Kaynaklı: kesim listesi özellikleri, yapı sistemi, 3B eskiz spline / helis / kesişim / birleşik eğri, özellikler arası gönye (5. grup tamam) | ✅ |
+
+| v0.72 | Genel: belge sekmeleri, dosya yöneticisi, belge özellikleri (ondalık, ANSI), 3MF / PDF / eskiz-yüz DXF, panel iğnesi, kırıntılar, görev bölmesi, şerit özelleştirme (6. grup tamam) | ✅ |

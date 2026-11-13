@@ -20,6 +20,12 @@ export interface TechInfo {
   paper: "A4" | "A3";
   scale: number | 0; // 0 = otomatik
   dims: boolean;
+  /** üçüncü açı izdüşümü (ANSI): üst görünüş üstte, sağ görünüş sağda */
+  third?: boolean;
+  /** ölçü ondalık basamağı (belge özelliği) */
+  dec?: number;
+  /** belge özel özellikleri (antet altı satırı) */
+  props?: string;
   bom?: { no: number; name: string; qty: number }[];
   /** balon: bileşen sırası → BOM no */
   balloonOf?: number[];
@@ -75,7 +81,8 @@ export function snapPoints(v: DrawView): Vec2[] {
 
 const SCALES = [10, 5, 2, 1, 1 / 2, 1 / 2.5, 1 / 5, 1 / 10, 1 / 20, 1 / 25, 1 / 50, 1 / 100, 1 / 200];
 export const scaleLabel = (s: number) => (s >= 1 ? `${Math.round(s * 10) / 10}:1` : `1:${Math.round((1 / s) * 10) / 10}`);
-const f1 = (v: number) => (Math.round(v * 100) / 100).toString().replace(".", ",");
+let DEC = 2;
+const f1 = (v: number) => (Math.round(v * 10 ** DEC) / 10 ** DEC).toString().replace(".", ",");
 const vw = (v: DrawView) => Math.max(1e-6, v.max[0] - v.min[0]);
 const vh = (v: DrawView) => Math.max(1e-6, v.max[1] - v.min[1]);
 
@@ -107,7 +114,9 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
   // ızgara: üst sıra [ön, sol, (izo)], alt sıra [üst, kesit]; montajda yalnız izometrik büyük + ön/üst küçük
   const gap = info.dims ? 20 : 12;
   const cols = asm ? [vw(I ?? F)] : [Math.max(vw(F), vw(T)), Math.max(vw(L), S ? vw(S) : 0), ...(I && S ? [vw(I)] : [])];
-  const rws = asm ? [vh(I ?? F)] : [Math.max(vh(F), vh(L), I && S ? vh(I) : 0), Math.max(vh(T), S ? vh(S) : I ? vh(I) : 0)];
+  DEC = info.dec ?? 2;
+  const third = !!info.third && !asm;
+  const rws = asm ? [vh(I ?? F)] : third ? [Math.max(vh(T), S ? vh(S) : I ? vh(I) : 0), Math.max(vh(F), vh(L), I && S ? vh(I) : 0)] : [Math.max(vh(F), vh(L), I && S ? vh(I) : 0), Math.max(vh(T), S ? vh(S) : I ? vh(I) : 0)];
   const bomW = asm ? 95 : weld ? 112 : 0;
   const availW = W - 2 * M - 10 - bomW - gap * cols.length, availH = H - 2 * M - TB.h - 14 - gap * rws.length;
   const need = Math.min(availW / cols.reduce((a, b) => a + b, 0), availH / rws.reduce((a, b) => a + b, 0));
@@ -132,11 +141,12 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
   } else {
     const cx = [x0, x0 + cols[0] * s + gap, x0 + (cols[0] + cols[1]) * s + 2 * gap];
     const cy = [y0, y0 + rws[0] * s + gap];
-    out.front = place(F, cx[0], cy[0], cols[0], rws[0], "front");
-    out.left = place(L, cx[1], cy[0], cols[1], rws[0], "left");
-    out.top = place(T, cx[0], cy[1], cols[0], rws[1], "top");
-    if (S) out.sec = place(S, cx[1], cy[1], cols[1], rws[1], "sec");
-    if (I) out.iso = S ? place(I, cx[2], cy[0], cols[2], rws[0], "iso") : place(I, cx[1], cy[1], cols[1], rws[1], "iso");
+    const [rF, rT] = third ? [1, 0] : [0, 1];
+    out.front = place(F, cx[0], cy[rF], cols[0], rws[rF], "front");
+    out.left = place(L, cx[1], cy[rF], cols[1], rws[rF], "left");
+    out.top = place(T, cx[0], cy[rT], cols[0], rws[rT], "top");
+    if (S) out.sec = place(S, cx[1], cy[rT], cols[1], rws[rT], "sec");
+    if (I) out.iso = S ? place(I, cx[2], cy[rF], cols[2], rws[rF], "iso") : place(I, cx[1], cy[rT], cols[1], rws[rT], "iso");
   }
   // kesit taraması
   if (S && out.sec) {
@@ -311,7 +321,7 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
   const rows: [string, string][] = [
     ["Parça / montaj", info.title],
     ["Malzeme", info.material || "-"],
-    ["Ölçek", scaleLabel(s) + "   ·   İlk açı (ISO E)"],
+    ["Ölçek", scaleLabel(s) + (info.third ? "   ·   Üçüncü açı (ANSI)" : "   ·   İlk açı (ISO E)")],
     ["Çizen / Tarih", `${info.drawnBy || "-"}  ·  ${info.date}`],
     ["Resim no", info.no || "-"],
   ];
@@ -324,7 +334,7 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
     svg.text(tbx + 30, yy - rh / 2 + 1.1, v, i === 0 ? 3.4 : 2.9, "start", 0, i === 0 ? "tb" : "t");
   });
   svg.line(tbx + 28, tby, tbx + 28, tby + TB.h, "g");
-  svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD", 2.4, "start", 0, "tk");
+  svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD" + (info.props ? " · " + info.props : ""), 2.4, "start", 0, "tk");
   if (info.page) svg.text(tbx + TB.w - 2, tby - 2, `Sayfa ${info.page[0]} / ${info.page[1]}`, 2.6, "end", 0, "tk");
   const places: Record<string, FrontPlace> = {};
   for (const [k, p] of Object.entries(out)) if (p.v) places[k] = { ox: p.ox, oy: p.oy, s, min: p.v.min, max: p.v.max };
@@ -450,7 +460,7 @@ function titleBlock(svg: Svg, info: TechInfo, W: number, H: number, s: number) {
   const rows: [string, string][] = [
     ["Parça / montaj", info.title],
     ["Malzeme", info.material || "-"],
-    ["Ölçek", scaleLabel(s) + "   ·   İlk açı (ISO E)"],
+    ["Ölçek", scaleLabel(s) + (info.third ? "   ·   Üçüncü açı (ANSI)" : "   ·   İlk açı (ISO E)")],
     ["Çizen / Tarih", `${info.drawnBy || "-"}  ·  ${info.date}`],
     ["Resim no", info.no || "-"],
   ];
@@ -528,7 +538,7 @@ export function techSheet2(d: TechData, info: TechInfo, sheet1Scale: number, exp
     }
   }
   titleBlock(svg, info, W, H, s);
-  svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD", 2.4, "start", 0, "tk");
+  svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD" + (info.props ? " · " + info.props : ""), 2.4, "start", 0, "tk");
   return { svg: wrapSvg(svg, W, H), scale: s };
 }
 

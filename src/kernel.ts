@@ -42,7 +42,7 @@ export class Kernel {
   }
 
   /** montaj: STEP veya bileşenler arası girişim */
-  async pdraw(features: KFeature[], opts: { iso?: boolean; section?: boolean }): Promise<any> {
+  async pdraw(features: KFeature[], opts: { iso?: boolean; section?: boolean; third?: boolean }): Promise<any> {
     await this.ready;
     return this.request<any>({ type: "pdraw", features, opts } as any);
   }
@@ -110,6 +110,12 @@ export class Kernel {
     await this.ready;
     const r = await this.request<{ r: Vec3[][] }>({ type: "isect", a, b } as any);
     return r.r ?? [];
+  }
+  /** yüz noktasını oluşturan özellik (araç katısının sınırında; son özellikten geriye) */
+  async faceOwner(c: Vec3): Promise<string | null> {
+    await this.ready;
+    const r = await this.request<{ r: string | null }>({ type: "owner", c } as any);
+    return r.r ?? null;
   }
   /** Geometri kontrolü: gövde başına geçerlilik, serbest kenar, kısa kenar, küçük yüz, hacim */
   async check(): Promise<{ bodies: { i: number; valid: boolean; free: number; short: number; small: number; volume: number; faces: number; edges: number }[]; surfs: number }> {

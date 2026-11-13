@@ -737,6 +737,8 @@ export interface PartDoc {
   features: Feature[];
   seq: Record<string, number>;
   /** malzeme anahtarı (bkz. MATERIALS) */
+  /** belge özellikleri: ölçü ondalığı, resim standardı (ISO ilk açı / ANSI üçüncü açı), yazar, açıklama, özel özellikler */
+  props?: { dec?: number; std?: "ISO" | "ANSI"; author?: string; desc?: string; custom?: { k: string; v: string }[] };
   /** kesim listesi kalem özellikleri (SolidWorks Kesim Listesi Özellikleri): anahtar = kalem imzası */
   cutProps?: Record<string, { desc?: string; material?: string; props?: { k: string; v: string }[] }>;
   material?: string;

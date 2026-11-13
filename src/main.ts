@@ -5,6 +5,7 @@ import type { RefHeals } from "./doc/types";
 import { initSolver } from "./sketch/solver";
 import { SketchEditor, TOOL_NAMES, type SkTool } from "./sketch/editor";
 import { newSketch, nid, addPt, addLine } from "./sketch/model";
+import { mesh3mf, jpegPdf, sketchDxf, loopsDxf, faceLoops2D } from "./io/export";
 import { pointPos } from "./sketch/profile";
 import { compile, resolveFrame, sketchUsers, contourRegions, planeFrame } from "./doc/compile";
 import { STD_FRAMES, STD_NAMES, dist3, fmtNum, frameFromNormal, toWorld, toLocal, evalNum, setVarResolver, AXES, setUnits, units as unitsVar } from "./doc/math";
@@ -30,6 +31,8 @@ import { type Act, type Dir, DIRS8, comboOf, keyMap, keyOf, dirOf, gestCfg, open
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
+import { loadLib } from "./asm/assembly";
+import { loadBlocks } from "./sketch/editor";
 import { Sketch3DTool, PLANES as S3PLANES, setLineLength, curves3 } from "./sketch/sketch3d";
 import { REL3_NAMES, dofOf as dof3, arcPts as arcPts3, solve3d, dimValue as dimValue3 } from "./sketch/solver3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
@@ -82,13 +85,142 @@ function commitDoc(mutate: () => void) {
   saveDoc();
   afterDocChange();
 }
+// ---------- Çoklu belge sekmeleri (SolidWorks: açık belgeler arasında geçiş) ----------
+type DocTab = { uid: string; json: string | null; undo: string[]; redo: string[]; handle: any };
+const docTabs: DocTab[] = (() => {
+  try {
+    const t = JSON.parse(localStorage.getItem("imajcad.tabs") ?? "null");
+    if (Array.isArray(t?.tabs) && t.tabs.length) return t.tabs.map((x: any) => ({ uid: x.uid, json: x.json ?? null, undo: [], redo: [], handle: null }));
+  } catch {}
+  return [];
+})();
+let activeTab = (() => {
+  try {
+    return +(JSON.parse(localStorage.getItem("imajcad.tabs") ?? "{}").active ?? 0);
+  } catch {
+    return 0;
+  }
+})();
+function docUid(d: PartDoc) {
+  return ((d as any).uid ??= Math.random().toString(36).slice(2, 10));
+}
+function saveTabs() {
+  try {
+    localStorage.setItem("imajcad.tabs", JSON.stringify({ active: activeTab, tabs: docTabs.map((t, i) => ({ uid: t.uid, json: i === activeTab ? null : t.json })) }));
+  } catch {}
+}
+function ensureTabs() {
+  if (!docTabs.length || activeTab >= docTabs.length || activeTab < 0) {
+    docTabs.length = 0;
+    docTabs.push({ uid: docUid(doc), json: null, undo: [], redo: [], handle: null });
+    activeTab = 0;
+  }
+  docTabs[activeTab].uid = docUid(doc);
+}
+/** etkin sekmeyi değiştir: geçerli belge sekmesine yazılır, hedef belge yüklenir */
+function switchTab(i: number) {
+  if (i === activeTab || !docTabs[i]) return renderDocTabs();
+  if (mode.k === "sketch") exitSketch(true);
+  if (mode.k === "pm") cancelFeature();
+  endAux?.();
+  const cur = docTabs[activeTab];
+  cur.json = JSON.stringify(doc);
+  cur.undo = undoStack.splice(0);
+  cur.redo = redoStack.splice(0);
+  cur.handle = fileHandle;
+  activeTab = i;
+  const t = docTabs[i];
+  doc = t.json ? JSON.parse(t.json) : emptyDoc();
+  t.json = null;
+  undoStack.push(...t.undo);
+  redoStack.push(...t.redo);
+  fileHandle = t.handle;
+  treeSel = null;
+  firstBuild = true;
+  saveDoc();
+  saveTabs();
+  afterDocChange();
+  viewer.fit?.();
+  renderDocTabs();
+}
+/** yeni sekmede belge aç (boş belge ya da verilen) */
+function openInNewTab(d?: PartDoc, handle: any = null) {
+  ensureTabs();
+  const cur = docTabs[activeTab];
+  cur.json = JSON.stringify(doc);
+  cur.undo = undoStack.splice(0);
+  cur.redo = redoStack.splice(0);
+  cur.handle = fileHandle;
+  const nd = d ?? { ...emptyDoc(), name: `Parça${docTabs.length + 1}` };
+  docTabs.push({ uid: docUid(nd), json: null, undo: [], redo: [], handle });
+  activeTab = docTabs.length - 1;
+  doc = nd;
+  fileHandle = handle;
+  treeSel = null;
+  firstBuild = true;
+  saveDoc();
+  saveTabs();
+  afterDocChange();
+  renderDocTabs();
+}
+function closeTab(i: number) {
+  if (docTabs.length <= 1) return toast("Son belge kapatılamaz", true);
+  const nm = i === activeTab ? doc.name : (JSON.parse(docTabs[i].json ?? "{}").name ?? "");
+  if (!confirm(`"${nm}" sekmesi kapatılsın mı? (Kaydedilmemiş değişiklikler kaybolur)`)) return;
+  if (i === activeTab) {
+    docTabs.splice(i, 1);
+    activeTab = -1;
+    const j = Math.min(i, docTabs.length - 1);
+    const t = docTabs[j];
+    activeTab = j;
+    doc = t.json ? JSON.parse(t.json) : emptyDoc();
+    t.json = null;
+    undoStack.length = redoStack.length = 0;
+    undoStack.push(...t.undo);
+    redoStack.push(...t.redo);
+    fileHandle = t.handle;
+    treeSel = null;
+    firstBuild = true;
+    saveDoc();
+    afterDocChange();
+  } else {
+    docTabs.splice(i, 1);
+    if (i < activeTab) activeTab--;
+  }
+  saveTabs();
+  renderDocTabs();
+}
+function renderDocTabs() {
+  ensureTabs();
+  const bar = document.getElementById("doctabs");
+  if (!bar) return;
+  bar.innerHTML = "";
+  docTabs.forEach((t, i) => {
+    const nm = i === activeTab ? doc.name : (() => { try { return JSON.parse(t.json ?? "{}").name ?? "?"; } catch { return "?"; } })();
+    const b = h("div", "dtab" + (i === activeTab ? " on" : ""));
+    b.appendChild(h("span", "", nm));
+    const x = h("button", "dtab-x", "✕");
+    x.title = "Kapat";
+    x.addEventListener("click", (ev) => (ev.stopPropagation(), closeTab(i)));
+    if (docTabs.length > 1) b.appendChild(x);
+    b.addEventListener("click", () => switchTab(i));
+    bar.appendChild(b);
+  });
+  const add = h("button", "dtab-add", "+");
+  add.title = "Yeni belge sekmesi";
+  add.addEventListener("click", () => openInNewTab());
+  bar.appendChild(add);
+  bar.style.display = docTabs.length > 1 ? "" : "none";
+}
 function afterDocChange() {
+  applyDocProps();
   const eqErr = applyEquations();
   if (eqErr.length) toast(eqErr[0], true);
   renderTree();
   updatePlanes();
   rebuild();
   updateUndo();
+  renderDocTabs();
 }
 const FEAT_NAMES: Record<string, string> = {
   sheetjog: "Kademe",
@@ -319,7 +451,7 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     if (asmIn) return;
     setStatus("busy", "Teknik resim hazırlanıyor…");
     const kf = compile(viewFeatures().feats, doc.profiles ?? {}).kfeats;
-    data = await kernel.pdraw(kf, { iso: o.iso, section: o.section });
+    data = await kernel.pdraw(kf, { iso: o.iso, section: o.section, third: doc.props?.std === "ANSI" });
     // kaynaklı yapı: kesim listesi tablosu, balonlar, kaynak listesi
     weldInfo = null;
     if (doc.features.some((f) => f.type === "member" && !f.off)) {
@@ -359,7 +491,7 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     saveDoc();
   };
   const W = () => (o.paper === "A3" ? 420 : 297), H = () => (o.paper === "A3" ? 297 : 210);
-  const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff, ...(weldInfo && o.cutTable ? weldInfo : {}) });
+  const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, third: doc.props?.std === "ANSI", dec: doc.props?.dec, props: [doc.props?.author ? `Yazar: ${doc.props.author}` : "", ...(doc.props?.custom ?? []).map((c) => `${c.k}: ${c.v}`)].filter(Boolean).join(" · ") || undefined, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff, ...(weldInfo && o.cutTable ? weldInfo : {}) });
   const draw = () => {
     const n = page2 ? 2 : 1;
     cur = techSheet(data, info(n > 1 ? [1, n] : undefined));
@@ -1002,7 +1134,46 @@ function clearPartSel() {
   psel.edges.clear();
   psel.planes.clear();
 }
+/** SolidWorks seçim kırıntıları: Parça › Gövde › Özellik › Yüz/Kenar — tıklayınca o düzey seçilir */
+let crumbSeq = 0;
+function renderCrumbs() {
+  const box = document.getElementById("crumbs");
+  if (!box) return;
+  const m = viewer.mesh;
+  const fi = [...psel.faces][0], ei = [...psel.edges][0];
+  if (mode.k !== "part" || !m || (fi === undefined && ei === undefined) || asmUI?.on) return void ((box.innerHTML = ""), (box.style.display = "none"));
+  box.style.display = "";
+  const seq = ++crumbSeq;
+  const f = fi !== undefined ? m.faces[fi] : null;
+  const e = ei !== undefined ? m.edges[ei] : null;
+  const pt: Vec3 = f ? f.c : e!.m;
+  const bi = f?.b ?? (() => {
+    // kenarın gövdesi: kenar ortasına en yakın yüzün gövdesi
+    let best = 0, bd = Infinity;
+    m.faces.forEach((x) => { const d = dist3(x.c, pt); if (d < bd) [bd, best] = [d, x.b ?? 0]; });
+    return best;
+  })();
+  const item = (t: string, fn: () => void) => {
+    const b = h("button", "crumb", t);
+    b.addEventListener("click", fn);
+    return b;
+  };
+  const draw = (owner: string | null) => {
+    if (seq !== crumbSeq) return;
+    box.innerHTML = "";
+    const parts: HTMLElement[] = [
+      item(doc.name, () => (clearPartSel(), (treeSel = null), refreshHighlight(), renderTree())),
+      ...((m.bodies ?? 1) > 1 ? [item(`Gövde ${bi + 1}`, () => { clearPartSel(); m.faces.forEach((x, i) => (x.b ?? 0) === bi && psel.faces.add(i)); refreshHighlight(); })] : []),
+      ...(owner && getFeat(owner) ? [item(getFeat(owner)!.name, () => ((treeSel = owner), clearPartSel(), renderTree(), refreshHighlight(), drawSketches()))] : []),
+      h("span", "crumb cur", f ? `Yüz (${f.type === "PLANE" ? "düz" : f.type === "CYLINDRE" ? "silindir" : f.type.toLowerCase()})` : `Kenar (${e!.type === "LINE" ? "doğru" : e!.type === "CIRCLE" ? "daire" : e!.type.toLowerCase()})`),
+    ];
+    parts.forEach((p, i) => (i && box.appendChild(h("span", "crumb-sep", "›")), box.appendChild(p)));
+  };
+  draw(null);
+  void kernel.faceOwner(pt).then(draw).catch(() => {});
+}
 function refreshHighlight() {
+  renderCrumbs();
   const sel = { faces: [...psel.faces], edges: [...psel.edges], planes: [...psel.planes] };
   if (mode.k === "pm") {
     const d = mode.draft;
@@ -1959,7 +2130,10 @@ function commitFeature(kind: string) {
   });
   treeSel = draft.id;
   renderCommands();
+  // SolidWorks raptiye: panel iğnelenmişse aynı komut yeni özellik için açık kalır
+  if (pmPinned && !editingId) setTimeout(() => newFeature(kind), 0);
 }
+let pmPinned = false;
 
 function kindOf(f: Feature) {
   if (f.type === "extrude") return f.cut ? "cutExtrude" : "extrude";
@@ -6127,11 +6301,98 @@ const GROUP_NAMES: Record<string, string[]> = {
 };
 const groupSel: Record<string, number> = {};
 let lastGroupTool = "";
+/** şerit özelleştirme: sekme başına gizli komutlar (localStorage imajcad.ribbon) */
+function ribbonHidden(): Record<string, string[]> {
+  try {
+    return JSON.parse(localStorage.getItem("imajcad.ribbon") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+function openRibbonCustom() {
+  const all = commands().filter((c) => c !== "sep") as Exclude<Cmd, "sep">[];
+  const hid = ribbonHidden();
+  const cur = new Set(hid[tab] ?? []);
+  const dlg = h("dialog", "input-dialog ribbon-dlg") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", `Şeridi özelleştir — ${TAB_NAMES[tab] ?? tab}`));
+  dlg.appendChild(h("p", "small", "İşaretli komutlar şeritte görünür. Gizlenen komutlar menülerden ve komut aramadan kullanılmaya devam eder."));
+  const box = h("div", "pm-feats");
+  for (const c of all) box.appendChild(checkField(c.label, !cur.has(c.id), (on) => (on ? cur.delete(c.id) : cur.add(c.id))));
+  dlg.appendChild(box);
+  const bar = h("div", "pm-buttons");
+  bar.append(
+    button("Tamam", () => {
+      hid[tab] = [...cur];
+      if (!hid[tab].length) delete hid[tab];
+      localStorage.setItem("imajcad.ribbon", JSON.stringify(hid));
+      dlg.close();
+      renderCommands();
+    }, "btn primary"),
+    button("Varsayılana dön", () => (delete hid[tab], localStorage.setItem("imajcad.ribbon", JSON.stringify(hid)), dlg.close(), renderCommands()), "btn"),
+    button("Vazgeç", () => dlg.close(), "btn"),
+  );
+  dlg.appendChild(bar);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+/** sağ görev bölmesi: tasarım kütüphanesi (parçalar, eskiz blokları, özel profiller) ve dosyalar */
+let paneTab: "lib" | "files" = "lib";
+function toggleTaskPane(show?: boolean) {
+  const p = document.getElementById("taskpane")!;
+  p.hidden = show === undefined ? !p.hidden : !show;
+  if (!p.hidden) renderTaskPane();
+}
+function renderTaskPane() {
+  const p = document.getElementById("taskpane");
+  if (!p || p.hidden) return;
+  p.innerHTML = "";
+  const head = h("div", "tp-head");
+  head.append(segField([{ v: "lib", t: "Tasarım kütüphanesi" }, { v: "files", t: "Dosyalar" }], paneTab, (v) => ((paneTab = v as any), renderTaskPane())), button("✕", () => toggleTaskPane(false), "btn"));
+  p.appendChild(head);
+  const sec = (t: string) => (p.appendChild(h("div", "pm-sub", t)), p);
+  const row = (t: string, ...bs: HTMLElement[]) => {
+    const r = h("div", "tp-row");
+    r.append(h("span", "", t), ...bs);
+    p.appendChild(r);
+  };
+  if (paneTab === "lib") {
+    const lib = loadLib();
+    sec(`Parçalar (${Object.keys(lib).length})`);
+    if (!Object.keys(lib).length) p.appendChild(h("p", "small", "Montaj sekmesinde parçaları kütüphaneye kaydedebilirsiniz."));
+    for (const [k, part] of Object.entries(lib))
+      row(part.name ?? k,
+        button("Aç", () => openInNewTab({ ...emptyDoc(), name: part.name, features: JSON.parse(JSON.stringify(part.features)), ...((part as any).profiles ? { profiles: (part as any).profiles } : {}) } as any), "btn"),
+        ...(asmUI?.on ? [button("Montaja ekle", () => (asmUI!.addComp(JSON.parse(JSON.stringify(part))), toast(`${part.name} eklendi`)), "btn primary")] : []));
+    const blocks = loadBlocks();
+    sec(`Eskiz blokları (${Object.keys(blocks).length})`);
+    for (const nm of Object.keys(blocks))
+      row(nm, button("Eskize ekle", () => {
+        if (mode.k !== "sketch") return toast("Önce bir eskiz açın", true);
+        mode.editor.opts.block = nm;
+        mode.editor.setTool("block");
+        hint("Bloğun ekleneceği yere dokunun");
+      }, "btn primary"));
+    const prof = loadLibrary();
+    sec(`Özel profiller (${Object.keys(prof).length})`);
+    for (const nm of Object.keys(prof)) row(nm);
+  } else {
+    const list: { name: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+    sec(`Son belgeler (${list.length})`);
+    for (const it of list) row(it.name, button("Aç", () => openDocText(it.json, null), "btn primary"));
+    ensureTabs();
+    sec(`Açık belgeler (${docTabs.length})`);
+    docTabs.forEach((t, i) => row((i === activeTab ? "● " : "") + (i === activeTab ? doc.name : (() => { try { return JSON.parse(t.json ?? "{}").name; } catch { return "?"; } })()), button("Geç", () => switchTab(i), "btn")));
+    p.appendChild(button("Dosya yöneticisi…", () => openFileManager(), "btn"));
+  }
+}
 function renderCommands() {
   const box = $("#cmds");
   box.innerHTML = "";
   const groups: Cmd[][] = [[]];
+  const hid = ribbonHidden()[tab] ?? [];
   for (const c of commands()) {
+    if (c !== "sep" && hid.includes(c.id)) continue;
     if (c === "sep") {
       if (groups[groups.length - 1].length) groups.push([]);
     } else groups[groups.length - 1].push(c);
@@ -6392,14 +6653,20 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
     if (mode.k === "sketch" && act !== "save") exitSketch(true);
     if (mode.k === "pm") cancelFeature();
     if (act === "new") {
-      if (doc.features.length && !confirm("Yeni parça açılsın mı? (Geri al ile dönebilirsiniz)")) return;
-      fileHandle = null;
-      treeSel = null;
-      commitDoc(() => (doc = emptyDoc()));
+      // SolidWorks: yeni belge ayrı sekmede açılır (geçerli belge kapanmaz)
+      if (doc.features.length) openInNewTab();
+      else {
+        fileHandle = null;
+        treeSel = null;
+        commitDoc(() => (doc = emptyDoc()));
+        firstBuild = true;
+      }
       viewer.viewStd("iso");
-      firstBuild = true;
     } else if (act === "save" || act === "saveas") await saveFile(act === "saveas");
     else if (act === "recent") openRecent();
+    else if (act === "files") openFileManager();
+    else if (act === "3mf" || act === "pdf" || act === "skdxf" || act === "facedxf") return exportExtra(act);
+    else if (act === "docprops") openDocProps();
     else if (act === "open") {
       const w = window as any;
       if (w.showOpenFilePicker) {
@@ -6437,7 +6704,12 @@ function openDocText(text: string, handle: any) {
     const d = JSON.parse(text);
     if (d?.version !== 2 || !Array.isArray(d.features)) throw new Error("Geçersiz dosya");
     treeSel = null;
-    commitDoc(() => (doc = d));
+    // aynı belge zaten bir sekmede açıksa ona geç; dolu belgedeyken yeni sekmede aç
+    ensureTabs();
+    const ex = (d as any).uid ? docTabs.findIndex((t, i) => i !== activeTab && t.uid === (d as any).uid) : -1;
+    if (ex >= 0) return switchTab(ex);
+    if (doc.features.length && !(doc as any).uid?.startsWith?.("__")) openInNewTab(d, handle);
+    else commitDoc(() => (doc = d));
     fileHandle = handle;
     firstBuild = true;
     pushRecent();
@@ -6488,6 +6760,176 @@ function pushRecent() {
     while (out.length > 8 || out.reduce((a, x) => a + x.json.length, 0) > 2_000_000) out.pop();
     localStorage.setItem("imajcad.recent", JSON.stringify(out));
   } catch {}
+}
+/** Dosya / proje yöneticisi: açık sekmeler, son belgeler (aç / indir / listeden çıkar), masaüstünde proje klasörü (.icad / .icasm) */
+function openFileManager() {
+  document.querySelector("dialog.filemgr")?.remove();
+  const dlg = h("dialog", "input-dialog filemgr") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", "Dosya yöneticisi"));
+  const render = () => {
+    dlg.querySelectorAll(".fm-sec").forEach((x) => x.remove());
+    const sec = (t: string) => {
+      const d = h("div", "fm-sec");
+      d.appendChild(h("div", "pm-sub", t));
+      dlg.insertBefore(d, dlg.querySelector(".fm-bar"));
+      return d;
+    };
+    ensureTabs();
+    const s1 = sec(`Açık belgeler (${docTabs.length})`);
+    docTabs.forEach((t, i) => {
+      const nm = i === activeTab ? doc.name : (() => { try { return JSON.parse(t.json ?? "{}").name ?? "?"; } catch { return "?"; } })();
+      const row = h("div", "pm-row fm-row");
+      row.append(h("span", "", (i === activeTab ? "● " : "") + nm), button("Geç", () => (dlg.close(), switchTab(i)), "btn"), ...(docTabs.length > 1 ? [button("Kapat", () => (closeTab(i), render()), "btn")] : []));
+      s1.appendChild(row);
+    });
+    const list: { name: string; uid?: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+    const s2 = sec(`Son belgeler (${list.length})`);
+    const q = h("input") as HTMLInputElement;
+    q.placeholder = "Ara…";
+    q.addEventListener("input", () => s2.querySelectorAll(".fm-row").forEach((r) => ((r as HTMLElement).style.display = r.textContent!.toLocaleLowerCase("tr").includes(q.value.toLocaleLowerCase("tr")) ? "" : "none")));
+    s2.appendChild(q);
+    list.forEach((it, k) => {
+      const row = h("div", "pm-row fm-row");
+      row.append(
+        h("span", "", `${it.name} — ${new Date(it.t).toLocaleString("tr-TR")}`),
+        button("Aç", () => (dlg.close(), openDocText(it.json, null)), "btn primary"),
+        button("İndir", () => download(new Blob([it.json], { type: "application/json" }), `${it.name}.icad`), "btn"),
+        button("Listeden çıkar", () => {
+          list.splice(k, 1);
+          localStorage.setItem("imajcad.recent", JSON.stringify(list));
+          render();
+        }, "btn"),
+      );
+      s2.appendChild(row);
+    });
+    const s3 = sec("Proje klasörü");
+    const w = window as any;
+    if (!w.showDirectoryPicker) s3.appendChild(h("p", "small", "Bu tarayıcıda klasör erişimi yok; Dosya > Aç ile tek dosya açabilirsiniz."));
+    else
+      s3.appendChild(button("Klasör seç…", async () => {
+        try {
+          const dir = await w.showDirectoryPicker();
+          s3.querySelectorAll(".fm-row").forEach((x) => x.remove());
+          for await (const [name, hd] of dir.entries()) {
+            if (hd.kind !== "file" || !/\.(icad|icasm|json)$/i.test(name)) continue;
+            const row = h("div", "pm-row fm-row");
+            row.append(h("span", "", name), button("Aç", async () => {
+              const file = await hd.getFile();
+              const text = await file.text();
+              dlg.close();
+              if (/\.icasm$/i.test(name)) return toast("Montaj dosyaları Montaj sekmesinden açılır", true);
+              openDocText(text, hd);
+            }, "btn primary"));
+            s3.appendChild(row);
+          }
+        } catch {}
+      }, "btn"));
+  };
+  const bar = h("div", "pm-buttons fm-bar");
+  bar.append(button("Yeni belge sekmesi", () => (dlg.close(), openInNewTab()), "btn"), button("Kapat", () => dlg.close(), "btn primary"));
+  dlg.appendChild(bar);
+  render();
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+/** Ek dışa aktarmalar: 3MF, görünüm PDF, eskiz DXF, düz yüz DXF */
+function exportExtra(act: string) {
+  const safe = doc.name.replace(/[^A-Za-z0-9çğıöşüÇĞİÖŞÜ._-]+/g, "_");
+  if (act === "3mf") {
+    const m = viewer.mesh;
+    if (!m) return toast("Dışa aktarılacak model yok", true);
+    return download(new Blob([mesh3mf(m, doc.name) as any], { type: "model/3mf" }), `${safe}.3mf`);
+  }
+  if (act === "pdf") {
+    const cv = viewer.renderer.domElement;
+    viewer.renderer.render(viewer.scene, viewer.viewCam());
+    const url = cv.toDataURL("image/jpeg", 0.92);
+    return download(new Blob([jpegPdf(url, cv.width, cv.height, `${doc.name} - ${new Date().toLocaleDateString("tr-TR")}`) as any], { type: "application/pdf" }), `${safe}.pdf`);
+  }
+  if (act === "skdxf") {
+    const sk = mode.k === "sketch" ? { name: (getFeat(mode.featId) as any)?.name ?? "eskiz", data: mode.editor.data } : treeSel && getFeat(treeSel)?.type === "sketch" ? { name: getFeat(treeSel)!.name, data: (getFeat(treeSel) as SketchFeature).data } : null;
+    if (!sk) return toast("Bir eskiz açın ya da ağaçta eskiz seçin", true);
+    return download(new Blob([sketchDxf(sk.data)], { type: "application/dxf" }), `${safe}_${sk.name.replace(/[^A-Za-z0-9._-]+/g, "_")}.dxf`);
+  }
+  if (act === "facedxf") {
+    const m = viewer.mesh, fi = [...psel.faces][0];
+    if (!m || fi === undefined) return toast("Önce düz bir yüz seçin", true);
+    const f = m.faces[fi];
+    if (!f.n) return toast("Yalnız düz yüzler DXF'e aktarılır", true);
+    const fr = frameFromNormal(f.c, f.n as Vec3);
+    const loops = faceLoops2D(m, fi, (p) => toLocal(fr, p));
+    if (!loops.length) return toast("Yüz sınırı bulunamadı", true);
+    return download(new Blob([loopsDxf(loops)], { type: "application/dxf" }), `${safe}_yuz.dxf`);
+  }
+}
+/** Belge özellikleri: ölçü ondalığı, resim standardı, yazar / açıklama, özel özellikler (parçayla kaydedilir) */
+function openDocProps() {
+  const P = JSON.parse(JSON.stringify(doc.props ?? {})) as NonNullable<PartDoc["props"]>;
+  P.custom = P.custom ?? [];
+  const dlg = h("dialog", "input-dialog docprops") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", "Belge özellikleri"));
+  const nm = h("input") as HTMLInputElement;
+  nm.value = doc.name;
+  const au = h("input") as HTMLInputElement;
+  au.value = P.author ?? "";
+  const de = h("input") as HTMLInputElement;
+  de.value = P.desc ?? "";
+  const dec = h("input") as HTMLInputElement;
+  dec.type = "number";
+  dec.min = "0";
+  dec.max = "6";
+  dec.value = String(P.dec ?? 2);
+  const st = h("select") as HTMLSelectElement;
+  st.innerHTML = `<option value="ISO">ISO (ilk açı izdüşümü)</option><option value="ANSI">ANSI (üçüncü açı izdüşümü)</option>`;
+  st.value = P.std ?? "ISO";
+  const lab = (t: string, el: HTMLElement) => { const l = h("label", "pm-field"); l.append(h("span", "", t), el); return l; };
+  dlg.append(lab("Belge adı", nm), lab("Yazar", au), lab("Açıklama", de), lab("Ölçü ondalık basamağı", dec), lab("Resim standardı", st));
+  const cl = h("div", "cp-list");
+  const renderC = () => {
+    cl.innerHTML = "";
+    P.custom!.forEach((c, i) => {
+      const row = h("div", "pm-row");
+      const k = h("input") as HTMLInputElement, v = h("input") as HTMLInputElement;
+      k.value = c.k;
+      v.value = c.v;
+      k.placeholder = "Özellik";
+      v.placeholder = "Değer";
+      k.addEventListener("input", () => (c.k = k.value));
+      v.addEventListener("input", () => (c.v = v.value));
+      row.append(k, v, button("✕", () => (P.custom!.splice(i, 1), renderC()), "btn"));
+      cl.appendChild(row);
+    });
+  };
+  renderC();
+  dlg.append(h("div", "pm-sub", "Özel özellikler"), cl, button("+ Özellik ekle", () => (P.custom!.push({ k: "", v: "" }), renderC()), "btn"));
+  const bar = h("div", "pm-buttons");
+  bar.append(
+    button("Tamam", () => {
+      P.author = au.value.trim() || undefined;
+      P.desc = de.value.trim() || undefined;
+      P.dec = Math.max(0, Math.min(6, Math.round(+dec.value || 0)));
+      P.std = st.value as any;
+      P.custom = P.custom!.filter((c) => c.k.trim());
+      if (!P.custom.length) delete P.custom;
+      commitDoc(() => {
+        doc.props = P;
+        if (nm.value.trim()) doc.name = nm.value.trim();
+      });
+      applyDocProps();
+      dlg.close();
+      toast("Belge özellikleri kaydedildi");
+    }, "btn primary"),
+    button("Vazgeç", () => dlg.close(), "btn"),
+  );
+  dlg.appendChild(bar);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+function applyDocProps() {
+  MathMod.setDimDec(doc.props?.dec ?? 2);
+  if (mode.k === "sketch") mode.editor.render();
 }
 function openRecent() {
   const list: { name: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
@@ -7293,6 +7735,10 @@ viewer.onRender(() => {
   minBtn.title = "Paneli küçült / büyüt";
   minBtn.addEventListener("click", () => $("#side").classList.toggle("min"));
   $("#pm .pm-head").insertBefore(minBtn, $("#pm-ok"));
+  const pin = h("button", "pm-pin", "📌");
+  pin.title = "Paneli iğnele (✓ sonrası aynı komut açık kalır)";
+  pin.addEventListener("click", () => ((pmPinned = !pmPinned), pin.classList.toggle("on", pmPinned), toast(pmPinned ? "Panel iğnelendi" : "Panel iğnesi kaldırıldı")));
+  $("#pm .pm-head").insertBefore(pin, $("#pm-ok"));
   window.addEventListener(
     "pointerdown",
     (e) => {
@@ -7587,10 +8033,16 @@ function fixedActs(): Act[] {
     F("f.save", "Kaydet", "Ctrl+S", () => fileAct("save")),
     F("f.saveas", "Farklı kaydet…", "", () => fileAct("saveas")),
     F("f.recent", "Son belgeler…", "", () => fileAct("recent")),
+    F("f.files", "Dosya yöneticisi…", "", () => fileAct("files")),
+    F("f.docprops", "Belge özellikleri…", "", () => fileAct("docprops")),
     F("f.wizard", "Şekil sihirbazı…", "", () => fileAct("wizard")),
     F("f.import", "STEP / STL içe aktar…", "", () => fileAct("import"), "importf"),
     F("f.step", "STEP dışa aktar", "", () => fileAct("step")),
     F("f.stl", "STL dışa aktar", "", () => fileAct("stl")),
+    F("f.3mf", "3MF dışa aktar", "", () => fileAct("3mf")),
+    F("f.pdf", "Görünümü PDF olarak kaydet", "", () => fileAct("pdf")),
+    F("f.skdxf", "Eskizi DXF olarak dışa aktar", "", () => fileAct("skdxf")),
+    F("f.facedxf", "Seçili yüzü DXF olarak dışa aktar", "", () => fileAct("facedxf")),
     F("f.dxf", "Sac açınımı (DXF)", "", () => fileAct("dxf"), "dxf"),
     F("f.cutlist", "Kesim listesi…", "", () => fileAct("cutlist"), "cutlist"),
     F("f.techdraw", "Teknik resim…", "", () => void openTechDrawing(), "dxf"),
@@ -7659,6 +8111,8 @@ function fixedActs(): Act[] {
     T("t.sbar", "Kısayol çubuğu", "S", () => openShortcutBar()),
     T("t.filter", "Seçim filtresi (tümü / yüz / kenar)", "F5", () => cycleSelFilter(), "select"),
     T("t.custom", "Özelleştir (kısayollar, fare hareketleri)…", "", () => openCust()),
+    T("t.ribbon", "Şeridi özelleştir…", "", () => openRibbonCustom()),
+    T("t.taskpane", "Görev bölmesi (kütüphane / dosyalar)", "", () => toggleTaskPane()),
     T("t.print", "Kısayol listesini yazdır", "", () => printList(allActs()) || toast("Açılır pencere engellendi")),
     T("t.input", "Kalem ve dokunmatik ayarları…", "", () => openInputSettings()),
     T("t.wheel", "Tekerlek yönünü ters çevir", "", () => fileAct("wheel")),
@@ -7953,6 +8407,11 @@ function showCmd(title: string) {
 }
 (window as any).__app = {
   showCmd,
+  fileAct: (a: string) => fileAct(a),
+  toggleTaskPane,
+  openRibbonCustom,
+  math: MathMod,
+  get tabs() { return { n: docTabs.length, active: activeTab }; },
   THREE,
   get s3() {
     return s3tool;

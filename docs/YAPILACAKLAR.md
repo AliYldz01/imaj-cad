@@ -49,11 +49,11 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.71 5.4 Özellikler arası gönye köşe (önceki yapı elemanıyla açıortayda)
 
 ## 6. Genel / arayüz
-- ⬜ 6.1 Çoklu belge sekmeleri, proje / dosya yöneticisi
-- ⬜ 6.2 Belge özellikleri (ondalık, standart, özel özellikler)
-- ⬜ 6.3 Dışa aktarma: eskiz / yüz DXF, PDF, 3MF
-- ⬜ 6.4 Panel pimi
-- ⬜ 6.5 Seçim kırıntıları, sağ görev bölmesi, şerit özelleştirme
+- ✅ v0.72 6.1 Çoklu belge sekmeleri (geri al yığını sekme başına), dosya yöneticisi (açık / son belgeler, proje klasörü)
+- ✅ v0.72 6.2 Belge özellikleri (ölçü ondalığı, ISO / ANSI üçüncü açı resim, yazar, özel özellikler antette)
+- ✅ v0.72 6.3 Dışa aktarma: eskiz DXF, düz yüz DXF, görünüm PDF, 3MF
+- ✅ v0.72 6.4 Panel iğnesi (✓ sonrası komut açık kalır)
+- ✅ v0.72 6.5 Seçim kırıntıları (belge › gövde › özellik › yüz/kenar), sağ görev bölmesi (kütüphane / dosyalar), şerit özelleştirme
 
 ## 7. Montaj
 - ⬜ 7.1 Desen güdümlü bileşen çoğaltma

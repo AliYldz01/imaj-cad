@@ -57,9 +57,12 @@
       </aside>
 
       <main id="view">
+        <div id="doctabs"></div>
         <div id="hint"></div>
         <div id="status"><span class="dot"></span><span id="status-text">Çekirdek yükleniyor…</span></div>
         <div id="viewbar"></div>
+        <div id="crumbs"></div>
+        <aside id="taskpane" hidden></aside>
       </main>
     </div>
     <footer id="statusbar"><span id="sb-mode"></span><span id="sb-sel"></span><span class="spacer"></span><span id="sb-units" title="Birim sistemi: milimetre, gram, saniye">MMGS</span><button id="sb-lock" title="Tam ekran Esc kilidi"></button><button id="sb-keys" title="Kısayolları özelleştir">⌨</button></footer>
@@ -71,10 +74,16 @@
       <button data-act="save">Kaydet (.icad)</button>
       <button data-act="saveas">Farklı kaydet…</button>
       <button data-act="recent">Son belgeler…</button>
+      <button data-act="files">Dosya yöneticisi…</button>
+      <button data-act="docprops">Belge özellikleri…</button>
       <button data-act="import">STEP / STL içe aktar…</button>
       <hr />
       <button data-act="step">STEP olarak dışa aktar</button>
       <button data-act="stl">STL olarak dışa aktar</button>
+      <button data-act="3mf">3MF olarak dışa aktar</button>
+      <button data-act="pdf">Görünümü PDF olarak kaydet</button>
+      <button data-act="skdxf">Eskizi DXF olarak dışa aktar</button>
+      <button data-act="facedxf">Seçili yüzü DXF olarak dışa aktar</button>
       <button data-act="dxf">Sac açınımı (DXF)</button>
       <button data-act="cutlist">Kesim listesi…</button>
       <hr />
@@ -90,7 +99,7 @@
     <div id="toast" hidden></div>
 
     <dialog id="help">
-      <h2>İmaj CAD — v0.71</h2>
+      <h2>İmaj CAD — v0.72</h2>
       <h3>Çalışma mantığı (SolidWorks gibi)</h3>
       <ol>
         <li><b>Eskiz</b>: Bir düzleme (Ön / Üst / Sağ) veya katının düz bir yüzüne dokunun, sonra <b>Eskiz</b>'e basın. Ya da önce Eskiz'e basıp düzlemi seçin.</li>

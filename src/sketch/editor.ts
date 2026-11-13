@@ -4386,7 +4386,7 @@ export class SketchEditor implements InputHandler {
       const dirAB = norm2(sub2(B2, A2));
       this.arrow(A2, mul2(dirAB, -1), color);
       this.arrow(B2, dirAB, color);
-      text = lenTxt(Math.abs(d.v), 2);
+      text = lenTxt(Math.abs(d.v));
     } else if (d.t === "dia" || d.t === "rad") {
       const e = getEnt(sk, d.refs[0]) as SCircle | SArc;
       if (!e) return;
@@ -4400,12 +4400,12 @@ export class SketchEditor implements InputHandler {
         this.addLines([rim2, far], color, 1);
         this.arrow(rim, u, color);
         this.arrow(rim2, mul2(u, -1), color);
-        text = "Ø" + lenTxt(Math.abs(d.v), 2);
+        text = "Ø" + lenTxt(Math.abs(d.v));
       } else {
         const far = len2(sub2(L, c)) > r ? L : rim;
         this.addLines([c, far], color, 1);
         this.arrow(rim, u, color);
-        text = "R" + lenTxt(Math.abs(d.v), 2);
+        text = "R" + lenTxt(Math.abs(d.v));
       }
     } else if (d.t === "angle") {
       const l1 = getEnt(sk, d.refs[0]) as SLine, l2 = getEnt(sk, d.refs[1]) as SLine;
@@ -4434,7 +4434,7 @@ export class SketchEditor implements InputHandler {
       this.addLines(pts, color, 1);
       this.addLines([a0, pts[0]], color, 1);
       this.addLines([a1, pts[32]], color, 1);
-      text = "⌒" + lenTxt(Math.abs(d.v), 2);
+      text = "⌒" + lenTxt(Math.abs(d.v));
     } else if (d.t === "cl" || d.t === "cc") {
       const c1 = getEnt(sk, d.refs[0]) as SCircle;
       const o = getEnt(sk, d.refs[1]) as any;
@@ -4458,7 +4458,7 @@ export class SketchEditor implements InputHandler {
       const dir = norm2(sub2(B, A));
       this.arrow(B, dir, color);
       this.arrow(A, mul2(dir, -1), color);
-      text = lenTxt(Math.abs(d.v), 2);
+      text = lenTxt(Math.abs(d.v));
     } else if (d.t === "pldist") {
       const ea = getEnt(sk, d.refs[0]), eb = getEnt(sk, d.refs[1]);
       let p: Vec2, l: SLine;
@@ -4477,7 +4477,7 @@ export class SketchEditor implements InputHandler {
       const dir = norm2(sub2(F2, p2));
       this.arrow(F2, dir, color);
       this.arrow(p2, mul2(dir, -1), color);
-      text = lenTxt(Math.abs(d.v), 2);
+      text = lenTxt(Math.abs(d.v));
     }
     const el = document.createElement("div");
     el.className = "dim" + (preview ? " preview" : "") + (color === C.over ? " err" : color === C.sel ? " sel" : "") + (d.ref ? " ref" : "");

@@ -118,4 +118,9 @@ export function setUnits(u: "mm" | "in") {
 }
 export const lenOut = (v: number) => (units === "in" ? v / 25.4 : v);
 export const lenIn = (v: number) => (units === "in" ? v * 25.4 : v);
-export const lenTxt = (v: number, dec = 2) => (units === "in" ? fmtNum(v / 25.4, dec + 2) + '"' : fmtNum(v, dec));
+/** belge özelliği: ölçü ondalık basamağı (eskiz ölçü etiketleri) */
+export let dimDec = 2;
+export function setDimDec(n: number) {
+  dimDec = Math.max(0, Math.min(6, Math.round(n)));
+}
+export const lenTxt = (v: number, dec = dimDec) => (units === "in" ? fmtNum(v / 25.4, dec + 2) + '"' : fmtNum(v, dec));

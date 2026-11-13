@@ -2813,13 +2813,14 @@ function chainLoops(segs: number[]): number[][] {
   }
   return loops;
 }
-function drawViews(shape: Shape, o: { iso?: boolean; section?: boolean }) {
+function drawViews(shape: Shape, o: { iso?: boolean; section?: boolean; third?: boolean }) {
   const bb = shape.boundingBox.bounds as [Vec3, Vec3];
   const c = vmul(vadd(bb[0], bb[1]), 0.5);
+  // ilk açı (ISO E): sol görünüş sağa; üçüncü açı (ANSI): sağ görünüş sağa, üst görünüş üste
   const views: DrawView[] = [
     projectView(shape, "Ön görünüş", c, [0, 0, 1], [1, 0, 0]),
     projectView(shape, "Üst görünüş", c, [0, 1, 0], [1, 0, 0]),
-    projectView(shape, "Sol görünüş", c, [-1, 0, 0], [0, 0, 1]),
+    o.third ? projectView(shape, "Sağ görünüş", c, [1, 0, 0], [0, 0, -1]) : projectView(shape, "Sol görünüş", c, [-1, 0, 0], [0, 0, 1]),
   ];
   let iso: DrawView | null = null;
   if (o.iso) {
@@ -2859,7 +2860,7 @@ function drawViews(shape: Shape, o: { iso?: boolean; section?: boolean }) {
   }
   return { views, iso, sec, size: vsub(bb[1], bb[0]), c };
 }
-async function partDrawing(id: number, features: KFeature[], o: { iso?: boolean; section?: boolean }) {
+async function partDrawing(id: number, features: KFeature[], o: { iso?: boolean; section?: boolean; third?: boolean }) {
   try {
     await rebuildAll(features);
     const a = all();
@@ -4442,7 +4443,19 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "section") section(req.id, req.frame);
     else if (req.type === "beam") beamSec(req.id, req.ax ?? -1);
     else if ((req as any).type === "check") geomCheck(req.id);
-    else if ((req as any).type === "isect") faceIsect(req.id, (req as any).a, (req as any).b);
+    else if ((req as any).type === "owner") {
+      const c = (req as any).c as Vec3;
+      let r: string | null = null;
+      const v = makeVertex(c as any);
+      for (const [id, t] of [...tools].reverse())
+        try {
+          if (measureDistanceBetween(v as any, t.solid as any) < 1e-3) {
+            r = id;
+            break;
+          }
+        } catch {}
+      post({ id: req.id, type: "owner", r } as any);
+    } else if ((req as any).type === "isect") faceIsect(req.id, (req as any).a, (req as any).b);
     else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
