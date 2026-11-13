@@ -721,6 +721,8 @@ export interface DrawView {
   vis: number[];
   hid: number[];
   circles: { c: Vec2; r: number; hidden: boolean }[];
+  /** yay parçaları (merkez, yarıçap) — delik çapı ölçüsü için */
+  arcs?: { c: Vec2; r: number; hidden: boolean }[];
   min: Vec2;
   max: Vec2;
 }

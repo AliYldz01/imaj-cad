@@ -294,6 +294,20 @@ export class AsmUI {
     };
     render();
   }
+  /** montaj resmi: izometrik görünüş + balonlar + malzeme listesi */
+  async drawing() {
+    const vis = this.doc.comps.filter((c) => !c.hidden);
+    if (!vis.length) return this.ctx.toast("Montajda bileşen yok", true);
+    this.ctx.setStatus("busy", "Montaj resmi hazırlanıyor…");
+    const parts = vis.map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+    const r = await this.ctx.kernel.asm("draw", parts);
+    this.meshes.clear();
+    await this.refresh();
+    if (!r.draw) return this.ctx.toast("Montaj resmi: " + (r.error ?? "çizilemedi"), true);
+    const b = bom({ ...this.doc, comps: vis });
+    const balloonOf = vis.map((c) => b.find((x) => x.name === c.part.name)!.no);
+    (window as any).__openTechDrawing?.({ data: r.draw, bom: b, balloonOf, name: this.doc.name });
+  }
   /** SolidWorks Delik Hizalama: farklı bileşenlerdeki paralel, örtüşen ama eş eksenli olmayan delikler */
   holeAlignment(tol = 0.01) {
     type Hole = { comp: AsmComp; c: THREE.Vector3; a: THREE.Vector3; r: number; t0: number; t1: number };
@@ -2109,6 +2123,7 @@ export class AsmUI {
       { id: "interf", label: "Girişim", icon: "interfere", run: () => this.interference() },
       { id: "clear", label: "Boşluk Doğrula", icon: "measure", run: () => this.clearance() },
       { id: "holeal", label: "Delik Hizalama", icon: "hole", run: () => this.showHoleAlignment() },
+      { id: "asmdraw", label: "Montaj Resmi", icon: "dxf", run: () => void this.drawing() },
       { id: "asec", label: "Montaj Kesiti", icon: "section", run: () => this.openSection() },
       { id: "matex", label: "MateXpert", icon: "relations", run: () => this.mateXpert() },
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => this.massProps() },

@@ -529,3 +529,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Montaj deliği / dikdörtgen montaj kesmesi (tümünü geç / kör), seçili bileşenlere uygulanır, parça dosyası değişmez | ✅ |
 | Montaj özelliğini bastır / sil (ağaç, sağ tık) | ✅ |
 | Delik hizalama raporu (hizasız delikler ve sapma) | ✅ |
+
+## v0.39 — Teknik resim
+| Özellik | Durum |
+|---|---|
+| Parça resmi: ön / üst / sol (ilk açı, ISO E), izometrik, kesit A-A (taralı) | ✅ |
+| Otomatik ölçüler: toplam boyutlar, delik çapları (n× Ø), delik konumları | ✅ |
+| Antet (parça, malzeme, ölçek, çizen, tarih, resim no), A4 / A3, otomatik / seçili ölçek | ✅ |
+| PDF (yazdır), SVG, DXF (katmanlı) | ✅ |
+| Montaj resmi: izometrik + balonlar + malzeme listesi | ✅ |
+| Detay görünüşü, ölçü düzenleme, çok sayfa | ⬜ |

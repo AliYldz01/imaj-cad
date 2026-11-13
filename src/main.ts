@@ -19,6 +19,7 @@ import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, sampleLoop, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
+import { techSheet, sheetDxf, type TechInfo } from "./drawing/techdraw";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
@@ -281,6 +282,95 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
   }
   return { feats: all };
 }
+
+// ---------- Teknik resim (SolidWorks Drawing) ----------
+/** parça (ya da montaj: asm verilirse) için teknik resim penceresi: görünüş seçimi, ölçek, kağıt, antet; PDF / SVG / DXF */
+async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string }) {
+  const st = JSON.parse(localStorage.getItem("imajcad.techdraw") ?? "{}");
+  const o = { iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: (doc as any).material ?? st.material ?? "", drawnBy: st.drawnBy ?? "", no: "" };
+  let data: any = asmIn?.data ?? null;
+  const load = async () => {
+    if (asmIn) return;
+    setStatus("busy", "Teknik resim hazırlanıyor…");
+    const kf = compile(viewFeatures().feats, doc.profiles ?? {}).kfeats;
+    data = await kernel.pdraw(kf, { iso: o.iso, section: o.section });
+    setStatus("ok", "Hazır");
+    rebuild();
+  };
+  await load();
+  if (data?.error) return toast("Teknik resim: " + data.error, true);
+  const dlg = h("dialog", "cut-dialog draw-dialog") as HTMLDialogElement;
+  dlg.innerHTML = `<h2>Teknik resim — ${asmIn ? asmIn.name : doc.name}</h2>`;
+  const opts = h("div", "pm-row td-opts");
+  const fr = h("iframe", "draw-frame") as HTMLIFrameElement;
+  let cur = { svg: "", scale: 1 };
+  const W = () => (o.paper === "A3" ? 420 : 297), H = () => (o.paper === "A3" ? 297 : 210);
+  const info = (): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf });
+  const draw = () => {
+    cur = techSheet(data, info());
+    fr.srcdoc = sheetsHtml([cur.svg], doc.name).replace("size:A4 landscape", `size:${o.paper} landscape`).replace(/297mm;height:210mm/, `${W()}mm;height:${H()}mm`);
+    localStorage.setItem("imajcad.techdraw", JSON.stringify({ iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy }));
+    (dlg as any)._svg = cur.svg;
+  };
+  const chk = (label: string, key: "iso" | "section" | "dims", reload: boolean) => {
+    const l = h("label", "check");
+    const c = h("input") as HTMLInputElement;
+    c.type = "checkbox";
+    c.checked = o[key];
+    c.addEventListener("change", async () => {
+      o[key] = c.checked;
+      if (reload) await load();
+      draw();
+    });
+    l.append(c, " " + label);
+    return l;
+  };
+  const sel = (label: string, vals: [string, string][], v: string, on: (x: string) => void) => {
+    const l = h("label", "check", label + " ");
+    const sl = h("select") as HTMLSelectElement;
+    for (const [k, t] of vals) sl.appendChild(Object.assign(document.createElement("option"), { value: k, textContent: t }));
+    sl.value = v;
+    sl.addEventListener("change", () => (on(sl.value), draw()));
+    l.appendChild(sl);
+    return l;
+  };
+  const txt = (label: string, v: string, on: (x: string) => void) => {
+    const l = h("label", "check", label + " ");
+    const i = h("input") as HTMLInputElement;
+    i.value = v;
+    i.size = 10;
+    i.addEventListener("change", () => (on(i.value), draw()));
+    l.appendChild(i);
+    return l;
+  };
+  if (!asmIn) opts.append(chk("İzometrik", "iso", true), chk("Kesit A-A", "section", true), chk("Ölçüler", "dims", false));
+  opts.append(
+    sel("Kağıt", [["A4", "A4 yatay"], ["A3", "A3 yatay"]], o.paper, (x) => (o.paper = x as any)),
+    sel("Ölçek", [["0", "Otomatik"], ["5", "5:1"], ["2", "2:1"], ["1", "1:1"], ["0.5", "1:2"], ["0.2", "1:5"], ["0.1", "1:10"], ["0.05", "1:20"]], "0", (x) => (o.scale = parseFloat(x))),
+    txt("Malzeme", o.material, (x) => (o.material = x)),
+    txt("Çizen", o.drawnBy, (x) => (o.drawnBy = x)),
+    txt("Resim no", o.no, (x) => (o.no = x)),
+  );
+  dlg.append(opts, fr);
+  const bar = h("div", "cut-bar");
+  const left = h("div", "pm-row");
+  const base = (asmIn ? asmIn.name : doc.name).replace(/[\\/:*?"<>|]/g, "_");
+  left.append(
+    button("Yazdır / PDF", () => fr.contentWindow?.print(), "btn primary"),
+    button("SVG indir", () => download(new Blob([cur.svg], { type: "image/svg+xml" }), `${base}_resim.svg`), "btn"),
+    button("DXF indir", () => download(new Blob([sheetDxf(cur.svg, H())], { type: "application/dxf" }), `${base}_resim.dxf`), "btn"),
+  );
+  const form = h("form");
+  form.method = "dialog";
+  form.innerHTML = `<button class="btn" value="ok">Kapat</button>`;
+  bar.append(left, form);
+  dlg.appendChild(bar);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  draw();
+  dlg.showModal();
+}
+(window as any).__openTechDrawing = openTechDrawing;
 
 /** worker'ın kalıcı referans onarımlarını belgeye işle (geri alma yığınına girmez) */
 function applyHeals(h: RefHeals) {
@@ -4273,6 +4363,7 @@ function commands(): Cmd[] {
     return [
       { id: "measure", label: "Ölç", icon: "measure", run: () => startMeasure(), active: () => mode.k === "measure" },
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => showMassProps() },
+      { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
       { id: "section", label: "Kesit", icon: "section", run: () => openSection(), active: () => !!section },
       { id: "material", label: "Malzeme", icon: "material", run: () => chooseMaterial() },
       { id: "equations", label: "Denklemler", icon: "equations", run: () => openEquations() },
@@ -5717,6 +5808,7 @@ function fixedActs(): Act[] {
     F("f.stl", "STL dışa aktar", "", () => fileAct("stl")),
     F("f.dxf", "Sac açınımı (DXF)", "", () => fileAct("dxf"), "dxf"),
     F("f.cutlist", "Kesim listesi…", "", () => fileAct("cutlist"), "cutlist"),
+    F("f.techdraw", "Teknik resim…", "", () => void openTechDrawing(), "dxf"),
     E("e.undo", "Geri al", "Ctrl+Z", () => undo(), "undo"),
     E("e.redo", "Yinele", "Ctrl+Y", () => redo(), "redo"),
     E("e.rebuild", "Yeniden oluştur", "Ctrl+B", () => rebuild()),
@@ -5798,7 +5890,7 @@ function openCust() {
 // ---------- menü çubuğu ----------
 type MI = string | "-" | { sub: string; items: () => Act[] };
 const MENUS: [string, MI[]][] = [
-  ["Dosya", ["f.new", "f.open", "f.save", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist"]],
+  ["Dosya", ["f.new", "f.open", "f.save", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist", "f.techdraw"]],
   ["Düzen", ["e.undo", "e.redo", "-", "e.rebuild", "e.redraw", "-", "e.copy", "e.paste", "e.delete", "e.selall", "e.rename", "-", "e.repeat"]],
   ["Görünüm", ["v.front", "v.back", "v.left", "v.right", "v.top", "v.bottom", "v.iso", "v.normal", "-", "v.fit", "v.zin", "v.zout", "v.zarea", "v.prev", "v.mag", "-", { sub: "Görüntü stili", items: () => allActs().filter((a) => a.id.startsWith("v.st")) }, "v.planes", "v.tree", "-", "v.full", "v.lock"]],
   [
@@ -6086,5 +6178,6 @@ function showCmd(title: string) {
   viewer,
   /** testler için: belgeyi değiştir */
   setDoc(d: PartDoc) { treeSel = null; commitDoc(() => (doc = d)); },
+  __kf: () => compile(viewFeatures().feats, doc.profiles ?? {}).kfeats,
   kernel,
 };

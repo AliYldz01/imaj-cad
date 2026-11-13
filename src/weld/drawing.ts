@@ -24,7 +24,7 @@ const W = 297, H = 210, M = 10;
 /** antet kutusu */
 const TB = { x: 297 - M - 120, y: 210 - M - 42, w: 120, h: 42 };
 
-class Svg {
+export class Svg {
   parts: string[] = [];
   line(x1: number, y1: number, x2: number, y2: number, cls = "v") {
     this.parts.push(`<line class="${cls}" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`);
@@ -67,7 +67,7 @@ class Svg {
 }
 
 /** Görünüşü kağıda yerleştirir: sol üst köşe (ox, oy), ölçek s */
-function placeView(svg: Svg, v: DrawView, ox: number, oy: number, s: number) {
+export function placeView(svg: Svg, v: DrawView, ox: number, oy: number, s: number) {
   const X = (x: number) => ox + (x - v.min[0]) * s;
   const Y = (y: number) => oy + (v.max[1] - y) * s;
   for (let i = 0; i < v.hid.length; i += 4) svg.line(X(v.hid[i]), Y(v.hid[i + 1]), X(v.hid[i + 2]), Y(v.hid[i + 3]), "h");

@@ -6,7 +6,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
@@ -2328,7 +2328,7 @@ function cutList(id: number) {
 function projectView(shape: Shape, name: string, origin: Vec3, dir: Vec3, xAxis: Vec3): DrawView {
   const cam = new ProjectionCamera(origin, dir, xAxis);
   const { visible, hidden } = makeProjectedEdges(shape, cam, true);
-  const v: DrawView = { name, vis: [], hid: [], circles: [], min: [Infinity, Infinity], max: [-Infinity, -Infinity] };
+  const v: DrawView = { name, vis: [], hid: [], circles: [], arcs: [], min: [Infinity, Infinity], max: [-Infinity, -Infinity] } as any;
   const grow = (x: number, y: number) => {
     v.min = [Math.min(v.min[0], x), Math.min(v.min[1], y)];
     v.max = [Math.max(v.max[0], x), Math.max(v.max[1], y)];
@@ -2356,6 +2356,10 @@ function projectView(shape: Shape, name: string, origin: Vec3, dir: Vec3, xAxis:
           }
         }
       }
+      if (t === "CIRCLE") {
+        const cc = circle3d(P(0), P(0.5), P(1));
+        if (cc) (v as any).arcs.push({ c: [cc.c[0], cc.c[1]], r: cc.r, hidden: hid });
+      }
       const n = t === "CIRCLE" ? 16 : 24;
       let prev = P(0);
       grow(prev[0], prev[1]);
@@ -2370,6 +2374,91 @@ function projectView(shape: Shape, name: string, origin: Vec3, dir: Vec3, xAxis:
   add(visible, v.vis, false);
   add(hidden, v.hid, true);
   return v;
+}
+
+// ---------- Teknik resim (parça / montaj): standart görünüşler (ilk açı / ISO E), izometrik, kesit A-A ----------
+/** kesit yüzlerinin taranacak kapalı döngüleri (görünüş koordinatında) */
+function chainLoops(segs: number[]): number[][] {
+  const S: [number, number, number, number][] = [];
+  for (let i = 0; i < segs.length; i += 4) S.push([segs[i], segs[i + 1], segs[i + 2], segs[i + 3]]);
+  const used = new Array(S.length).fill(false), loops: number[][] = [];
+  const close = (a: number, b: number, c: number, d: number) => Math.hypot(a - c, b - d) < 1e-3;
+  for (let i = 0; i < S.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    const L = [S[i][0], S[i][1], S[i][2], S[i][3]];
+    for (let guard = 0; guard < S.length; guard++) {
+      const ex = L[L.length - 2], ey = L[L.length - 1];
+      if (L.length > 4 && close(ex, ey, L[0], L[1])) break;
+      let k = -1, rev = false;
+      for (let j = 0; j < S.length && k < 0; j++) {
+        if (used[j]) continue;
+        if (close(S[j][0], S[j][1], ex, ey)) k = j;
+        else if (close(S[j][2], S[j][3], ex, ey)) (k = j), (rev = true);
+      }
+      if (k < 0) break;
+      used[k] = true;
+      L.push(...(rev ? [S[k][0], S[k][1]] : [S[k][2], S[k][3]]));
+    }
+    if (L.length >= 8) loops.push(L);
+  }
+  return loops;
+}
+function drawViews(shape: Shape, o: { iso?: boolean; section?: boolean }) {
+  const bb = shape.boundingBox.bounds as [Vec3, Vec3];
+  const c = vmul(vadd(bb[0], bb[1]), 0.5);
+  const views: DrawView[] = [
+    projectView(shape, "Ön görünüş", c, [0, 0, 1], [1, 0, 0]),
+    projectView(shape, "Üst görünüş", c, [0, 1, 0], [1, 0, 0]),
+    projectView(shape, "Sol görünüş", c, [-1, 0, 0], [0, 0, 1]),
+  ];
+  let iso: DrawView | null = null;
+  if (o.iso) {
+    iso = projectView(shape, "İzometrik", c, vnorm([1, 1, 1]), vnorm([1, 0, -1]));
+    iso.hid = [];
+    iso.circles = iso.circles.filter((x) => !x.hidden);
+  }
+  let sec: (DrawView & { hatch: number[][] }) | null = null;
+  if (o.section) {
+    const pad = 10 + vlen(vsub(bb[1], bb[0]));
+    const box = makeBox([bb[0][0] - pad, bb[0][1] - pad, c[2]], [bb[1][0] + pad, bb[1][1] + pad, bb[1][2] + pad]);
+    const half = shape.clone().cut(box as any);
+    const v = projectView(half, "Kesit A-A", c, [0, 0, 1], [1, 0, 0]);
+    v.hid = [];
+    v.circles = v.circles.filter((x) => !x.hidden);
+    // kesit düzlemindeki yüzler
+    const faces = (half.faces as any[]).filter((f) => {
+      if (String(f.geomType) !== "PLANE") return false;
+      const fc = tup(f.center);
+      try {
+        return Math.abs(fc[2] - c[2]) < 1e-4 && Math.abs(Math.abs(vnorm(tup(f.normalAt(fc)))[2]) - 1) < 1e-6;
+      } catch {
+        return false;
+      }
+    });
+    const hatch: number[][] = [];
+    for (const f of faces) {
+      const fv = projectView(f, "", c, [0, 0, 1], [1, 0, 0]);
+      const segs = [...fv.vis, ...fv.hid];
+      for (const cc of fv.circles) for (let k = 0; k < 32; k++) {
+        const a0 = (k / 32) * 2 * Math.PI, a1 = ((k + 1) / 32) * 2 * Math.PI;
+        segs.push(cc.c[0] + cc.r * Math.cos(a0), cc.c[1] + cc.r * Math.sin(a0), cc.c[0] + cc.r * Math.cos(a1), cc.c[1] + cc.r * Math.sin(a1));
+      }
+      hatch.push(...chainLoops(segs));
+    }
+    sec = { ...v, hatch };
+  }
+  return { views, iso, sec, size: vsub(bb[1], bb[0]), c };
+}
+async function partDrawing(id: number, features: KFeature[], o: { iso?: boolean; section?: boolean }) {
+  try {
+    await rebuildAll(features);
+    const a = all();
+    if (!a) throw new Error("Modelde katı yok");
+    post({ id, type: "pdraw", ...drawViews(a, o) } as any);
+  } catch (e) {
+    post({ id, type: "pdraw", error: errMsg(e) } as any);
+  }
 }
 
 function drawingData(id: number, bi: number) {
@@ -2990,6 +3079,19 @@ function toMesh(shape: Shape): MeshData {
   };
 }
 
+async function rebuildAll(features: KFeature[]) {
+  bodies = [];
+  frames = {};
+  tools.clear();
+  memberReg = new Map();
+  welds = [];
+  weldInfo = [];
+  for (const f of features) {
+    try {
+      await buildFeature(f);
+    } catch {}
+  }
+}
 async function build(id: number, features: KFeature[]) {
   const errors: { featureId: string; message: string }[] = [];
   bodies = [];
@@ -3156,7 +3258,7 @@ function exportShape(id: number, format: "step" | "stl") {
 }
 
 /** Montaj: her bileşeni kur, dönüşüm matrisiyle yerleştir; STEP (bileşik) veya bileşenler arası girişim */
-async function asmOp(id: number, op: "step" | "interfere" | "clearance", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]) {
+async function asmOp(id: number, op: "step" | "interfere" | "clearance" | "draw", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]) {
   const placed: Shape[] = [];
   for (const p of parts) {
     bodies = [];
@@ -3184,6 +3286,14 @@ async function asmOp(id: number, op: "step" | "interfere" | "clearance", parts: 
     placed.push(sh.translate(p.p));
   }
   bodies = [];
+  if (op === "draw") {
+    const ok = placed.filter(Boolean);
+    if (!ok.length) return post({ id, type: "asm", error: "Montajda katı yok" } as any);
+    const one = ok.length === 1 ? ok[0] : (makeCompound(ok.map((x) => x.clone())) as Shape);
+    // balonlar için bileşen merkezleri
+    const centers = placed.map((p) => (p ? vmul(vadd((p.boundingBox.bounds as [Vec3, Vec3])[0], (p.boundingBox.bounds as [Vec3, Vec3])[1]), 0.5) : null));
+    return post({ id, type: "asm", draw: { ...drawViews(one, { iso: true }), centers } } as any);
+  }
   if (op === "step") {
     const ok = placed.filter(Boolean);
     if (!ok.length) return post({ id, type: "asm", blob: null, message: "Montajda katı yok" });
@@ -3233,6 +3343,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);
+    else if ((req as any).type === "pdraw") await partDrawing(req.id, (req as any).features, (req as any).opts ?? {});
     else if (req.type === "interfere") interfere(req.id);
     else if (req.type === "asm") await asmOp(req.id, req.op, req.parts);
    } catch (e) {
