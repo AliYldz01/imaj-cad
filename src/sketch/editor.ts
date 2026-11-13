@@ -28,7 +28,10 @@ export type SkTool =
   | "rect3" | "para" | "circle3" | "schamfer" | "extend" | "convert"
   | "offset" | "mirror" | "spat" | "scpat" | "move"
   | "cslot" | "aslot" | "ellipse" | "pellipse" | "parabola" | "spline" | "text" | "isect" | "picture"
-  | "mline" | "crect3" | "conic" | "eqcurve" | "split" | "jog" | "ordinate" | "block";
+  | "mline" | "crect3" | "conic" | "eqcurve" | "split" | "jog" | "ordinate" | "block" | "pierce";
+
+/** "3, 5" ya da "2,1; 3,2" → örnek anahtarları */
+const skipList = (t: string) => t.split(/[;\s]+/).map((x) => x.trim()).filter(Boolean).flatMap((x) => (/^\d+,\d+$/.test(x) ? [x] : x.split(",").filter(Boolean)));
 
 /** Seçim üzerinde çalışan işlem araçları */
 export const OP_TOOLS: SkTool[] = ["offset", "mirror", "spat", "scpat", "move"];
@@ -56,6 +59,7 @@ export const TOOL_NAMES: Record<SkTool, string> = {
   schamfer: "Eskiz Pahı",
   extend: "Uzat",
   convert: "Varlıkları Dönüştür",
+  pierce: "Delme İlişkisi",
   offset: "Varlıkları Ötele",
   mirror: "Varlıkları Aynala",
   spat: "Doğrusal Eskiz Çoğaltma",
@@ -112,6 +116,7 @@ const HINTS: Partial<Record<SkTool, string>> = {
   schamfer: "Pah kırılacak köşeye dokunun.",
   extend: "Uzatılacak çizginin ucuna yakın dokunun; en yakın öğeye kadar uzar.",
   convert: "Modelin bir kenarına dokunun; eskiz düzlemine izdüşürülüp eskize eklenir.",
+  pierce: "Önce eskiz noktasını seçin, sonra eskiz düzlemini delen model kenarına dokunun (nokta kenarın düzlemi kestiği yere sabitlenir).",
   offset: "Ötelenecek çizgi/yay/daireleri seçin (dokunarak), mesafeyi girip Uygula'ya basın.",
   mirror: "Aynalanacak öğeleri ve ayna ekseni olacak merkez çizgisini seçin, sonra Uygula.",
   spat: "Çoğaltılacak öğeleri seçin, yön ve aralığı girip Uygula'ya basın.",
@@ -208,9 +213,9 @@ export class SketchEditor implements InputHandler {
       }
     })(),
     offD: 5, offRev: false,
-    n1: 3, s1: 20, a1: 0, n2: 1, s2: 20, a2: 90,
+    n1: 3, s1: 20, a1: 0, n2: 1, s2: 20, a2: 90, pskip: "",
     cn: 6, ctotal: 360,
-    mdx: 20, mdy: 0, mang: 0, mcopy: false, mscale: 1,
+    mdx: 20, mdy: 0, mang: 0, mcopy: false, mscale: 1, mkind: "all" as "all" | "move" | "copy" | "rot" | "scale" | "stretch", convInner: false,
     text: "İMAJ", textSize: 10, textAngle: 0,
     rho: 0.6, ordDir: "h" as "h" | "v", arcLen: false, edgeDim: false, block: "",
     eqMode: "y" as "y" | "t", eqY: "20*sin(x*6)", eqX: "t", eqYt: "t*t/50", eqA: 0, eqB: 60, eqN: 24,
@@ -1447,7 +1452,7 @@ export class SketchEditor implements InputHandler {
       this.setCursor(h ? (h.kind === "pt" ? (h.id === ORIGIN ? "origin" : "end") : "pointer") : "default");
       return;
     }
-    if (t === "convert") {
+    if (t === "convert" || t === "pierce") {
       const hit = this.host.viewer.pick(e.clientX, e.clientY, { edge: true });
       this.host.viewer.setHighlight({ faces: [], edges: [], planes: [] }, hit);
       return;
@@ -1526,7 +1531,7 @@ export class SketchEditor implements InputHandler {
     const before = new Set(this.data.ents.map((x) => x.id));
     const tool = this.tool;
     this.clickInner(p, e);
-    if (["select", "dim", "trim", "extend", "fillet", "schamfer", "convert", "isect", "ordinate", "split", "jog"].includes(tool) || OP_TOOLS.includes(tool)) return;
+    if (["select", "dim", "trim", "extend", "fillet", "schamfer", "convert", "pierce", "isect", "ordinate", "split", "jog"].includes(tool) || OP_TOOLS.includes(tool)) return;
     const created = this.data.ents.filter((x) => !before.has(x.id));
     if (!created.length) return;
     if (this.dynAxis && getEnt(this.data, this.dynAxis)) {
@@ -2450,6 +2455,8 @@ export class SketchEditor implements InputHandler {
         return this.extendAt(p);
       case "convert":
         return this.convertAt(e);
+      case "pierce":
+        return this.pierceAt(p, e);
       case "offset":
       case "mirror":
       case "spat":
@@ -2760,16 +2767,33 @@ export class SketchEditor implements InputHandler {
         if (E.t === "line") E.p1 === pid ? (E.p1 = t) : (E.p2 = t);
         else E.s === pid ? (E.s = t) : (E.e = t);
       }
-      // köşe noktasına bağlı ilişki ve ölçüleri kaldır, noktayı sil (başka kullanan yoksa)
-      sk.rels = sk.rels.filter((x) => !x.refs.includes(pid));
-      sk.dims = sk.dims.filter((x) => !x.refs.includes(pid));
-      if (!sk.ents.some((e) => entPoints(e).includes(pid))) delete sk.pts[pid];
+      // SolidWorks sanal sivri köşe: köşeye ölçü / ilişki bağlıysa köşe yapı noktası olarak kalır (iki eğrinin uzantısında), ölçüler korunur
+      this.virtualSharp(pid, [C1.e.id, C2.e.id]);
       const a = ccw ? addArc(sk, c, t1, t2) : addArc(sk, c, t2, t1);
       a.r = r;
       addRel(sk, "tangent", [C1.e.id, a.id]);
       addRel(sk, "tangent", [C2.e.id, a.id]);
       sk.dims.push({ id: nid(sk, "d"), t: "rad", refs: [a.id], v: r, lp: add2(Cc, mul2(norm2(sub2(Pp, Cc)), -r * 2)) as Vec2 });
     });
+  }
+
+  /** radyüs / pah sonrası eski köşe: ölçü ya da ilişki bağlıysa sanal sivri köşe (yapı noktası, iki eğrinin üzerinde) yap; değilse sil */
+  private virtualSharp(pid: string, curves: string[]) {
+    const sk = this.data;
+    const used = sk.dims.some((x) => x.refs.includes(pid)) || sk.rels.some((x) => x.refs.includes(pid) && !curves.some((c) => x.refs.includes(c)));
+    if (!used || pid === ORIGIN) {
+      sk.rels = sk.rels.filter((x) => !x.refs.includes(pid));
+      sk.dims = sk.dims.filter((x) => !x.refs.includes(pid));
+      if (!sk.ents.some((e) => entPoints(e).includes(pid))) delete sk.pts[pid];
+      return;
+    }
+    // köşeyi eğrilerle bağlayan eski ilişkiler (ör. üzerinde) kalkar; eğrilerin uzantısında kalması için yeni ilişkiler
+    sk.rels = sk.rels.filter((x) => !(x.refs.includes(pid) && curves.some((c) => x.refs.includes(c))));
+    if (!sk.ents.some((e) => e.t === "point" && (e as any).p === pid)) sk.ents.push({ id: nid(sk, "e"), t: "point", p: pid, cons: true } as any);
+    for (const cid of curves) {
+      const c = getEnt(sk, cid);
+      if (c) addRel(sk, c.t === "line" ? "onLine" : "onCircle", [pid, cid]);
+    }
   }
 
   /** 3 noktalı dikdörtgen / paralelkenar köşeleri */
@@ -2935,6 +2959,37 @@ export class SketchEditor implements InputHandler {
     this.host.toast(added ? `${added} ölçü/ilişki eklendi` : "Eklenecek ölçü bulunamadı");
   }
 
+  /** daire / yay içeren ölçü: hangi eğriler (merkez ölçüsü ya da kenar ölçüsü) */
+  arcDimOf(d: SDim): { kind: "cl" | "cc"; a: string; b: string } | null {
+    const sk = this.data;
+    const curve = (id: string) => { const e = getEnt(sk, id); return e && (e.t === "circle" || e.t === "arc") ? e : null; };
+    if (d.t === "cl" || d.t === "cc") return { kind: d.t, a: d.refs[0], b: d.refs[1] };
+    if (d.t === "pldist" && curve(d.refs[0]) && getEnt(sk, d.refs[1])?.t === "line") return { kind: "cl", a: d.refs[0], b: d.refs[1] };
+    if (d.t === "dist") {
+      const byC = (pid: string) => sk.ents.find((e) => (e.t === "circle" || e.t === "arc") && e.c === pid);
+      const ca = byC(d.refs[0]), cb = byC(d.refs[1]);
+      if (ca && cb) return { kind: "cc", a: ca.id, b: cb.id };
+    }
+    return null;
+  }
+  /** SolidWorks yay koşulu: merkez / en yakın / en uzak; ölçü değeri geometriyi değiştirmez (yeni ölçü mevcut değerle) */
+  setArcCond(id: string, cond: "c" | "min" | "max") {
+    const sk = this.data;
+    const d = sk.dims.find((x) => x.id === id);
+    const ac = d && this.arcDimOf(d);
+    if (!d || !ac) return;
+    this.op(() => {
+      if (cond === "c") {
+        if (ac.kind === "cl") Object.assign(d, { t: "pldist", refs: [ac.a, ac.b], cond: undefined });
+        else {
+          const ea = getEnt(sk, ac.a) as any, eb = getEnt(sk, ac.b) as any;
+          Object.assign(d, { t: "dist", refs: [ea.c, eb.c], sub: "a", cond: undefined });
+        }
+      } else Object.assign(d, { t: ac.kind, refs: [ac.a, ac.b], sub: undefined, cond });
+      d.v = Math.abs(measure(sk, d));
+    });
+  }
+
   toggleRefDim(id: string) {
     const d = this.data.dims.find((x) => x.id === id);
     if (!d) return;
@@ -2965,8 +3020,7 @@ export class SketchEditor implements InputHandler {
         if (L.p1 === h.id) L.p1 = t;
         else L.p2 = t;
       }
-      sk.rels = sk.rels.filter((x) => !x.refs.includes(h.id));
-      sk.dims = sk.dims.filter((x) => !x.refs.includes(h.id));
+      this.virtualSharp(h.id, [L1.id, L2.id]);
       addLine(sk, t1, t2);
     });
   }
@@ -3016,9 +3070,117 @@ export class SketchEditor implements InputHandler {
   // ---------------- Varlıkları dönüştür ----------------
   private convertAt(e: { clientX: number; clientY: number }) {
     const v = this.host.viewer;
+    const hit = v.pick(e.clientX, e.clientY, { edge: true, face: true });
+    if (!hit || !v.mesh) return this.host.toast("Modelin bir kenarına ya da yüzüne dokunun");
+    if (hit.kind === "face") return this.convertFace(hit.index);
+    if (hit.kind !== "edge") return this.host.toast("Modelin bir kenarına ya da yüzüne dokunun");
+    this.convertEdge(v.mesh.edges[hit.index]);
+  }
+  /** Delme ilişkisi (SolidWorks Pierce): seçili nokta, eskiz düzlemini kesen model kenarının kesişimine sabitlenir */
+  pierceAt(p: Vec2, e: { clientX: number; clientY: number }) {
+    const sk = this.data, v = this.host.viewer;
+    let pid = [...this.sel].find((id) => sk.pts[id]) ?? ([...this.sel].map((id) => getEnt(sk, id)).find((x) => x?.t === "point") as any)?.p;
+    if (!pid) {
+      // seçim yoksa: dokunulan yere yakın nokta seçilir (ilk dokunuş)
+      const hh = this.hitTest(p, this.tolPx, { ents: false });
+      if (hh && sk.pts[hh.id]) {
+        this.sel = new Set([hh.id]);
+        this.render();
+        return this.host.toast("Şimdi eskiz düzlemini delen model kenarına dokunun");
+      }
+      return this.host.toast("Önce bir eskiz noktası seçin");
+    }
     const hit = v.pick(e.clientX, e.clientY, { edge: true });
-    if (!hit || hit.kind !== "edge" || !v.mesh) return this.host.toast("Modelin bir kenarına dokunun");
-    const info = v.mesh.edges[hit.index];
+    if (!hit || hit.kind !== "edge" || !v.mesh) return this.host.toast("Eskiz düzlemini delen bir model kenarına dokunun");
+    const md = v.mesh, pts: Vec3[] = [];
+    for (let k = 0; k < md.edgeGroups.length; k += 3) {
+      if (md.edgeGroups[k + 2] !== hit.index) continue;
+      for (let i = md.edgeGroups[k]; i < md.edgeGroups[k] + md.edgeGroups[k + 1]; i++) pts.push([md.lines[i * 3], md.lines[i * 3 + 1], md.lines[i * 3 + 2]]);
+    }
+    const f = this.frame, sd = (q: Vec3) => dot([q[0] - f.o[0], q[1] - f.o[1], q[2] - f.o[2]], f.n);
+    let x: Vec3 | null = null;
+    for (let i = 0; i + 1 < pts.length && !x; i++) {
+      const a = sd(pts[i]), b = sd(pts[i + 1]);
+      if (Math.abs(a) < 1e-7) x = pts[i];
+      else if (a * b < 0) {
+        const t = a / (a - b);
+        x = [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t, pts[i][2] + (pts[i + 1][2] - pts[i][2]) * t];
+      }
+    }
+    if (!x) return this.host.toast("Bu kenar eskiz düzlemini kesmiyor", true);
+    const q = toLocal(f, x);
+    const id = pid;
+    this.op(() => {
+      sk.rels = sk.rels.filter((r) => !(r.t === "fix" && r.refs[0] === id));
+      sk.pts[id] = { x: q[0], y: q[1] };
+      addRel(sk, "fix", [id], { fx: q[0], fy: q[1] });
+    }, "Nokta bu konuma taşınamıyor (diğer ilişkilerle çelişiyor)");
+    this.host.changed();
+    this.render();
+  }
+  /** SolidWorks: düz yüz → dış döngü (+ "iç döngüleri de al" seçeneği); silindir → eskiz düzlemindeki silüet kenarları */
+  convertFace(fi: number) {
+    const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const v = this.host.viewer, md = v.mesh!;
+    const f = md.faces[fi];
+    // yüzün üçgenleri (kenar orta noktası yüzde mi testi ve silüet uzunluğu için)
+    const tris: Vec3[][] = [];
+    const g = md.faceGroups;
+    for (let i = 0; i < g.length; i += 3) {
+      if (g[i + 2] !== fi) continue;
+      for (let t = g[i]; t < g[i] + g[i + 1]; t += 3) tris.push([0, 1, 2].map((k) => { const vi = md.triangles[t + k] * 3; return [md.vertices[vi], md.vertices[vi + 1], md.vertices[vi + 2]] as Vec3; }));
+    }
+    if (f.ax && f.ac && f.r) {
+      const A = f.ax, n = this.frame.n, ac = f.ac;
+      if (Math.abs(dot(A, n)) > 1e-3) return this.host.toast("Silüet: silindir ekseni eskiz düzlemine paralel olmalı", true);
+      // eksene dik, düzlemde yön; silüet çizgileri eksen ± r
+      const w: Vec3 = [A[1] * n[2] - A[2] * n[1], A[2] * n[0] - A[0] * n[2], A[0] * n[1] - A[1] * n[0]];
+      let lo = Infinity, hi = -Infinity;
+      for (const t of tris) for (const q of t) {
+        const s2 = dot([q[0] - ac[0], q[1] - ac[1], q[2] - ac[2]], A);
+        (lo = Math.min(lo, s2)), (hi = Math.max(hi, s2));
+      }
+      const P = (s2: number, k: number): Vec3 => [ac[0] + A[0] * s2 + w[0] * k * f.r!, ac[1] + A[1] * s2 + w[1] * k * f.r!, ac[2] + A[2] * s2 + w[2] * k * f.r!];
+      for (const k of [1, -1]) this.convertEdge({ type: "LINE", s: P(lo, k), e: P(hi, k), m: P((lo + hi) / 2, k), d: A } as any);
+      return this.host.toast("Silüet kenarları dönüştürüldü");
+    }
+    if (!f.n) return this.host.toast("Bu yüz türü dönüştürülemez (düz yüz ya da silindir seçin)", true);
+    const on = (q: Vec3) => {
+      for (const t of tris) {
+        const [a, b, c] = t;
+        const v0 = sub3(c, a), v1 = sub3(b, a), v2 = sub3(q, a);
+        const d00 = dot(v0, v0), d01 = dot(v0, v1), d02 = dot(v0, v2), d11 = dot(v1, v1), d12 = dot(v1, v2);
+        const den = d00 * d11 - d01 * d01 || 1;
+        const u = (d11 * d02 - d01 * d12) / den, w2 = (d00 * d12 - d01 * d02) / den;
+        if (u >= -1e-3 && w2 >= -1e-3 && u + w2 <= 1 + 1e-3 && Math.abs(dot(sub3(q, a), f.n!)) < 1e-3) return true;
+      }
+      return false;
+    };
+    const edges = md.edges.filter((e) => [e.s, e.e, e.m].every((q) => Math.abs(dot(sub3(q, f.c), f.n!)) < 1e-3) && on(e.m ?? e.s));
+    if (!edges.length) return this.host.toast("Yüzün kenarları bulunamadı", true);
+    // dış döngü: yüz merkezinden en uzak kenarı içeren bağlı küme; iç döngüler isteğe bağlı
+    const key = (q: Vec3) => q.map((x) => x.toFixed(3)).join(",");
+    const comp = new Map<number, number>();
+    let nc = 0;
+    edges.forEach((e, i) => {
+      if (comp.has(i)) return;
+      const stack = [i];
+      comp.set(i, nc);
+      while (stack.length) {
+        const j = stack.pop()!;
+        const ks = [key(edges[j].s), key(edges[j].e)];
+        edges.forEach((x, k) => !comp.has(k) && (ks.includes(key(x.s)) || ks.includes(key(x.e))) && (comp.set(k, nc), stack.push(k)));
+      }
+      nc++;
+    });
+    const far = (e: any) => Math.max(...[e.s, e.e, e.m].map((q: Vec3) => Math.hypot(q[0] - f.c[0], q[1] - f.c[1], q[2] - f.c[2])));
+    let outer = 0, fd = -1;
+    edges.forEach((e, i) => far(e) > fd && ((fd = far(e)), (outer = comp.get(i)!)));
+    const take = edges.filter((_, i) => this.opts.convInner || comp.get(i) === outer);
+    for (const e of take) this.convertEdge(e);
+    this.host.toast(`${take.length} kenar dönüştürüldü${nc > 1 && !this.opts.convInner ? " (iç döngüler için: İç döngüleri de al)" : ""}`);
+  }
+  private convertEdge(info: any) {
     const sk = this.data;
     const L = (w: Vec3) => toLocal(this.frame, w);
     const exact = (q: Vec2) => {
@@ -3056,6 +3218,13 @@ export class SketchEditor implements InputHandler {
     void sub;
   }
 
+  /** ayrı Taşı / Kopyala / Döndür / Ölçekle / Esnet komutları (SolidWorks) */
+  setMoveKind(k: "all" | "move" | "copy" | "rot" | "scale" | "stretch") {
+    this.opts.mkind = k;
+    if (k === "rot" && !this.opts.mang) this.opts.mang = 90;
+    if (k === "scale" && this.opts.mscale === 1) this.opts.mscale = 2;
+    this.renderPanel();
+  }
   // ---------------- Seçim işlemleri ----------------
   private selEnts(): SEnt[] {
     return [...this.sel].map((id) => getEnt(this.data, id)).filter(Boolean) as SEnt[];
@@ -3088,19 +3257,33 @@ export class SketchEditor implements InputHandler {
       }
       case "spat":
         if (!ents.length) return "Çoğaltılacak öğeleri seçin";
-        linearPattern(sk, ents.filter((e) => e.t !== "point" || ents.length === 1), { n1: o.n1, s1: o.s1, a1: o.a1, n2: o.n2, s2: o.s2, a2: o.a2 });
+        linearPattern(sk, ents.filter((e) => e.t !== "point" || ents.length === 1), { n1: o.n1, s1: o.s1, a1: o.a1, n2: o.n2, s2: o.s2, a2: o.a2, skip: skipList(o.pskip) });
         return null;
       case "scpat": {
         const pts = [...this.sel].filter((id) => id === ORIGIN || sk.pts[id]);
         const cpt = pts.length === 1 ? P(sk, pts[0]) : ([0, 0] as Vec2);
         if (!ents.length) return "Çoğaltılacak öğeleri seçin";
-        circularPattern(sk, ents, { c: cpt, n: Math.max(2, Math.round(o.cn)), total: o.ctotal });
+        circularPattern(sk, ents, { c: cpt, n: Math.max(2, Math.round(o.cn)), total: o.ctotal, skip: skipList(o.pskip) });
         return null;
       }
-      case "move":
+      case "move": {
+        const k = o.mkind;
+        if (k === "stretch") {
+          // esnet: seçili noktalar + seçili öğelerin noktaları kayar; bağlı diğer öğeler uzar
+          const pts = new Set<string>([...this.sel].filter((id) => sk.pts[id]));
+          ents.forEach((e) => entPoints(e).forEach((q) => q !== ORIGIN && pts.add(q)));
+          if (!pts.size) return "Esnetilecek noktaları / öğeleri seçin (pencere seçimi kullanılabilir)";
+          for (const id of pts) sk.pts[id] = { x: sk.pts[id].x + o.mdx, y: sk.pts[id].y + o.mdy };
+          for (const r of sk.rels) if (r.t === "fix" && pts.has(r.refs[0])) [r.fx, r.fy] = [sk.pts[r.refs[0]].x, sk.pts[r.refs[0]].y];
+          return null;
+        }
         if (!ents.length) return "Taşınacak öğeleri seçin";
-        moveEnts(sk, ents, { dx: o.mdx, dy: o.mdy, ang: o.mang, c: centroid(sk, ents), copy: o.mcopy, scale: o.mscale });
+        const dx = k === "rot" || k === "scale" ? 0 : o.mdx, dy = k === "rot" || k === "scale" ? 0 : o.mdy;
+        const angV = k === "all" || k === "rot" ? o.mang : 0, sc = k === "all" || k === "scale" ? o.mscale : 1;
+        const copy = k === "copy" ? true : k === "move" ? false : o.mcopy;
+        moveEnts(sk, ents, { dx, dy, ang: angV, c: centroid(sk, ents), copy, scale: sc });
         return null;
+      }
     }
     return null;
   }
@@ -4302,6 +4485,15 @@ export class SketchEditor implements InputHandler {
       box.appendChild(this.numField("Yükseklik (mm)", this.opts.textSize, (v) => (this.opts.textSize = v)));
       box.appendChild(this.numField("Açı (°)", this.opts.textAngle, (v) => (this.opts.textAngle = v), { any: true }));
     }
+    if (this.tool === "convert") {
+      const l = h("label", "pm-check");
+      const c = document.createElement("input");
+      c.type = "checkbox";
+      c.checked = this.opts.convInner;
+      c.addEventListener("change", () => (this.opts.convInner = c.checked));
+      l.append(c, " Düz yüzde iç döngüleri de al");
+      box.append(l, h("p", "pm-hint", "Kenara dokunun: o kenar; düz yüze dokunun: yüzün döngüsü; silindire dokunun: silüet kenarları."));
+    }
     if (OP_TOOLS.includes(this.tool)) this.opPanel(box, h);
     if ((this.tool === "line" || this.tool === "centerline") && this.st.last) {
       const b = h("button", "btn", "Zinciri bitir");
@@ -4352,6 +4544,18 @@ export class SketchEditor implements InputHandler {
           b.addEventListener("click", () => this.toggleRefDim(dd.id));
           box.appendChild(b);
           if (dd.expr) box.appendChild(h("p", "pm-hint", `Denklem: ${dd.expr}`));
+          const ac = this.arcDimOf(dd);
+          if (ac) {
+            const cur = dd.t === "cl" || dd.t === "cc" ? dd.cond ?? "min" : "c";
+            const row = h("div", "pm-row");
+            row.appendChild(h("span", "pm-sub", "Yay koşulu"));
+            for (const [k, t] of [["c", "Merkez"], ["min", "En yakın"], ["max", "En uzak"]] as const) {
+              const bb = h("button", "btn" + (cur === k ? " primary" : ""), t);
+              bb.addEventListener("click", () => this.setArcCond(dd.id, k));
+              row.appendChild(bb);
+            }
+            box.appendChild(row);
+          }
         }
         if (e?.t === "line") {
           const A = P(sk, e.p1), B = P(sk, e.p2);
@@ -4458,6 +4662,50 @@ export class SketchEditor implements InputHandler {
     const info = h("p", "pm-status " + (!r.ok || r.conflicts.length ? "over" : r.dof === 0 ? "ok" : "under"));
     info.textContent = !r.ok || r.conflicts.length ? "Aşırı tanımlı: kırmızı ilişki/ölçüyü silin" : r.dof === 0 ? "Eskiz tam tanımlı" : `Eskiz tanımlanmamış (${r.dof} serbestlik). Mavi öğeler hareket edebilir.`;
     box.appendChild(info);
+    if (!r.ok || r.conflicts.length) box.appendChild(this.sketchXpert(h));
+  }
+  /** SketchXpert (SolidWorks): çakışan ilişki / ölçüleri listeler, tek tek silmeyi dener ve çözen seçenekleri önerir */
+  xpertSolutions(): { id: string; label: string }[] {
+    const sk = this.data, r = this.result;
+    const cands = [...new Set([...r.conflicts, ...r.redundant].map((x) => x.split("#")[0]))];
+    const label = (id: string) => {
+      const rel = sk.rels.find((x) => x.id === id);
+      if (rel) return "İlişki: " + REL_NAMES[rel.t];
+      const d = sk.dims.find((x) => x.id === id);
+      return d ? `Ölçü: ${fmtNum(d.v, 2)}` : id;
+    };
+    const out: { id: string; label: string }[] = [];
+    for (const id of cands) {
+      const tmp: SketchData = JSON.parse(JSON.stringify(sk));
+      tmp.rels = tmp.rels.filter((x) => x.id !== id);
+      tmp.dims = tmp.dims.filter((x) => x.id !== id);
+      const t = solve(tmp, undefined, false);
+      if (t.ok && !t.conflicts.length) out.push({ id, label: label(id) });
+    }
+    return out;
+  }
+  private sketchXpert(h: (tag: string, cls?: string, text?: string) => HTMLElement) {
+    const box = h("div", "pm-xpert");
+    box.appendChild(h("div", "pm-sub", "SketchXpert — çözüm önerileri"));
+    const sols = this.xpertSolutions();
+    if (!sols.length) box.appendChild(h("p", "pm-hint", "Tek bir öğeyi silmek yetmiyor; kırmızı öğelerden birkaçını silin."));
+    for (const sol of sols) {
+      const row = h("div", "pm-relrow");
+      row.appendChild(h("span", "", `${sol.label} silinirse eskiz çözülür`));
+      const b = h("button", "btn primary", "Uygula");
+      b.addEventListener("click", () => {
+        this.op(() => {
+          this.data.rels = this.data.rels.filter((x) => x.id !== sol.id);
+          this.data.dims = this.data.dims.filter((x) => x.id !== sol.id);
+        });
+        this.host.changed();
+        this.render();
+        this.renderPanel();
+      });
+      row.appendChild(b);
+      box.appendChild(row);
+    }
+    return box;
   }
 
   private opPanel(box: HTMLElement, h: (tag: string, cls?: string, text?: string) => HTMLElement) {
@@ -4496,18 +4744,22 @@ export class SketchEditor implements InputHandler {
         num("Adet", "n2", { min: 1 });
         num("Aralık", "s2", { any: true });
         num("Açı (°)", "a2", { any: true });
+        box.appendChild(this.textField("Atlanacak örnekler (ör. 3 ya da 2,1)", o.pskip, (v) => ((o.pskip = v), this.render())));
         break;
       case "scpat":
         num("Adet", "cn", { min: 2 });
         num("Toplam açı (°)", "ctotal");
+        box.appendChild(this.textField("Atlanacak örnekler (ör. 3, 5)", o.pskip, (v) => ((o.pskip = v), this.render())));
         break;
-      case "move":
-        num("X öteleme", "mdx", { any: true });
-        num("Y öteleme", "mdy", { any: true });
-        num("Döndürme açısı (°)", "mang", { any: true });
-        num("Ölçek", "mscale", { min: 1e-6 });
-        chk("Kopyala (orijinali koru)", "mcopy");
+      case "move": {
+        const k = this.opts.mkind;
+        if (k === "all" || k === "move" || k === "copy" || k === "stretch") num("X öteleme", "mdx", { any: true }), num("Y öteleme", "mdy", { any: true });
+        if (k === "all" || k === "rot") num("Döndürme açısı (°)", "mang", { any: true });
+        if (k === "all" || k === "scale") num("Ölçek", "mscale", { min: 1e-6 });
+        if (k === "all" || k === "rot" || k === "scale") chk("Kopyala (orijinali koru)", "mcopy");
+        if (k === "stretch") box.appendChild(h("p", "pm-hint", "Esnet: seçili noktalar ve seçili öğelerin uçları taşınır; onlara bağlı seçilmemiş çizgiler uzar / kısalır."));
         break;
+      }
     }
     const b = h("button", "btn primary", "Uygula");
     b.addEventListener("click", () => this.applyOp());

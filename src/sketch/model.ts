@@ -230,7 +230,7 @@ export function arcAngles(sk: SketchData, a: SArc) {
 }
 
 /** Bir ölçünün geometrideki güncel değeri */
-export function measure(sk: SketchData, d: { t: DimType; refs: string[]; sub?: string; sgn?: number }): number {
+export function measure(sk: SketchData, d: { t: DimType; refs: string[]; sub?: string; sgn?: number; cond?: "min" | "c" | "max" }): number {
   const [a, b] = d.refs;
   const ea = getEnt(sk, a), eb = getEnt(sk, b);
   switch (d.t) {
@@ -263,11 +263,14 @@ export function measure(sk: SketchData, d: { t: DimType; refs: string[]; sub?: s
       const p = P(sk, c.c), A = P(sk, l.p1), B = P(sk, l.p2);
       const u = sub(B, A);
       const L = Math.hypot(u[0], u[1]) || 1;
-      return Math.abs((u[0] * (p[1] - A[1]) - u[1] * (p[0] - A[0])) / L) - c.r;
+      const cd = Math.abs((u[0] * (p[1] - A[1]) - u[1] * (p[0] - A[0])) / L);
+      // yay koşulu (SolidWorks): en yakın / merkez / en uzak
+      return d.cond === "c" ? cd : d.cond === "max" ? cd + c.r : cd - c.r;
     }
     case "cc": {
       const c1 = ea as any, c2 = eb as any;
-      return d2(P(sk, c1.c), P(sk, c2.c)) - c1.r - c2.r;
+      const cd = d2(P(sk, c1.c), P(sk, c2.c));
+      return d.cond === "c" ? cd : d.cond === "max" ? cd + c1.r + c2.r : cd - c1.r - c2.r;
     }
     case "pldist": {
       let p: Vec2;

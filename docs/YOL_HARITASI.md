@@ -626,3 +626,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.60 | Orta tuşla döndürme: imleç altındaki köşe / yüz noktası etrafında, orta tıkla seçilen kenar / eksen etrafında (SolidWorks) | ✅ |
 
 | v0.61 | Teknik resim: ölçü ekle / düzenle / sil, tolerans, pürüzlülük, geometrik tolerans, referans, görünüş taşıma, kaynaklı yapı kesim listesi + balon + kaynak listesi | ✅ |
+
+| v0.62 | Eskiz: sanal sivri köşe, yay koşulu, ayrı Taşı/Kopyala/Döndür/Ölçekle/Esnet, yüz döngüsü + silüet dönüştürme, delme ilişkisi, çoğaltmada örnek atla, SketchXpert | ✅ |

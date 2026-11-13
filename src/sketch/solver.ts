@@ -165,10 +165,18 @@ function dimPrims(d: SDim, ents: Map<string, SEnt>, _sk: SketchData): Prim[] {
     }
     case "alen":
       return [{ id, type: "arc_length", a_id: a, dist: d.v }];
-    case "cl":
+    case "cl": {
+      const ca = ea as any;
+      if (d.cond === "c") return [{ id, type: "p2l_distance", p_id: ca.c, l_id: b, distance: d.v }];
+      if (d.cond === "max") return [{ id, type: "p2l_distance", p_id: ca.c, l_id: b, distance: Math.max(1e-9, d.v - ca.r) }];
       return [{ id, type: "c2ldistance", c_id: a, l_id: b, dist: d.v }];
-    case "cc":
+    }
+    case "cc": {
+      const c1 = ea as any, c2 = eb as any;
+      if (d.cond === "c") return [{ id, type: "p2p_distance", p1_id: c1.c, p2_id: c2.c, distance: d.v }];
+      if (d.cond === "max") return [{ id, type: "p2p_distance", p1_id: c1.c, p2_id: c2.c, distance: Math.max(1e-9, d.v - c1.r - c2.r) }];
       return [{ id, type: "c2cdistance", c1_id: a, c2_id: b, dist: d.v }];
+    }
     case "pldist": {
       if (eb?.t === "line" && ea?.t === "line") return [{ id, type: "p2l_distance", p_id: (eb as any).p1, l_id: a, distance: d.v }];
       if (isCurve(ea) && eb?.t === "line") return [{ id, type: "p2l_distance", p_id: (ea as any).c, l_id: b, distance: d.v }];

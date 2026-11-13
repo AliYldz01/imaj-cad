@@ -91,6 +91,8 @@ export interface SDim {
   ref?: boolean;
   /** değer bir denklemden geliyorsa ifadesi */
   expr?: string;
+  /** daire / yay ölçü koşulu (cl / cc): en yakın (varsayılan) / merkez / en uzak */
+  cond?: "min" | "c" | "max";
 }
 
 /** Eskiz resmi: x,y = resim merkezi (eskiz koordinatı), w = genişlik (mm), aspect = yükseklik/genişlik */

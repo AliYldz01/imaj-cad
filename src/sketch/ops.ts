@@ -112,21 +112,23 @@ export function mirrorEnts(sk: SketchData, ents: SEnt[], axis: SLine) {
 }
 
 /** Doğrusal eskiz çoğaltma */
-export function linearPattern(sk: SketchData, ents: SEnt[], o: { n1: number; s1: number; a1: number; n2: number; s2: number; a2: number }) {
+export function linearPattern(sk: SketchData, ents: SEnt[], o: { n1: number; s1: number; a1: number; n2: number; s2: number; a2: number; skip?: string[] }) {
   const d1: Vec2 = [Math.cos((o.a1 * Math.PI) / 180), Math.sin((o.a1 * Math.PI) / 180)];
   const d2v: Vec2 = [Math.cos((o.a2 * Math.PI) / 180), Math.sin((o.a2 * Math.PI) / 180)];
   for (let i = 0; i < Math.max(1, o.n1); i++)
     for (let j = 0; j < Math.max(1, o.n2); j++) {
       if (!i && !j) continue;
+      // örnek atla: "satır,sütun" (1'den başlar) ya da tek yönde sıra no
+      if (o.skip?.includes(`${i + 1},${j + 1}`) || (o.n2 <= 1 && o.skip?.includes(String(i + 1)))) continue;
       const off = add2(mul2(d1, i * o.s1), mul2(d2v, j * o.s2));
       copyEnts(sk, ents, (p) => add2(p, off), { copyRels: true });
     }
 }
 
 /** Dairesel eskiz çoğaltma */
-export function circularPattern(sk: SketchData, ents: SEnt[], o: { c: Vec2; n: number; total: number }) {
+export function circularPattern(sk: SketchData, ents: SEnt[], o: { c: Vec2; n: number; total: number; skip?: string[] }) {
   const step = Math.abs(o.total - 360) < 1e-9 ? o.total / o.n : o.total / Math.max(1, o.n - 1);
-  for (let i = 1; i < o.n; i++) copyEnts(sk, ents, rotateFn(o.c, step * i), { copyRels: true, skipHV: true });
+  for (let i = 1; i < o.n; i++) if (!o.skip?.includes(String(i + 1))) copyEnts(sk, ents, rotateFn(o.c, step * i), { copyRels: true, skipHV: true });
 }
 
 /** Taşı / kopyala / döndür */

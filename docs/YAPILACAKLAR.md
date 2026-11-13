@@ -12,15 +12,15 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.61 1.6 Sac açınım resmi / DXF: büküm notları (açı, yön, iç yarıçap), büküm çizgisi katmanları (yukarı / aşağı)
 
 ## 2. Eskiz
-- ⬜ 2.1 Radyüs / pah sonrası sanal sivri köşe (köşe ölçüsü korunur)
-- ⬜ 2.2 Yay / daire ölçüsünde merkez / en yakın / en uzak
-- ⬜ 2.3 İlişkiler: eş yarıçaplı, delme, eşit eğrilik
-- ⬜ 2.4 Ayrı Taşı / Kopyala / Döndür / Ölçekle komutları, Esnet
+- ✅ v0.62 2.1 Radyüs / pah sonrası sanal sivri köşe (köşe ölçüsü korunur)
+- ✅ v0.62 2.2 Yay / daire ölçüsünde merkez / en yakın / en uzak
+- 🟡 v0.62 2.3 İlişkiler: eş yarıçaplı ✅ (zaten vardı), delme ✅; eşit eğrilik ⬜ (spline modeli eğrilik kısıtı desteklemiyor)
+- ✅ v0.62 2.4 Ayrı Taşı / Kopyala / Döndür / Ölçekle komutları, Esnet
 - ⬜ 2.5 Spline tutamakları, eğrilik tarağı
-- ⬜ 2.6 Silüet kenarı dönüştürme, döngü / iç döngü seç
-- ⬜ 2.7 Eskiz çoğaltmada örnek atla; kanal ölçü tipi; zincir ölçü
+- ✅ v0.62 2.6 Silüet kenarı dönüştürme, döngü / iç döngü seç
+- 🟡 v0.62 2.7 Eskiz çoğaltmada örnek atla ✅; kanal ölçü tipi ⬜; zincir ölçü ⬜ (koordinat ölçüsü mevcut)
 - ⬜ 2.8 Metin: yazı tipi, eğri üzerinde metin
-- ⬜ 2.9 Blok düzenleme; SketchXpert (çakışan ilişkiye çözüm önerisi)
+- 🟡 v0.62 2.9 SketchXpert ✅; blok düzenleme modu ⬜
 - ⬜ 2.10 Eskiz düzlemini değiştir; türetilmiş eskiz; ızgara + açı yakalama ayarları
 
 ## 3. Parça özellikleri
