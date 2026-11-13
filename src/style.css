@@ -451,3 +451,7 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .pm-relrow .pm-field input { width: 100%; min-width: 60px; }
 .s3-dim.sel { border-color: #e8590c; color: #e8590c; background: #fff4e6; }
 .ctx-edit-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 34px; z-index: 55; display: flex; align-items: center; gap: 10px; background: #fff3bf; border: 1px solid #e0a800; border-radius: 8px; padding: 6px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-size: 13px; }
+
+dialog.exit-dialog { width: min(440px, 92vw); }
+dialog.exit-dialog .exit-btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+dialog.exit-dialog .btn { min-height: 42px; padding: 8px 16px; font-size: 15px; }

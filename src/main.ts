@@ -815,6 +815,7 @@ function openSketch(f: SketchFeature, isNew: boolean, tool?: SkTool) {
   viewer.viewNormal(frame);
   hint("");
   showPM(`${f.name}`, () => exitSketch(true), () => exitSketch(false));
+  armBack();
   setTab("sketch");
   editor.setTool(tool ?? "line");
   updatePlanes();
@@ -900,7 +901,72 @@ function hidePM() {
   hint("");
 }
 $("#pm-ok").addEventListener("click", () => pmOk());
-$("#pm-cancel").addEventListener("click", () => pmCancel());
+$("#pm-cancel").addEventListener("click", () => guardedCancel(false));
+
+// ---------- Çıkış onayı: eskiz / özellik paneli açıkken Esc, ✕, geri tuşu, sayfayı kapatma ----------
+let pmStartSnap = "";
+/** açık işlemde kaydedilmemiş değişiklik var mı */
+function workDirty(): boolean {
+  if (mode.k === "sketch") {
+    const cur = JSON.stringify(mode.editor.data);
+    return mode.isNew ? mode.editor.data.ents.length > 0 : cur !== mode.orig;
+  }
+  if (mode.k === "pm") return JSON.stringify(mode.draft) !== pmStartSnap;
+  return false;
+}
+function workOpen() {
+  return mode.k === "sketch" || mode.k === "pm";
+}
+/** üç seçenekli onay penceresi: "save" | "discard" | "stay" */
+function askExit(what: string, okLabel: string): Promise<"save" | "discard" | "stay"> {
+  return new Promise((res) => {
+    document.querySelector("dialog.exit-dialog")?.remove();
+    const dlg = h("dialog", "exit-dialog") as HTMLDialogElement;
+    dlg.innerHTML = `<h2>Çıkmak istediğinize emin misiniz?</h2><p>${what} kaydedilmemiş değişiklikler var.</p>
+      <div class="exit-btns"><button class="btn primary" data-v="save">${okLabel}</button><button class="btn danger" data-v="discard">Kaydetmeden çık</button><button class="btn" data-v="stay">Vazgeç</button></div>`;
+    let done = false;
+    const end = (v: "save" | "discard" | "stay") => {
+      if (done) return;
+      done = true;
+      dlg.close();
+      dlg.remove();
+      res(v);
+    };
+    dlg.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", () => end(b.dataset.v as any)));
+    dlg.addEventListener("cancel", (e) => (e.preventDefault(), end("stay")));
+    document.body.append(dlg);
+    // açan Esc tuşunun varsayılan işlemi pencereyi hemen kapatmasın
+    setTimeout(() => {
+      dlg.showModal();
+      (dlg.querySelector("[data-v=stay]") as HTMLButtonElement).focus();
+    }, 0);
+  });
+}
+/** iptal isteği (Esc / ✕ / geri): değişiklik varsa sorar */
+async function guardedCancel(fromKey: boolean) {
+  if (!workOpen()) return;
+  if (!workDirty()) return void pmCancel();
+  const what = mode.k === "sketch" ? "Eskizde" : "Bu işlemde";
+  const v = await askExit(what, mode.k === "sketch" ? "Kaydet ve çık" : "Uygula ve çık");
+  if (v === "save") pmOk();
+  else if (v === "discard") pmCancel();
+  void fromKey;
+}
+(window as any).__exitGuard = { workDirty, guardedCancel };
+// telefon/tarayıcı geri tuşu: işlem açıkken sayfadan çıkmak yerine sorar
+function armBack() {
+  if (!history.state?.imajWork) history.pushState({ imajWork: 1 }, "");
+}
+addEventListener("popstate", () => {
+  if (!workOpen()) return;
+  armBack();
+  if (document.querySelector("dialog.exit-dialog")) return;
+  if (workDirty()) void guardedCancel(true);
+  else pmCancel();
+});
+addEventListener("beforeunload", (e) => {
+  if (workOpen() && workDirty()) e.preventDefault();
+});
 
 function lastFreeSketch(before = insertAt()): SketchFeature | undefined {
   if (treeSel && getFeat(treeSel)?.type === "sketch") return getFeat(treeSel) as SketchFeature;
@@ -1174,6 +1240,8 @@ function patternable(before = insertAt()) {
 
 function openFeaturePM(draft: Feature, editingId: string | undefined, kind: string) {
   mode = { k: "pm", draft, editingId };
+  pmStartSnap = JSON.stringify(draft);
+  armBack();
   clearPartSel();
   hoverHit = null;
   showPM(
@@ -4640,7 +4708,7 @@ window.addEventListener("keydown", (e) => {
   const plain = !(e.ctrlKey || e.metaKey || e.altKey);
   // eskizde sayıyla giriş (rakama bas)
   if (plain && /^[0-9.,-]$/.test(e.key) && mode.k === "sketch" && ["line", "centerline", "rect", "crect", "circle"].includes(mode.editor.tool)) return e.preventDefault(), mode.editor.numericEntry(e.key);
-  if (e.key === "Escape") return escAction();
+  if (e.key === "Escape") return e.preventDefault(), escAction();
   const c = comboOf(e);
   const a = c ? keyMap(allActs()).get(c) : undefined;
   if (!a) return;
@@ -4653,10 +4721,11 @@ function escAction() {
     if (mode.k === "sketch") {
       if (mode.editor.isDrawing()) mode.editor.finishChain();
       else if (mode.editor.tool !== "select") mode.editor.setTool("select");
-      else mode.editor.sel.clear(), mode.editor.render(), mode.editor.renderPanel();
+      else if (mode.editor.sel.size) mode.editor.sel.clear(), mode.editor.render(), mode.editor.renderPanel();
+      else return void guardedCancel(true);
       renderCommands();
     } else if (mode.k === "pickSketchPlane") cancelPick();
-    else if (mode.k === "pm") cancelFeature();
+    else if (mode.k === "pm") void guardedCancel(true);
     else if (mode.k === "measure" || mode.k === "section" || mode.k === "flat") endAux(), renderCommands();
     else {
       clearPartSel();

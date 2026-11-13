@@ -19,7 +19,7 @@ import {
   nearestOnSeg, niceStep, norm2, normAng, perp, pointInPoly, sub2, TAU,
 } from "./geom";
 
-import { recognize, hvOf, SHAPE_NAMES, type Shape } from "./freehand";
+import { recognize, hvOf, shapeName, rectCorners, outline, type Shape } from "./freehand";
 
 export type SkTool =
   | "select" | "free" | "line" | "centerline" | "rect" | "crect" | "circle" | "carc" | "tarc" | "arc3"
@@ -1179,7 +1179,7 @@ export class SketchEditor implements InputHandler {
     f.shape = recognize(f.pts, this.wpp());
     if (f.shape && byHold) {
       navigator.vibrate?.(12);
-      this.host.toast("Tanındı: " + SHAPE_NAMES[f.shape.kind] + " — bırakınca eklenir");
+      this.host.toast("Tanındı: " + shapeName(f.shape) + " — bırakınca eklenir");
     }
     this.render();
     return f.shape;
@@ -1210,7 +1210,7 @@ export class SketchEditor implements InputHandler {
       used.add(id);
       return id;
     };
-    const name = SHAPE_NAMES[sh.kind];
+    const name = shapeName(sh);
     this.op(() => {
       if (sh.kind === "circle") {
         addCircle(sk, addPt(sk, sh.c), sh.r);
@@ -1223,6 +1223,14 @@ export class SketchEditor implements InputHandler {
         const i0 = ptAt(s0, cr > 0 ? snapA : null), i1 = ptAt(e0, cr > 0 ? null : snapA);
         // uç noktaları mevcut noktaya yakalandıysa yarıçap korunur, merkez uydurulur
         addArc(sk, addPt(sk, g.c), i0, i1);
+      } else if (sh.kind === "ellipse") {
+        const c = addPt(sk, sh.c);
+        const a = addPt(sk, [sh.c[0] + sh.u[0] * sh.a, sh.c[1] + sh.u[1] * sh.a]);
+        sk.ents.push({ id: nid(sk, "e"), t: "ellipse", c, a, rb: sh.b } as SEllipse);
+        if (Math.abs(sh.u[1]) < 1e-9) addRel(sk, "horizontal", [c, a]);
+        else if (Math.abs(sh.u[0]) < 1e-9) addRel(sk, "vertical", [c, a]);
+      } else if (sh.kind === "rect") {
+        this.addRect(sh, ptAt);
       } else if (sh.kind === "line" || sh.kind === "poly") {
         const pts = sh.kind === "line" ? [sh.a, sh.b] : sh.pts;
         const closed = sh.kind === "poly" && sh.closed;
@@ -1257,6 +1265,56 @@ export class SketchEditor implements InputHandler {
         sk.ents.push({ id: nid(sk, "s"), t: "spline", pts: ids, eq: true } as any);
       }
     }, name + " eklenemedi");
+  }
+
+  /** dikdörtgen / kare / yuvarlatılmış dikdörtgen: kenarlar, yaylar ve ilişkiler */
+  private addRect(sh: Extract<Shape, { kind: "rect" }>, ptAt: (q: Vec2) => string) {
+    const sk = this.data;
+    const { c, u, hx, hy, r } = sh;
+    const v: Vec2 = [-u[1], u[0]];
+    const W = (x: number, y: number): Vec2 => [c[0] + u[0] * x + v[0] * y, c[1] + u[1] * x + v[1] * y];
+    const sides: SLine[] = [];
+    const rel = () => {
+      // alt, sağ, üst, sol
+      if (sh.axis) {
+        const hz = Math.abs(u[0]) > 0.5;
+        addRel(sk, hz ? "horizontal" : "vertical", [sides[0].id]);
+        addRel(sk, hz ? "horizontal" : "vertical", [sides[2].id]);
+        addRel(sk, hz ? "vertical" : "horizontal", [sides[1].id]);
+        addRel(sk, hz ? "vertical" : "horizontal", [sides[3].id]);
+      } else {
+        addRel(sk, "parallel", [sides[0].id, sides[2].id]);
+        addRel(sk, "parallel", [sides[1].id, sides[3].id]);
+        addRel(sk, "perpendicular", [sides[0].id, sides[1].id]);
+      }
+      if (sh.square) addRel(sk, "equal", [sides[0].id, sides[1].id]);
+    };
+    if (r <= 0) {
+      const ids = rectCorners(sh).map((q) => ptAt(q));
+      for (let i = 0; i < 4; i++) sides.push(addLine(sk, ids[i], ids[(i + 1) % 4]));
+      return rel();
+    }
+    const ax = hx - r, ay = hy - r;
+    // köşe merkezleri (sağ-alt, sağ-üst, sol-üst, sol-alt) ve kenar uçları, saat yönü tersine
+    const cs: [number, number][] = [[ax, -ay], [ax, ay], [-ax, ay], [-ax, -ay]];
+    const sideEnds: [Vec2, Vec2][] = [
+      [W(-ax, -hy), W(ax, -hy)],
+      [W(hx, -ay), W(hx, ay)],
+      [W(ax, hy), W(-ax, hy)],
+      [W(-hx, ay), W(-hx, -ay)],
+    ];
+    const P2 = sideEnds.map(([a, b]) => [addPt(sk, a), addPt(sk, b)] as [string, string]);
+    for (let i = 0; i < 4; i++) sides.push(addLine(sk, P2[i][0], P2[i][1]));
+    const arcs: SArc[] = [];
+    for (let i = 0; i < 4; i++) {
+      const cc = addPt(sk, W(cs[i][0], cs[i][1]));
+      const a = addArc(sk, cc, P2[i][1], P2[(i + 1) % 4][0]);
+      arcs.push(a);
+      addRel(sk, "tangent", [sides[i].id, a.id]);
+      addRel(sk, "tangent", [sides[(i + 1) % 4].id, a.id]);
+    }
+    for (let i = 1; i < 4; i++) addRel(sk, "equal", [arcs[0].id, arcs[i].id]);
+    rel();
   }
 
   private dragCreates() {
@@ -3498,6 +3556,7 @@ export class SketchEditor implements InputHandler {
     const sh = f.shape, col = 0x1e90ff;
     if (sh.kind === "line") this.addLines([sh.a, sh.b], col, 3);
     else if (sh.kind === "poly") this.addLines(sh.closed ? [...sh.pts, sh.pts[0]] : sh.pts, col, 3);
+    else if (sh.kind === "rect" || sh.kind === "ellipse") this.addLines(outline(sh), col, 3);
     else if (sh.kind === "circle") this.addLines(Array.from({ length: 65 }, (_, i) => [sh.c[0] + sh.r * Math.cos((i / 64) * 2 * Math.PI), sh.c[1] + sh.r * Math.sin((i / 64) * 2 * Math.PI)] as Vec2), col, 3);
     else if (sh.kind === "arc") {
       const g = circle3(sh.s, sh.m, sh.e);

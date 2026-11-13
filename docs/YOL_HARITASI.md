@@ -493,4 +493,14 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Tanınan şekiller: çizgi, yay, daire, açık/kapalı çokgen (kare, üçgen…), serbest eğri (spline) | ✅ |
 | Uçlar birleşir (kapalı şekil), uç noktalar mevcut noktalara / orijine yakalanır | ✅ |
 | Yatay / dikey (±8°) ve eğik dik köşelerde dik ilişkisi; tek adımda geri al | ✅ |
-| Elips / dikdörtgen yuvarlatma tanıma | ⬜ |
+| Elips / dikdörtgen yuvarlatma tanıma | ✅ (v0.35) |
+
+## v0.35 — Daha güçlü şekil tanıma ve çıkış onayı
+| Özellik | Durum |
+|---|---|
+| Kapalı çizimde aday yarışı: daire, elips, dikdörtgen/kare, yuvarlatılmış dikdörtgen, çokgen — en iyi uyan seçilir | ✅ |
+| Bozuk / kapanmamış / taşan kare-dikdörtgen tanıma (uçlar uzatılıp köşede buluşur, dik açıya yakın dörtgen = dikdörtgen) | ✅ |
+| Kare → eşit ilişkisi; eğik dikdörtgen → paralel + dik; yuvarlatılmış → 4 yay + teğet + eşit | ✅ |
+| Elips (eğik de olabilir; eksene yakınsa yatay/dikey) | ✅ |
+| Eskizde / özellik panelinde Esc, ✕ ve telefon geri tuşu: değişiklik varsa "Çıkmak istediğinize emin misiniz?" (Kaydet ve çık / Kaydetmeden çık / Vazgeç) | ✅ |
+| Sayfa kapatılırken uyarı (açık işlemde değişiklik varsa) | ✅ |
