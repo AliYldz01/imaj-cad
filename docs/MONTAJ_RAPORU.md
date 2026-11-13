@@ -14,7 +14,7 @@ SolidWorks montaj mantığı: bileşenler 6 serbestlikle başlar (ilk bileşen s
 | Bileşen | Doğrusal / dairesel bileşen çoğaltma | ✅ |
 | Bileşen | Bileşenleri aynala: kopya / ters el (aynalı parça) | ✅ |
 | Bileşen | Alt montaj (rijit/esnek), bileşen değiştir, eşleşmeleriyle kopyala | ✅ |
-| Bileşen | Yapılandırmalar | ⬜ |
+| Bileşen | Yapılandırmalar (bileşen başına, ağaçta adı, malzeme listesinde ayrı satır) | ✅ v0.59 |
 | Bileşen | Bağlam içinde parça düzenleme | ✅ |
 | Bileşen | Montaj özellikleri (montaj kesmesi / deliği) | ✅ v0.38 |
 | Bileşen | Bağlantı elemanları (cıvata / somun / pul, M4–M20) | ✅ |
@@ -23,10 +23,10 @@ SolidWorks montaj mantığı: bileşenler 6 serbestlikle başlar (ilk bileşen s
 | Standart | Çakışık, paralel, dik, teğet, eş merkezli, kilit, mesafe, açı; hizalı / ters hizalı; ölçüyü ters çevir | ✅ |
 | Gelişmiş | Simetrik, genişlik, limit mesafe, limit açı, doğrusal bağlayıcı | ✅ |
 | Gelişmiş | Profil merkezi | ✅ |
-| Gelişmiş | Yol eşleşmesi | ⬜ |
+| Gelişmiş | Yol eşleşmesi (teğet kenar zinciri; serbest / yüzde) | ✅ v0.59 |
 | Mekanik | Menteşe, dişli, kremayer–pinyon, vida | ✅ |
 | Mekanik | Üniversal mafsal | ✅ |
-| Mekanik | Kam, yuva (slot) | ⬜ |
+| Mekanik | Kam (kapalı profil, takipçi teğet), yuva (serbest / orta / yüzde) | ✅ v0.59 |
 | Eşleşme yönetimi | Eşleşme paneli (seçim kutuları, Standart/Gelişmiş/Mekanik), canlı önizleme | ✅ |
 | Eşleşme yönetimi | Düzenle (çift tık), bastır / etkinleştir, hizalamayı çevir, sil; hatalı eşleşme ⚠ | ✅ |
 | Eşleşme yönetimi | Aşırı tanım / çelişki reddi, (f)/(-) serbestlik göstergesi | ✅ |
@@ -37,4 +37,4 @@ SolidWorks montaj mantığı: bileşenler 6 serbestlikle başlar (ilk bileşen s
 | Değerlendirme | Boşluk doğrulama, montaj kesit görünümü | ✅ |
 | Değerlendirme | Delik hizalama | ✅ v0.38 |
 | Hareket | Hareket etüdü (döner / doğrusal motor) | ✅ |
-| Hareket | Fiziksel dinamik, animasyon kaydı | ⬜ |
+| Hareket | Fiziksel dinamik (değdiğini iter, sabitte durur), animasyon kaydı (WebM) | ✅ v0.59 |

@@ -73,6 +73,62 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
   const pl = (k: string) => k === "plane";
   // yardımcı: eksen-eksen dik uzaklık
   const axDist = (P: THREE.Vector3, Q: THREE.Vector3, N: THREE.Vector3) => cross(sub(Q, P), N).length();
+  // yol / kam / yuva: b bileşeninin kenar zinciri dünyaya taşınır
+  if ((t === "path" || t === "cam" || t === "slot") && (m.poly || m.seg)) {
+    const cb = cm.get(m.b.comp)!;
+    const q = QC(cb);
+    const W = (p: Vec3) => V(p).applyQuaternion(q).add(V(cb.p));
+    const P = A.P;
+    const rf = A.k === "cyl" || A.k === "circle" ? A.r : 0;
+    const n = m.pn ? V(m.pn).applyQuaternion(q).normalize() : null;
+    const inPlane = (w: THREE.Vector3) => (n ? w.clone().addScaledVector(n, -dot(w, n)) : w);
+    const par = A.k !== "point" && n ? cr(A.N, n) : [];
+    if (t === "slot") {
+      const s0 = W(m.seg![0]), s1 = W(m.seg![1]);
+      let Q: THREE.Vector3;
+      if (m.v !== undefined) Q = s0.clone().lerp(s1, m.v / 100);
+      else {
+        const u = sub(s1, s0), L2 = u.lengthSq();
+        const tt = L2 ? Math.max(0, Math.min(1, dot(sub(P, s0), u) / L2)) : 0;
+        Q = s0.clone().addScaledVector(u, tt);
+      }
+      return { r: [...v3(inPlane(sub(P, Q))), ...par] };
+    }
+    const pts = m.poly!.map(W);
+    const segs = m.closed ? pts.length : pts.length - 1;
+    if (t === "cam") {
+      // takipçi kam profiline teğet: düzlemdeki uzaklık = takipçi yarıçapı
+      let best = Infinity;
+      for (let i = 0; i < segs; i++) {
+        const a0 = pts[i], a1 = pts[(i + 1) % pts.length];
+        const u = inPlane(sub(a1, a0)), w = inPlane(sub(P, a0)), L2 = u.lengthSq();
+        const tt = L2 ? Math.max(0, Math.min(1, dot(w, u) / L2)) : 0;
+        best = Math.min(best, w.addScaledVector(u, -tt).length());
+      }
+      return { r: [best - rf, ...par] };
+    }
+    // yol: nokta zincir üzerinde (serbest) ya da yolun yüzde konumunda
+    let Q = pts[0];
+    if (m.v !== undefined) {
+      const len: number[] = [0];
+      for (let i = 0; i < segs; i++) len.push(len[i] + pts[i].distanceTo(pts[(i + 1) % pts.length]));
+      const target = (Math.max(0, Math.min(100, m.v)) / 100) * len[segs];
+      let i = 0;
+      while (i < segs - 1 && len[i + 1] < target) i++;
+      const f = len[i + 1] > len[i] ? (target - len[i]) / (len[i + 1] - len[i]) : 0;
+      Q = pts[i].clone().lerp(pts[(i + 1) % pts.length], f);
+    } else {
+      let bd = Infinity;
+      for (let i = 0; i < segs; i++) {
+        const a0 = pts[i], a1 = pts[(i + 1) % pts.length];
+        const u = sub(a1, a0), L2 = u.lengthSq();
+        const tt = L2 ? Math.max(0, Math.min(1, dot(sub(P, a0), u) / L2)) : 0;
+        const c = a0.clone().addScaledVector(u, tt), dd = c.distanceTo(P);
+        if (dd < bd) (bd = dd), (Q = c);
+      }
+    }
+    return { r: v3(sub(P, Q)) };
+  }
   switch (t) {
     case "coincident":
     case "concentric": {

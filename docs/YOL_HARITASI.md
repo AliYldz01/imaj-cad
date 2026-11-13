@@ -620,3 +620,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.57 | Montaj modu: paneller ✕/Esc ile kapanır, montaj geri al, Delete, sağ tık bileşen menüsü, telefon ✕ ve ekran çubuğu | ✅ |
 
 | v0.58 | Montaj: telefonda parmakla sürükleme, Girişim paneli, düzlem satırları kapalı, telefonda alçak panel, dikiş noktası seçilmez, kütlede parça malzemesi | ✅ |
+
+| v0.59 | Montaj: bileşen yapılandırmaları, yol / kam / yuva eşleşmeleri, fiziksel dinamik, hareket videosu kaydı | ✅ |

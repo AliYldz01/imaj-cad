@@ -6,6 +6,7 @@ import type { Viewer, InputHandler } from "../viewer";
 import type { Kernel } from "../kernel";
 import type { MeshData, Vec3 } from "../doc/types";
 import { MATERIALS } from "../doc/standards";
+import { configFeatures, partConfigs } from "./config";
 import { compile } from "../doc/compile";
 import { h, numField, checkField, selectField, segField, group, button } from "../ui/dom";
 import { type AsmFeat, type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, mateTypesFor, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
@@ -44,6 +45,9 @@ function slotsOf(t: MateType): [string, number][] {
   if (t === "symmetric") return [["Eşleşme seçimleri", 2], ["Simetri düzlemi", 1]];
   if (t === "width") return [["Genişlik seçimleri", 2], ["Sekme seçimleri", 2]];
   if (t === "hinge") return [["Eş merkezli seçimleri", 2], ["Çakışık seçimleri", 2]];
+  if (t === "path") return [["Takipçi (köşe / silindir / daire)", 1], ["Yol (kenar zinciri)", 1]];
+  if (t === "cam") return [["Takipçi (silindir / köşe / daire)", 1], ["Kam profili (kenar)", 1]];
+  if (t === "slot") return [["Pim / cıvata (silindir / daire)", 1], ["Yuva (kenar)", 1]];
   return [["Eşleşme seçimleri", 2]];
 }
 /** hizalama (hizalı / ters hizalı) anlamlı mı */
@@ -80,6 +84,8 @@ export class AsmUI {
   bad = new Set<string>();
   /** sürüklerken çarpışma algılama (SolidWorks: Bileşeni taşı → Çarpışma algılama) */
   collide = false;
+  /** fiziksel dinamik: sürüklenen bileşen değdiğini iter */
+  physics = false;
   /** sürükleme modu: taşı / döndür (SolidWorks Bileşeni Döndür) */
   dragMode: "move" | "rotate" = "move";
   /** Ctrl ile ön seçilen yüzler (eşleşme mini araç çubuğu) */
@@ -131,7 +137,7 @@ export class AsmUI {
     this.ctx.hint(this.doc.comps.length ? "" : "Montaj: 'Bileşen Ekle' ile parça ekleyin");
     // parça dosyası değiştiyse (aynı kimlik) önce eski geometriyi kur, sonra güncelle → eşleşmeler taşınır
     const cur = this.ctx.currentPart();
-    if (cur.key && this.doc.comps.some((c) => c.part.key === cur.key && JSON.stringify(c.part.features) !== JSON.stringify(cur.features))) {
+    if (cur.key && this.doc.comps.some((c) => c.part.key === cur.key && JSON.stringify([c.part.features, c.part.vars, c.part.configs]) !== JSON.stringify([cur.features, cur.vars, cur.configs]))) {
       await this.refresh();
       const n = this.syncFromPart(cur);
       if (n) this.ctx.toast(`"${cur.name}" parçası değişmiş: ${n} bileşen güncellendi`), this.save();
@@ -166,6 +172,13 @@ export class AsmUI {
         const r = await this.ctx.kernel.build(kfeats);
         this.meshes.set(c.id, r.mesh);
         if (old && r.mesh) this.remapMates(c, old, r.mesh);
+        // yol / kam / yuva zincirleri yeni geometriden yeniden kurulur
+        if (r.mesh)
+          for (const m of this.doc.mates)
+            if (m.b.comp === c.id && (m.poly || m.seg)) {
+              const ch = this.chainOf(m.b);
+              if (ch) (m.poly = ch.pts), (m.closed = ch.closed || undefined), (m.pn = ch.n ?? undefined), (m.seg = ch.seg ?? undefined);
+            }
       } catch {
         this.meshes.set(c.id, null);
       }
@@ -228,11 +241,12 @@ export class AsmUI {
   /** bileşenin özellikleri + ona uygulanan montaj özellikleri (montaj kesmesi / deliği; parça dosyasına yazılmaz) */
   featsOf(c: AsmComp): any[] {
     const fs = (this.doc.feats ?? []).filter((f) => !f.off && f.comps.includes(c.id));
-    if (!fs.length) return c.part.features;
+    const base = configFeatures(c.part, c.cfg ?? c.part.config);
+    if (!fs.length) return base;
     const qi = QQ(c).invert();
     const L = (w: Vec3) => V3(w).sub(V3(c.p)).applyQuaternion(qi).toArray() as Vec3;
     const D = (w: Vec3) => V3(w).applyQuaternion(qi).toArray() as Vec3;
-    const out: any[] = [...c.part.features];
+    const out: any[] = [...base];
     for (const f of fs) {
       const pts: Record<string, { x: number; y: number }> = {};
       const ents: any[] = [];
@@ -403,7 +417,7 @@ export class AsmUI {
     if (!part.key) return 0;
     let n = 0;
     for (const c of this.doc.comps)
-      if (c.part.key === part.key && JSON.stringify(c.part.features) !== JSON.stringify(part.features)) {
+      if (c.part.key === part.key && JSON.stringify([c.part.features, c.part.vars, c.part.configs]) !== JSON.stringify([part.features, part.vars, part.configs])) {
         c.part = JSON.parse(JSON.stringify(part));
         n++;
       }
@@ -764,7 +778,9 @@ export class AsmUI {
           c.p = [c.p[0] + d.x, c.p[1] + d.y, c.p[2] + d.z];
         } else this.solve({ drag: { comp: c.id, local: pr.local, target: [pr.world.x, pr.world.y, pr.world.z] }, iters: 20 });
       }
-      if (this.collide && this.collidesAny()) {
+      if (this.physics && !pr.alt) {
+        if (!this.pushApart(before)) this.ctx.hint("Fiziksel dinamik: sabit bileşene dayandı");
+      } else if (this.collide && this.collidesAny()) {
         this.restore(before);
         this.ctx.hint("Çarpışma: bileşen durduruldu");
       }
@@ -810,16 +826,47 @@ export class AsmUI {
   }
   /** c başka bir görünür bileşenle çakışıyor mu: kutu ön elemesi + gerçek geometri (köşe noktası diğer gövdenin içinde mi) */
   collides(c: AsmComp): boolean {
+    return this.doc.comps.some((o) => this.collidesWith(c, o));
+  }
+  /** iki bileşen çakışıyor mu (gerçek geometri) */
+  collidesWith(c: AsmComp, o: AsmComp): boolean {
+    if (o === c || o.hidden || c.hidden) return false;
     const a = this.bbox(c);
     if (!a) return false;
     a.expandByScalar(-0.05);
-    return this.doc.comps.some((o) => {
-      if (o === c || o.hidden) return false;
-      const b = this.bbox(o);
-      if (!b?.intersectsBox(a)) return false;
-      const box = a.clone().intersect(b);
-      return this.penetrates(c, o, box) || this.penetrates(o, c, box) || this.gridOverlap(c, o, box);
-    });
+    const b = this.bbox(o);
+    if (!b?.intersectsBox(a)) return false;
+    const box = a.clone().intersect(b);
+    return this.penetrates(c, o, box) || this.penetrates(o, c, box) || this.gridOverlap(c, o, box);
+  }
+  /** fiziksel dinamik (SolidWorks): hareket eden bileşen değdiği serbest bileşenleri aynı yer değiştirmeyle iter.
+   * Sabit bileşene ya da itilemeyen bir bileşene çarparsa hareket geri alınır. Dönüş: hareket kabul edildi mi */
+  pushApart(before: Map<string, Pose>): boolean {
+    const moved = new Set<string>();
+    for (const c of this.doc.comps) {
+      const b = before.get(c.id);
+      if (b && (Math.hypot(c.p[0] - b.p[0], c.p[1] - b.p[1], c.p[2] - b.p[2]) > 1e-9 || c.q.some((x, i) => Math.abs(x - b.q[i]) > 1e-9))) moved.add(c.id);
+    }
+    const queue = [...moved];
+    for (let guard = 0; guard < 12 && queue.length; guard++) {
+      const id = queue.shift()!;
+      const m = this.doc.comps.find((x) => x.id === id)!;
+      const b0 = before.get(id)!;
+      const delta = V3(m.p).sub(V3(b0.p));
+      for (const o of this.doc.comps) {
+        if (o.id === id || o.hidden || !this.collidesWith(m, o)) continue;
+        if (o.fixed || moved.has(o.id) || delta.length() < 1e-9) return this.restore(before), false;
+        const lc = ((o as any)._lc as Vec3) ?? [0, 0, 0];
+        const w = V3(lc).applyQuaternion(QQ(o)).add(V3(o.p)).add(delta);
+        const hasMates = this.doc.mates.some((x) => !x.off && [x.a, x.b, x.c, x.d].some((e) => e?.comp === o.id));
+        if (hasMates) this.solve({ drag: { comp: o.id, local: lc, target: [w.x, w.y, w.z] }, iters: 15 });
+        else o.p = [o.p[0] + delta.x, o.p[1] + delta.y, o.p[2] + delta.z];
+        moved.add(o.id);
+        queue.push(o.id);
+        if (this.collidesWith(m, o)) return this.restore(before), false;
+      }
+    }
+    return true;
   }
   /** kesişim kutusunda 5×5×5 ızgara: iki gövdenin de içinde kalan nokta var mı */
   private gridOverlap(a: AsmComp, b: AsmComp, box: THREE.Box3): boolean {
@@ -1123,6 +1170,14 @@ export class AsmUI {
     if (d.type === "width" && ents[0] && ents[1] && ents[2] && !ents[3]) ents.length = 3; // sekme tek silindir olabilir
     else if (ents.some((e) => !e)) return null;
     const [a, b, c, dd] = ents as MateEnt[];
+    if (d.type === "path" || d.type === "cam" || d.type === "slot") {
+      // ikinci seçim bir kenar olmalı: teğet kenar zinciri b bileşeninin yerel koordinatlarında saklanır
+      const ch = this.chainOf(b);
+      if (!ch) return null;
+      if (d.type === "slot" && !ch.seg) return null;
+      if (d.type === "cam" && !ch.closed) return null;
+      return { id: "__draft", type: d.type, a, b, poly: ch.pts, closed: ch.closed || undefined, pn: ch.n ?? undefined, seg: ch.seg ?? undefined, v: d.flipD && d.type !== "cam" ? d.v : undefined };
+    }
     const vals = ["distance", "angle", "limit", "limitAngle", "gear", "rack", "screw", "coupler", "profileCenter"].includes(d.type);
     return { id: "__draft", type: d.type, a, b, ...(c ? { c } : {}), ...(dd ? { d: dd } : {}), v: vals ? d.v : undefined, vmax: ["limit", "limitAngle", "gear", "coupler"].includes(d.type) ? d.vmax : undefined, flip: d.flip || undefined, flipD: d.flipD || undefined };
   }
@@ -1210,6 +1265,11 @@ export class AsmUI {
     if (d.type === "screw") vals.push(nf("Hatve (tur başına)", "v", "mm"));
     if (d.type === "coupler") vals.push(nf("Oran: 1. bileşen", "v", "mm"), nf("Oran: 2. bileşen", "vmax", "mm"));
     if (d.type === "profileCenter") vals.push(nf("Öteleme", "v", "mm"));
+    if (d.type === "path" || d.type === "slot") {
+      vals.push(checkField(d.type === "slot" ? "Yuva boyunca konum (%)" : "Yol boyunca konum (%)", d.flipD, (x) => ((d.flipD = x), x && (d.v < 0 || d.v > 100) && (d.v = 50), this.renderMatePM(), pv())));
+      if (d.flipD) vals.push(nf("Konum", "v", "%"));
+      if (d.type === "slot") vals.push(button("Yuvanın ortası", () => ((d.flipD = true), (d.v = 50), this.renderMatePM(), pv()), "btn"));
+    }
     if (["gear", "rack", "screw", "coupler", "universal"].includes(d.type)) vals.push(checkField("Ters çevir", d.flip, (x) => ((d.flip = x), pv())));
     if (ALIGNABLE.has(d.type))
       vals.push(
@@ -1224,6 +1284,9 @@ export class AsmUI {
       symmetric: "İki varlık, seçilen simetri düzlemine göre simetrik konumlanır.",
       width: "Sekme (veya silindir) iki genişlik yüzünün tam ortasında kalır.",
       profileCenter: "İki düz yüzün profil merkezleri hizalanır ve yüzler çakışır (öteleme verilebilir).",
+      path: "Takipçinin noktası seçilen kenar zinciri (teğet devam eden kenarlar) üzerinde kalır; serbest ya da yolun yüzdesinde.",
+      cam: "Takipçi, kam profiline (kapalı kenar zinciri) teğet kalır. Silindir takipçide eksen kam düzlemine dik olur.",
+      slot: "Pim / cıvata ekseni yuvanın orta çizgisi üzerinde kalır: serbest, ortada ya da yüzde konumunda.",
       universal: "İki milin dönmesi üniversal mafsal bağıntısıyla bağlanır (milleri ayrıca eksenlerine eşleştirin).",
       hinge: "Eş merkezli + çakışık eşleşmeyi tek eşleşmede birleştirir: yalnız eksen etrafında döner.",
       gear: "İki silindir ekseninin dönmeleri çaplar oranında bağlanır (eş merkezli eşleşmeleri ayrıca verin).",
@@ -1319,7 +1382,7 @@ export class AsmUI {
           if (!f) return;
           try {
             const d = JSON.parse(await f.text());
-            add({ name: d.name || f.name.replace(/\.\w+$/, ""), features: d.features, eqs: d.eqs, profiles: d.profiles, material: d.material });
+            add({ name: d.name || f.name.replace(/\.\w+$/, ""), features: d.features, eqs: d.eqs, profiles: d.profiles, material: d.material, vars: d.vars, configs: d.configs, config: d.config });
           } catch {
             this.ctx.toast("Dosya okunamadı", true);
           }
@@ -1421,7 +1484,7 @@ export class AsmUI {
         }
         body.appendChild(group("Değerler", numField(rotate ? "X ekseni" : "X", st.x, (v) => (st.x = v), { unit: u }), numField(rotate ? "Y ekseni" : "Y", st.y, (v) => (st.y = v), { unit: u }), numField(rotate ? "Z ekseni" : "Z", st.z, (v) => (st.z = v), { unit: u }), button("Uygula", go, "btn primary")));
       } else body.appendChild(h("p", "pm-hint", rotate ? "Bileşeni grafik alanda sürükleyerek döndürün. Eşleşmeler korunur: yalnız kalan serbestlik yönünde döner." : "Bileşeni grafik alanda sürükleyin. Eşleşmeler korunur: yalnız kalan serbestlik yönünde hareket eder. Alt + sürükle = SmartMate."));
-      body.appendChild(group("Seçenekler", checkField("Çarpışma algıla (çarpınca dur)", this.collide, (v) => (this.collide = v)), segField([{ v: "move", t: "Sürükle = taşı" }, { v: "rotate", t: "Sürükle = döndür" }], this.dragMode, (v) => (this.dragMode = v))));
+      body.appendChild(group("Seçenekler", checkField("Çarpışma algıla (çarpınca dur)", this.collide, (v) => (this.collide = v)), checkField("Fiziksel dinamik (değdiğini it)", this.physics, (v) => (this.physics = v)), segField([{ v: "move", t: "Sürükle = taşı" }, { v: "rotate", t: "Sürükle = döndür" }], this.dragMode, (v) => (this.dragMode = v))));
     };
     render();
   }
@@ -1975,6 +2038,7 @@ export class AsmUI {
     };
     const finish = () => {
       stop();
+      this.stopRec();
       this.picker = null;
       this.ctx.hidePM();
     };
@@ -1992,6 +2056,7 @@ export class AsmUI {
         if (!st.playing) return;
         const dt = Math.min(0.1, (now - last) / 1000);
         last = now;
+        const prev = this.poses();
         const w = wEnt(st.ent!, c);
         if (st.kind === "rot") {
           // devir/dk → rad/s
@@ -2004,9 +2069,10 @@ export class AsmUI {
           const P = V3(lc).applyQuaternion(QQ(c)).add(V3(c.p)).addScaledVector(w.N, st.speed * dt);
           this.solve({ drag: { comp: c.id, local: lc, target: [P.x, P.y, P.z] }, iters: 15 });
         }
+        if (this.physics) this.pushApart(prev);
         this.draw();
         if ((now - t0) / 1000 < st.dur) raf = requestAnimationFrame(step);
-        else st.playing = false;
+        else (st.playing = false), this.stopRec();
       };
       raf = requestAnimationFrame(step);
     };
@@ -2015,8 +2081,13 @@ export class AsmUI {
       const cn = this.doc.comps.find((x) => x.id === st.comp)?.name;
       body.appendChild(group("Motor", segField([{ v: "rot", t: "Döner motor" }, { v: "lin", t: "Doğrusal motor" }], st.kind, (v) => ((st.kind = v), render())), h("div", "pm-picks", `${cn ?? "Bileşen seçilmedi"} · ${st.ent ? st.ent.label ?? KIND_NAMES[st.ent.kind] : "yön: silindir / kenar / düz yüz seçin"}`), numField(st.kind === "rot" ? "Hız" : "Hız", st.speed, (v) => (st.speed = v), { unit: st.kind === "rot" ? "dev/dk" : "mm/s" }), numField("Süre", st.dur, (v) => (st.dur = Math.max(0.1, v)), { unit: "s" })));
       const row = h("div", "pm-row");
-      row.append(button("▶ Oynat", play, "btn primary"), button("■ Durdur", stop), button("⟲ Başa al", () => (stop(), this.restore(start), this.solve(), this.draw())));
+      row.append(button("▶ Oynat", play, "btn primary"), button("■ Durdur", () => (stop(), this.stopRec())), button("⟲ Başa al", () => (stop(), this.restore(start), this.solve(), this.draw())));
       body.appendChild(row);
+      body.appendChild(group("Seçenekler", checkField("Fiziksel dinamik (değdiğini it)", this.physics, (v) => (this.physics = v)), button("⏺ Kaydet ve oynat (video)", () => {
+        if (!this.startRec()) return;
+        play();
+        if (!st.playing) this.stopRec();
+      }, "btn")));
       body.appendChild(h("p", "pm-hint", "Motor bileşeni seçilen eksen etrafında döndürür veya yön boyunca iter; eşleşmeler (dişli, menteşe, vida, kremayer…) diğer bileşenleri birlikte hareket ettirir."));
     };
     this.picker = (p) => {
@@ -2026,6 +2097,44 @@ export class AsmUI {
       render();
     };
     render();
+  }
+
+  // ---------- animasyon kaydı (SolidWorks: Animasyonu kaydet) ----------
+  private rec: { mr: MediaRecorder; chunks: Blob[] } | null = null;
+  /** grafik alanı video olarak kaydetmeye başla (WebM) */
+  startRec(): boolean {
+    const cv = this.ctx.viewer.renderer.domElement as HTMLCanvasElement;
+    if (typeof MediaRecorder === "undefined" || !cv.captureStream) return this.ctx.toast("Bu tarayıcı video kaydını desteklemiyor", true), false;
+    this.stopRec(false);
+    const stream = cv.captureStream(30);
+    const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((t) => MediaRecorder.isTypeSupported?.(t)) ?? "";
+    const mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks: Blob[] = [];
+    mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    mr.onstop = () => {
+      const blob = new Blob(chunks, { type: mr.mimeType || "video/webm" });
+      (this as any).__lastRec = blob;
+      if ((mr as any)._save !== false) this.ctx.download(blob, `${this.doc.name}_hareket.${(mr.mimeType || "").includes("mp4") ? "mp4" : "webm"}`);
+    };
+    mr.start(200);
+    this.rec = { mr, chunks };
+    this.ctx.setStatus("busy", "Kaydediliyor…");
+    // kayıt sırasında her kare çizilsin
+    const tick = () => {
+      if (!this.rec) return;
+      this.ctx.viewer.requestRender();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return true;
+  }
+  stopRec(save = true) {
+    const r = this.rec;
+    if (!r) return;
+    this.rec = null;
+    (r.mr as any)._save = save;
+    if (r.mr.state !== "inactive") r.mr.stop();
+    this.ctx.setStatus("ok", save ? "Hareket videosu kaydedildi" : `Montaj · ${this.doc.comps.length} bileşen`);
   }
 
   // ---------- bağlantı elemanları (Toolbox) ----------
@@ -2096,7 +2205,7 @@ export class AsmUI {
       }
       const f = dof.get(c.id) ?? 0;
       const li = h("li", (sb ? "child " : "") + (this.sel === c.id || this.selSet.has(c.id) ? "sel " : "") + (c.hidden ? "off" : ""));
-      li.appendChild(h("span", "", `${c.fixed ? "(f) " : f > 0 ? "(-) " : ""}${c.name}`));
+      li.appendChild(h("span", "", `${c.fixed ? "(f) " : f > 0 ? "(-) " : ""}${c.name}${partConfigs(c.part).length > 1 ? ` (${c.cfg ?? c.part.config ?? ""})` : ""}`));
       li.title = c.fixed ? "Sabit" : f > 0 ? `${f} serbestlik derecesi kaldı` : "Tam tanımlı";
       li.addEventListener("click", (ev) => {
         if ((ev as MouseEvent).ctrlKey) this.selSet.has(c.id) ? this.selSet.delete(c.id) : this.selSet.add(c.id);
@@ -2189,6 +2298,7 @@ export class AsmUI {
       const ms = this.doc.mates.filter((m) => [m.a, m.b, m.c, m.d].some((e) => e?.comp === c.id));
       this.ctx.toast(ms.length ? ms.map((m) => MATE_NAMES[m.type]).join(", ") : "Bu bileşenin eşleşmesi yok");
     });
+    for (const cn of partConfigs(c.part)) if (cn !== (c.cfg ?? c.part.config)) add(`Yapılandırma: ${cn}`, () => this.setCompConfig([...new Set([c.id, ...this.selSet])], cn));
     add("Aynala", () => this.openMirror());
     add("Değiştir…", () => this.openAddDialog(c));
     add("Eşleşmeleriyle kopyala", () => this.copyWithMates(c));
@@ -2203,6 +2313,113 @@ export class AsmUI {
     });
     add("Sil", () => this.removeComps([...new Set([c.id, ...this.selSet])]), "btn danger");
     return out;
+  }
+  /** SolidWorks: bileşenin başvurduğu yapılandırmayı değiştir; geometri yeniden kurulur, eşleşme referansları taşınır */
+  async setCompConfig(ids: string[], name: string) {
+    for (const id of ids) {
+      const c = this.doc.comps.find((x) => x.id === id);
+      if (c && partConfigs(c.part).includes(name)) c.cfg = name;
+    }
+    await this.refresh();
+    this.solve();
+    this.save();
+    this.draw();
+    this.renderTree();
+    this.ctx.toast(`Yapılandırma: ${name}`);
+  }
+  private chainCache = new WeakMap<MeshData, Map<string, ReturnType<AsmUI["buildChain"]>>>();
+  /** seçilen kenardan başlayan teğet kenar zinciri (yol / kam / yuva) */
+  chainOf(e: MateEnt) {
+    if (e.kind !== "line" && e.kind !== "circle") return null;
+    const md = this.meshes.get(e.comp);
+    if (!md) return null;
+    const key = e.kind + "|" + e.c.map(r3).join(",") + "|" + (e.r ?? "");
+    if (!this.chainCache.has(md)) this.chainCache.set(md, new Map());
+    const cc = this.chainCache.get(md)!;
+    if (!cc.has(key)) cc.set(key, this.buildChain(md, e));
+    return cc.get(key)!;
+  }
+  private buildChain(md: MeshData, e: MateEnt): { pts: Vec3[]; closed: boolean; n: Vec3 | null; seg: [Vec3, Vec3] | null } | null {
+    const E = md.edges as any[];
+    const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    // başlangıç kenarı: doğrusal kenarda orta nokta, dairesel kenarda merkez + yarıçap
+    let start = -1, bd = Infinity;
+    E.forEach((x, i) => {
+      const d = e.kind === "circle" ? (x.c && x.r ? dist(x.c, e.c) + Math.abs(x.r - (e.r ?? 0)) : Infinity) : x.m && !x.c ? dist(x.m, e.c) : Infinity;
+      if (d < bd) (bd = d), (start = i);
+    });
+    if (start < 0 || bd > 0.5) return null;
+    const ptsOf = (i: number): Vec3[] => {
+      const out: Vec3[] = [];
+      const g = md.edgeGroups, L = md.lines;
+      for (let k = 0; k < g.length; k += 3) {
+        if (g[k + 2] !== i) continue;
+        for (let v = g[k]; v < g[k] + g[k + 1]; v++) {
+          const p: Vec3 = [L[v * 3], L[v * 3 + 1], L[v * 3 + 2]];
+          if (!out.length || dist(out[out.length - 1], p) > 1e-6) out.push(p);
+        }
+      }
+      if (out.length < 2) return [E[i].s, E[i].e];
+      // uçlar kenarın s / e noktasına göre sıralı olsun
+      return dist(out[0], E[i].s) <= dist(out[out.length - 1], E[i].s) ? out : out.reverse();
+    };
+    const tan = (pts: Vec3[], atEnd: boolean) => {
+      const [a, b] = atEnd ? [pts[pts.length - 2], pts[pts.length - 1]] : [pts[1], pts[0]];
+      const v = V3(b).sub(V3(a));
+      return v.normalize();
+    };
+    const used = new Set<number>([start]);
+    let chain = ptsOf(start);
+    const grow = (atEnd: boolean) => {
+      for (let guard = 0; guard < 200; guard++) {
+        const end = atEnd ? chain[chain.length - 1] : chain[0];
+        const t0 = tan(chain, atEnd);
+        let next = -1, np: Vec3[] = [];
+        E.forEach((x, i) => {
+          if (used.has(i) || next >= 0 || (x.c && x.r && dist(x.s, x.e) < 1e-6)) return;
+          let p = ptsOf(i);
+          if (dist(p[0], end) > 1e-3 && dist(p[p.length - 1], end) > 1e-3) return;
+          if (dist(p[0], end) > 1e-3) p = p.slice().reverse();
+          // teğet devam: ilk parçanın yönü öncekine yakın (≤ 15°)
+          const t1 = V3(p[1]).sub(V3(p[0])).normalize();
+          if (t0.dot(atEnd ? t1 : t1.clone().negate()) < Math.cos((15 * Math.PI) / 180)) return;
+          (next = i), (np = p);
+        });
+        if (next < 0) return;
+        used.add(next);
+        chain = atEnd ? [...chain, ...np.slice(1)] : [...np.slice(1).reverse(), ...chain];
+        if (dist(chain[0], chain[chain.length - 1]) < 1e-3) return;
+      }
+    };
+    const e0 = E[start];
+    let closed = !!(e0.c && e0.r && dist(e0.s, e0.e) < 1e-6);
+    if (!closed) {
+      grow(true);
+      closed = dist(chain[0], chain[chain.length - 1]) < 1e-3;
+      if (!closed) grow(false);
+    }
+    if (closed && dist(chain[0], chain[chain.length - 1]) < 1e-3) chain = chain.slice(0, -1);
+    // düzlem normali (Newell)
+    const nn = new THREE.Vector3();
+    for (let i = 0; i < chain.length; i++) {
+      const a = chain[i], b = chain[(i + 1) % chain.length];
+      nn.x += (a[1] - b[1]) * (a[2] + b[2]);
+      nn.y += (a[2] - b[2]) * (a[0] + b[0]);
+      nn.z += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const n: Vec3 | null = closed && nn.length() > 1e-9 ? (nn.normalize().toArray() as Vec3) : e0.c && e0.ax ? (e0.ax as Vec3) : null;
+    // yuva: zincirdeki yayların iki farklı merkezi = orta çizgi
+    const centers: Vec3[] = [];
+    for (const i of used) {
+      const x = E[i];
+      if (x.c && x.r && !centers.some((c) => dist(c, x.c) < 1e-3)) centers.push(x.c);
+    }
+    const seg: [Vec3, Vec3] | null = closed && centers.length === 2 ? [centers[0], centers[1]] : null;
+    return { pts: chain, closed, n, seg };
+  }
+  /** malzeme listesi satırları (yapılandırmaya göre ayrılır) */
+  bomRows() {
+    return bom(this.doc);
   }
   /** bileşenleri ve onlara bağlı eşleşmeleri sil */
   removeComps(ids: string[]) {
@@ -2329,6 +2546,7 @@ export class AsmUI {
       { id: "cmirror", label: "Bileşen Aynala", icon: "mirror", run: () => this.openMirror() },
       { id: "asmCut", label: "Montaj Kesme / Delik", icon: "hole", run: () => this.openAsmCut() },
       { id: "collide", label: "Çarpışma Algıla", icon: "measure", run: () => ((this.collide = !this.collide), this.ctx.toast(this.collide ? "Sürüklerken çarpışma algılama açık" : "Çarpışma algılama kapalı")), active: () => this.collide },
+      { id: "physics", label: "Fiziksel Dinamik", icon: "move", run: () => ((this.physics = !this.physics), this.ctx.toast(this.physics ? "Fiziksel dinamik açık: sürüklenen bileşen değdiğini iter" : "Fiziksel dinamik kapalı")), active: () => this.physics },
       { id: "explodeView", label: "Patlatılmış Görünüm", icon: "lpattern", run: () => this.openExplode() },
       { id: "explode", label: this.doc.exploded ? "Daralt" : "Patlat", icon: "cpattern", run: () => this.toggleExplode(), active: () => !!this.doc.exploded },
       "sep",

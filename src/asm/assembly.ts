@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import type { Feature, MeshData, Vec3 } from "../doc/types";
 
-export interface AsmPart { name: string; features: Feature[]; eqs?: any; profiles?: any; /** malzeme anahtarı (MATERIALS) */ material?: string; /** parça kimliği: aynı parçanın örnekleri ve parça dosyasıyla bağ */ key?: string }
+export interface AsmPart { name: string; features: Feature[]; eqs?: any; profiles?: any; /** malzeme anahtarı (MATERIALS) */ material?: string; /** parça değişkenleri, yapılandırmaları ve etkin yapılandırması */ vars?: Record<string, string>; configs?: { name: string; vars: Record<string, string>; off: string[] }[]; config?: string; /** parça kimliği: aynı parçanın örnekleri ve parça dosyasıyla bağ */ key?: string }
 export interface AsmComp {
   id: string;
   name: string;
@@ -13,6 +13,8 @@ export interface AsmComp {
   fixed: boolean;
   hidden?: boolean;
   transparent?: boolean;
+  /** başvurulan yapılandırma (yoksa parçanın etkin yapılandırması) */
+  cfg?: string;
 }
 /** eşleşme varlığı: bileşen yerel koordinatlarında düz yüz veya silindir */
 /** eşleşme varlığı (bileşen yerel koordinatlarında): düz yüz, silindir ekseni, doğrusal kenar, dairesel kenar, köşe noktası */
@@ -20,7 +22,8 @@ export interface MateEnt { comp: string; kind: "plane" | "cyl" | "line" | "circl
 export type MateType =
   | "coincident" | "parallel" | "perpendicular" | "distance" | "angle" | "concentric" | "lock" | "tangent"
   | "limit" | "limitAngle" | "symmetric" | "width"
-  | "profileCenter" | "gear" | "rack" | "screw" | "coupler" | "hinge" | "universal";
+  | "profileCenter" | "gear" | "rack" | "screw" | "coupler" | "hinge" | "universal"
+  | "path" | "cam" | "slot";
 export interface Mate {
   id: string;
   type: MateType;
@@ -44,6 +47,11 @@ export interface Mate {
   lim?: boolean;
   /** alt montajın iç eşleşmesi (alt montaj rijitken devre dışı) */
   sub?: string;
+  /** yol / kam / yuva: b bileşeninin yerel koordinatlarında kenar zinciri, kapalı mı, düzlem normali, yuva orta çizgisi */
+  poly?: Vec3[];
+  closed?: boolean;
+  pn?: Vec3;
+  seg?: [Vec3, Vec3];
 }
 /** alt montaj: üyeleri birlikte (rijit) veya kendi eşleşmeleriyle (esnek) hareket eder */
 export interface SubAsm { id: string; name: string; comps: string[]; rigid: boolean; poses: Record<string, { p: Vec3; q: [number, number, number, number] }> }
@@ -74,6 +82,9 @@ export const ASM_ID = "__asm";
 
 export const MATE_NAMES: Record<MateType, string> = {
   coincident: "Çakışık",
+  path: "Yol",
+  cam: "Kam",
+  slot: "Yuva",
   parallel: "Paralel",
   perpendicular: "Dik",
   distance: "Mesafe",
@@ -95,8 +106,8 @@ export const MATE_NAMES: Record<MateType, string> = {
 };
 export const MATE_GROUPS: Record<"std" | "adv" | "mech", MateType[]> = {
   std: ["coincident", "parallel", "perpendicular", "tangent", "concentric", "lock", "distance", "angle"],
-  adv: ["profileCenter", "symmetric", "width", "limit", "limitAngle", "coupler"],
-  mech: ["hinge", "gear", "rack", "screw", "universal"],
+  adv: ["profileCenter", "symmetric", "width", "path", "limit", "limitAngle", "coupler"],
+  mech: ["cam", "slot", "hinge", "gear", "rack", "screw", "universal"],
 };
 
 export const newAsm = (): AsmDoc => ({ kind: "asm", name: "Montaj1", comps: [], mates: [] });
@@ -136,7 +147,7 @@ export function cylAxis(mesh: MeshData, face: number): Vec3 | null {
 }
 
 /** eşleşmenin kaldırdığı serbestlik */
-const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0, limitAngle: 0, symmetric: 1, width: 1, gear: 1, rack: 1, screw: 1, coupler: 1, hinge: 5, profileCenter: 5, universal: 1 };
+const DOF_REMOVED: Record<MateType, number> = { coincident: 3, distance: 3, parallel: 2, perpendicular: 1, angle: 1, concentric: 4, lock: 6, tangent: 2, limit: 0, limitAngle: 0, symmetric: 1, width: 1, gear: 1, rack: 1, screw: 1, coupler: 1, hinge: 5, profileCenter: 5, universal: 1, path: 2, cam: 1, slot: 2 };
 
 export function dofOf(doc: AsmDoc, id: string): number {
   const c = doc.comps.find((x) => x.id === id);
@@ -272,7 +283,12 @@ export function worldBox(c: AsmComp, bb: { min: Vec3; max: Vec3 }): THREE.Box3 {
 /** Malzeme listesi (BOM): parça adına göre adet */
 export function bom(doc: AsmDoc) {
   const map = new Map<string, number>();
-  for (const c of doc.comps) map.set(c.part.name, (map.get(c.part.name) ?? 0) + 1);
+  // yapılandırması farklı örnekler ayrı satır (SolidWorks malzeme listesi)
+  for (const c of doc.comps) {
+    const cf = c.cfg ?? c.part.config;
+    const n = c.part.configs && c.part.configs.length > 1 && cf ? `${c.part.name} [${cf}]` : c.part.name;
+    map.set(n, (map.get(n) ?? 0) + 1);
+  }
   return [...map].map(([name, qty], i) => ({ no: i + 1, name, qty }));
 }
 

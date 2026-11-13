@@ -6183,7 +6183,7 @@ asmUI = new AsmUI({
   download,
   currentPart: () => {
     if (!(doc as any).uid) ((doc as any).uid = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), saveDoc();
-    return { name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: (doc as any).uid, material: doc.material };
+    return { name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: (doc as any).uid, material: doc.material, vars: doc.vars, configs: doc.configs as any, config: doc.config };
   },
   // SolidWorks: montajda parçayı düzenle → parça açılır, "Montaja dön" ile bileşen güncellenir
   editPart: (part, done) => {
@@ -6972,6 +6972,7 @@ function showCmd(title: string) {
 }
 (window as any).__app = {
   showCmd,
+  THREE,
   get s3() {
     return s3tool;
   },
