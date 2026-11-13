@@ -15,6 +15,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.40: **Hız ve dosya** — yalnız değişen özellikten sonrası yeniden hesaplanır; delik konumları eskizle ölçülendirilebilir; aynı dosyaya kaydet, Farklı kaydet, Son belgeler
 - v0.41: **Helis/yay** süpürmesi, loft **profile dik** kısıtı, referans eksen (silindir / iki düzlem / iki nokta), **Yapılandırmalar** (tasarım tablosu)
 - v0.42: Eskize **DXF içe aktarma** (elde olan DXF çizimini modele çevirme)
+- v0.43: **Parça / yüz rengi** (sağ tık > Görünüm) ve **STL içe aktarma**
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

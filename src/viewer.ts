@@ -696,10 +696,42 @@ export class Viewer {
       this.model.add(hid);
       if (mesh.bbox) this.bbox = new THREE.Box3(new THREE.Vector3(...mesh.bbox.min), new THREE.Vector3(...mesh.bbox.max));
     }
+    this.applyColors();
     this.applyStyle();
     this.requestRender();
   }
 
+  /** görünüm renkleri: parça rengi ve yüz başına renk (yüz sırası → 0xRRGGBB) */
+  partColor: number | null = null;
+  faceColors = new Map<number, number>();
+  setColors(part: number | null, faces: Map<number, number>) {
+    this.partColor = part;
+    this.faceColors = faces;
+    this.applyColors();
+    this.applyStyle();
+  }
+  private applyColors() {
+    if (!this.modelMesh || !this.mesh) return;
+    const g = this.modelMesh.geometry as THREE.BufferGeometry;
+    if (!this.faceColors.size) {
+      g.deleteAttribute("color");
+      (this.modelMesh.material as THREE.MeshStandardMaterial).vertexColors = false;
+      return;
+    }
+    const n = this.mesh.vertices.length / 3;
+    const base = new THREE.Color(this.partColor ?? COL.face);
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) base.toArray(col, i * 3);
+    const fg = this.mesh.faceGroups, tri = this.mesh.triangles;
+    for (let i = 0; i < fg.length; i += 3) {
+      const c = this.faceColors.get(fg[i + 2]);
+      if (c === undefined) continue;
+      const cc = new THREE.Color(c);
+      for (let k = fg[i]; k < fg[i] + fg[i + 1]; k++) cc.toArray(col, tri[k] * 3);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    (this.modelMesh.material as THREE.MeshStandardMaterial).vertexColors = true;
+  }
   /** SolidWorks görüntü stilleri */
   displayStyle: "shadedEdges" | "shaded" | "hlr" | "hlv" | "wire" = "shadedEdges";
   transparent = false;
@@ -718,7 +750,9 @@ export class Viewer {
     if (hid && st === "wire") ((hid as THREE.LineSegments).material as THREE.LineDashedMaterial).depthFunc = THREE.AlwaysDepth;
     else if (hid) ((hid as THREE.LineSegments).material as THREE.LineDashedMaterial).depthFunc = THREE.GreaterDepth;
     // gizli çizgi stillerinde yüzler arka plan rengiyle (yalnız derinlik için)
-    m.color.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : COL.face);
+    const vc = this.faceColors.size > 0 && st !== "hlr" && st !== "hlv";
+    m.vertexColors = vc;
+    m.color.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : vc ? 0xffffff : this.partColor ?? COL.face);
     m.emissive.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : 0x000000);
     m.transparent = this.transparent && st !== "hlr" && st !== "hlv";
     m.opacity = m.transparent ? 0.35 : 1;

@@ -561,3 +561,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Özellik | Durum |
 |---|---|
 | Eskize DXF içe aktar (çizgi, daire, yay, çoklu çizgi, nokta; uçlar birleşir) | ✅ |
+
+## v0.43 — Görünüm renkleri ve STL içe aktarma
+| Özellik | Durum |
+|---|---|
+| Parça rengi ve yüz rengi (sağ tık; ölçü değişince korunur) | ✅ |
+| STL içe aktarma (ikili / ASCII → katı) | ✅ |
+| Perspektif, birim sistemi, yüzey modelleme, doğrudan düzenleme, analiz | ⬜ |

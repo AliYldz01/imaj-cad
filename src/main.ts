@@ -375,6 +375,51 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
 }
 (window as any).__openTechDrawing = openTechDrawing;
 
+/** parça / yüz renklerini görünüme uygula (yüz: en yakın merkez + aynı normal, 2 mm; yoksa göreli konum) */
+function applyLook() {
+  const L = doc.look, m = viewer.mesh;
+  const faces = new Map<number, number>();
+  if (L?.faces && m) {
+    const bb = m.bbox;
+    for (const it of L.faces) {
+      let bi = -1, bd = Infinity;
+      m.faces.forEach((f, i) => {
+        if (it.ref.n && f.n && f.n[0] * it.ref.n[0] + f.n[1] * it.ref.n[1] + f.n[2] * it.ref.n[2] < 0.999) return;
+        if (!!it.ref.n !== !!f.n) return;
+        const d = dist3(f.c, it.ref.c);
+        if (d < bd) (bd = d), (bi = i);
+      });
+      if (bi >= 0 && (bd < 2 || (bb && bd < 0.2 * dist3(bb.min, bb.max)))) faces.set(bi, parseInt(it.color.slice(1), 16));
+    }
+  }
+  viewer.setColors(L?.part ? parseInt(L.part.slice(1), 16) : null, faces);
+}
+function pickColor(init: string, done: (c: string) => void) {
+  const i = h("input") as HTMLInputElement;
+  i.type = "color";
+  i.value = init;
+  i.style.position = "fixed";
+  i.style.left = "-100px";
+  document.body.appendChild(i);
+  i.addEventListener("change", () => (done(i.value), i.remove()));
+  i.addEventListener("blur", () => setTimeout(() => i.remove(), 500));
+  i.click();
+}
+function setPartColor(c: string | null) {
+  commitDoc(() => {
+    doc.look = { ...(doc.look ?? {}), part: c ?? undefined };
+  });
+}
+function setFaceColor(fi: number, c: string | null) {
+  const f = viewer.mesh?.faces[fi];
+  if (!f) return;
+  commitDoc(() => {
+    const list = (doc.look?.faces ?? []).filter((x) => dist3(x.ref.c, f.c) > 1e-3);
+    if (c) list.push({ ref: { c: f.c, n: f.n ?? undefined } as FaceRef, color: c });
+    doc.look = { ...(doc.look ?? {}), faces: list };
+  });
+}
+
 /** worker'ın kalıcı referans onarımlarını belgeye işle (geri alma yığınına girmez) */
 function applyHeals(h: RefHeals) {
   const ek = Object.keys(h.e).length, fk = Object.keys(h.f).length;
@@ -417,6 +462,7 @@ async function rebuild() {
     }
     if (res.heals) applyHeals(res.heals);
     viewer.setModel(res.mesh);
+    applyLook();
     memberBodies = res.members;
     const errs = new Map(errors);
     res.errors.forEach((e) => errs.set(e.featureId, e.message));
@@ -3586,10 +3632,19 @@ async function openCutList() {
 async function importStep() {
   const inp = document.createElement("input");
   inp.type = "file";
-  inp.accept = ".step,.stp,.STEP,.STP";
+  inp.accept = ".step,.stp,.STEP,.STP,.stl,.STL";
   inp.onchange = async () => {
     const file = inp.files?.[0];
     if (!file) return;
+    if (/\.stl$/i.test(file.name)) {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let b64 = "";
+      for (let i = 0; i < buf.length; i += 0x8000) b64 += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      const f: Feature = { id: uid(), type: "import", name: file.name.replace(/\.stl$/i, ""), file: file.name, data: btoa(b64), fmt: "stl" };
+      commitDoc(() => insertFeature(f));
+      firstBuild = true;
+      return;
+    }
     const text = await file.text();
     if (text.length > 4e6) toast("Büyük dosya: tarayıcı kaydına sığmayabilir; .icad olarak kaydedin", true);
     const f: Feature = { id: uid(), type: "import", name: file.name.replace(/\.(step|stp)$/i, ""), file: file.name, data: text };
@@ -5236,6 +5291,16 @@ function openContextMenu(x: number, y: number) {
     }
     menuItem(box, "Ekstrüzyon", () => newFeature("extrude"), "extrude");
     menuItem(box, "Ekstrüzyon kesme", () => newFeature("cutExtrude"), "cutExtrude");
+    if (mode.k === "part") {
+      const fh = viewer.pick(x, y, { face: true });
+      if (fh?.kind === "face") {
+        const fi = fh.index;
+        menuItem(box, "Görünüm: yüz rengi…", () => pickColor(doc.look?.part ?? "#9fb4cc", (c) => setFaceColor(fi, c)));
+        if (doc.look?.faces?.length) menuItem(box, "Yüz rengini kaldır", () => setFaceColor(fi, null));
+      }
+      menuItem(box, "Görünüm: parça rengi…", () => pickColor(doc.look?.part ?? "#9fb4cc", (c) => setPartColor(c)));
+      if (doc.look?.part || doc.look?.faces?.length) menuItem(box, "Renkleri sıfırla", () => commitDoc(() => (doc.look = undefined)));
+    }
     if (viewer.pickFacesAll(x, y).length > 1) menuItem(box, "Diğerini seç", () => selectOtherAt(x, y), "select");
     menuItem(box, "Ekrana sığdır (F)", () => fitAll(), "fit");
     menuItem(box, "İzometrik (Ctrl+7)", () => viewer.viewStd("iso"), "iso");
@@ -6096,7 +6161,7 @@ function fixedActs(): Act[] {
     F("f.saveas", "Farklı kaydet…", "", () => fileAct("saveas")),
     F("f.recent", "Son belgeler…", "", () => fileAct("recent")),
     F("f.wizard", "Şekil sihirbazı…", "", () => fileAct("wizard")),
-    F("f.import", "STEP içe aktar…", "", () => fileAct("import"), "importf"),
+    F("f.import", "STEP / STL içe aktar…", "", () => fileAct("import"), "importf"),
     F("f.step", "STEP dışa aktar", "", () => fileAct("step")),
     F("f.stl", "STL dışa aktar", "", () => fileAct("stl")),
     F("f.dxf", "Sac açınımı (DXF)", "", () => fileAct("dxf"), "dxf"),

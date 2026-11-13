@@ -540,7 +540,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           kfeats.push({ id: f.id, type: "scale", factor: f.factor, center: f.center });
           break;
         case "import":
-          kfeats.push({ id: f.id, type: "import", data: f.data });
+          kfeats.push({ id: f.id, type: "import", data: f.data, fmt: f.fmt });
           break;
         case "axis":
         case "point":

@@ -297,7 +297,7 @@ export interface WrapFeature extends FeatBase {
 /** Ölçekle: gövdeyi bir noktaya göre düzgün ölçekler */
 export interface ScaleFeature extends FeatBase { type: "scale"; factor: number; center: "origin" | "centroid" }
 /** STEP içe aktarma */
-export interface ImportFeature extends FeatBase { type: "import"; file: string; data: string }
+export interface ImportFeature extends FeatBase { type: "import"; file: string; data: string; /** "stl": data base64 */ fmt?: "step" | "stl" }
 /** Referans eksen / nokta / koordinat sistemi (yalnızca görüntü ve referans) */
 export interface RefAxisFeature extends FeatBase { type: "axis"; p: Vec3; d: Vec3 }
 export interface RefPointFeature extends FeatBase { type: "point"; p: Vec3 }
@@ -638,6 +638,8 @@ export interface PartDoc {
   vars?: Record<string, string>;
   /** yapılandırmalar (SolidWorks konfigürasyon / tasarım tablosu): değişken değerleri ve bastırılan özellikler */
   configs?: { name: string; vars: Record<string, string>; off: string[] }[];
+  /** görünüm: parça rengi ve yüz renkleri (yüz referansıyla; model değişince kalıcı referansla izlenir) */
+  look?: { part?: string; faces?: { ref: FaceRef; color: string }[] };
   config?: string;
   /** özellik alanlarına bağlı denklemler: "özellikId.alan" -> ifade */
   eqs?: Record<string, string>;
@@ -671,7 +673,7 @@ export type KFeature =
   | { id: string; type: "dome"; face: FaceRef; h: number }
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
-  | { id: string; type: "import"; data: string }
+  | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number } }
   | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }

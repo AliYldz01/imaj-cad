@@ -6,7 +6,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeBSplineApproximation, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, makePolygon, makeSolid, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeBSplineApproximation, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
@@ -2901,6 +2901,45 @@ async function buildFeature(f: KFeature) {
       return;
     }
     case "import": {
+      if (f.fmt === "stl") {
+        // STL: üçgen ağdan dikilmiş kabuk → katı (düzlemsel üçgenler birleştirilmez; ölçü / görünüm / montaj için)
+        const bin = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0));
+        const oc = getOC() as any;
+        // ikili / ASCII STL ayrıştır
+        const tris: number[][] = [];
+        const dv = new DataView(bin.buffer);
+        const nb = bin.length >= 84 ? dv.getUint32(80, true) : 0;
+        if (bin.length === 84 + nb * 50) {
+          for (let i = 0; i < nb; i++) {
+            const o = 84 + i * 50 + 12, t: number[] = [];
+            for (let k = 0; k < 9; k++) t.push(dv.getFloat32(o + k * 4, true));
+            tris.push(t);
+          }
+        } else {
+          const v = [...new TextDecoder().decode(bin).matchAll(/vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+          for (let i = 0; i + 2 < v.length; i += 3) tris.push([...v[i], ...v[i + 1], ...v[i + 2]]);
+        }
+        if (!tris.length) throw new Error("STL dosyasında üçgen yok");
+        if (tris.length > 60000) throw new Error("STL çok büyük (60 000 üçgenden fazla)");
+        const faces: any[] = [];
+        for (const t of tris) {
+          const A: Vec3 = [t[0], t[1], t[2]], B: Vec3 = [t[3], t[4], t[5]], C: Vec3 = [t[6], t[7], t[8]];
+          if (vlen(vcross(vsub(B, A), vsub(C, A))) < 1e-12) continue;
+          try {
+            faces.push(makePolygon([A, B, C] as any));
+          } catch {}
+        }
+        let sh: any = makeSolid(faces);
+        try {
+          const up = new oc.ShapeUpgrade_UnifySameDomain_2(sh.wrapped, true, true, false);
+          up.Build();
+          sh = cast(up.Shape());
+        } catch {}
+        const ps = solidsOf(sh);
+        if (!ps.length) throw new Error("STL dosyası okunamadı");
+        ps.forEach((p) => applyTool(p, false, false));
+        return;
+      }
       const shape = await importSTEP(new Blob([f.data], { type: "application/step" }));
       const parts = solidsOf(shape);
       if (!parts.length) throw new Error("STEP dosyasında katı bulunamadı");
