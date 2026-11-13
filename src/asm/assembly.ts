@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import type { Feature, MeshData, Vec3 } from "../doc/types";
 
-export interface AsmPart { name: string; features: Feature[]; eqs?: any; profiles?: any; /** parça kimliği: aynı parçanın örnekleri ve parça dosyasıyla bağ */ key?: string }
+export interface AsmPart { name: string; features: Feature[]; eqs?: any; profiles?: any; /** malzeme anahtarı (MATERIALS) */ material?: string; /** parça kimliği: aynı parçanın örnekleri ve parça dosyasıyla bağ */ key?: string }
 export interface AsmComp {
   id: string;
   name: string;

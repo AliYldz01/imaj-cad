@@ -3863,13 +3863,21 @@ async function asmOp(id: number, op: "step" | "interfere" | "clearance" | "draw"
     post({ id, type: "asm", dist });
     return;
   }
-  const pairs: { a: number; b: number; vol: number }[] = [];
+  // girişim hacmi ağı da döner (montajda kırmızı gösterilir)
+  const pairs: { a: number; b: number; vol: number; v?: number[]; t?: number[] }[] = [];
   for (let i = 0; i < placed.length; i++)
     for (let j = i + 1; j < placed.length; j++) {
       if (!placed[i] || !placed[j] || !bbOverlapStrict(placed[i], placed[j])) continue;
       try {
-        const v = volOf(placed[i].clone().intersect(placed[j].clone()));
-        if (v > 1e-3) pairs.push({ a: i, b: j, vol: v });
+        const x = placed[i].clone().intersect(placed[j].clone());
+        const v = volOf(x);
+        if (v <= 1e-3) continue;
+        let mv: number[] | undefined, mt: number[] | undefined;
+        try {
+          const m = (x as any).mesh({ tolerance: 0.1, angularTolerance: 0.3 });
+          (mv = Array.from(m.vertices as ArrayLike<number>)), (mt = Array.from(m.triangles as ArrayLike<number>));
+        } catch {}
+        pairs.push({ a: i, b: j, vol: v, v: mv, t: mt });
       } catch {}
     }
   post({ id, type: "asm", pairs });

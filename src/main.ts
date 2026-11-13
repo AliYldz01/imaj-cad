@@ -1218,10 +1218,13 @@ function showPM(title: string, ok: () => void, cancel: () => void) {
   document.body.classList.add("sheet");
   pmOk = ok;
   pmCancel = cancel;
+  // B9: montaj panelleri telefonda daha alçak; ipucu üstte (seçilecek yüzler görünsün)
+  document.body.classList.toggle("asm-pm", !!asmUI?.on);
   syncMgr();
 }
 function hidePM() {
   $("#pm").hidden = true;
+  document.body.classList.remove("asm-pm");
   $("#pm-body").innerHTML = "";
   $("#side").classList.remove("pm-open");
   syncMgr();
@@ -5882,6 +5885,7 @@ viewer.controls.addEventListener("fit", () => fitAll());
 // =====================================================================
 const sketchDrawing = () => mode.k === "sketch" && mode.editor.tool !== "select";
 viewer.touchDrawOk = () => sketchDrawing();
+viewer.touchGrab = (x, y) => !!asmUI?.on && mode.k === "part" && asmUI.grabOk(x, y);
 // çizim aracı açıkken kalem/parmak sabit tutulabilir (büyüteçle bakmak için): uzun basma menüsü yalnız seçimde
 viewer.longPressOk = () => !sketchDrawing();
 viewer.onLongPress = (x, y) => openContextMenu(x, y);
@@ -6179,7 +6183,7 @@ asmUI = new AsmUI({
   download,
   currentPart: () => {
     if (!(doc as any).uid) ((doc as any).uid = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), saveDoc();
-    return { name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: (doc as any).uid };
+    return { name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: (doc as any).uid, material: doc.material };
   },
   // SolidWorks: montajda parçayı düzenle → parça açılır, "Montaja dön" ile bileşen güncellenir
   editPart: (part, done) => {

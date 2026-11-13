@@ -18,15 +18,15 @@ Yöntem: masaüstü (1400×900) ve telefon (390×844, dokunma) boyutunda gerçek
 |---|---|
 | B1 ✅ v0.57 | Delete tuşu seçili bileşeni / eşleşmeyi silmiyor (yalnız ağaç panelindeki Sil). |
 | B2 ✅ v0.57 | Grafik alanda sağ tık ve telefonda uzun basma **parça menüsünü** açıyor (Ekstrüzyon, Ekstrüzyon kesme…). Bileşen menüsü (Gizle, Sabitle, Taşı, Parçayı düzenle, Sil…) yalnız ağaçta. |
-| B3 | Telefonda bileşen parmakla sürüklenemiyor; parmak görünümü döndürüyor. Taşıma yalnız Taşı paneliyle. |
+| B3 ✅ v0.58 | Telefonda bileşen parmakla sürüklenemiyor; parmak görünümü döndürüyor. Taşıma yalnız Taşı paneliyle. |
 | B4 ✅ v0.57 | Telefon ekran çubuğu montajda parça düğmelerini gösteriyor: seçim filtresi, ✚ şekil sihirbazı, ↶ ↷ (A3'teki parça geri alma). |
 | B5 ✅ v0.57 | Bileşeni Taşı / Döndür / Bileşen Çoğalt seçim yoksa panel açmıyor, yalnız uyarı veriyor (SolidWorks paneli açıp seçim bekler). |
 | B6 ✅ v0.57 | Eşleşme ✓ sonrası panel kapanıyor; SolidWorks'te açık kalır ve sıradaki eşleşmeye geçilir. |
-| B7 | Girişim sonucu yalnız birkaç saniyelik bildirim; liste, girişim hacmi vurgusu, "çakışanları göster" yok. |
-| B8 | Masaüstünde eşleşme sırasında açılan ağaç paneli her bileşenin düzlemlerini listeleyip grafik alanın büyük kısmını kapatıyor. |
-| B9 | Telefonda ipucu balonu ve yarım ekran eşleşme paneli modeli kapatıyor; seçim yapılacak yüzler görünmüyor. |
-| B10 | Silindirin kenarına yakın dokunuşta yüz yerine köşe (dikiş noktası) seçilebiliyor ("Pim · Köşe"). |
-| B11 | Kütle özellikleri parça malzemesini değil sabit çeliği kullanıyor. |
+| B7 ✅ v0.58 | Girişim sonucu yalnız birkaç saniyelik bildirim; liste, girişim hacmi vurgusu, "çakışanları göster" yok. |
+| B8 ✅ v0.58 | Masaüstünde eşleşme sırasında açılan ağaç paneli her bileşenin düzlemlerini listeleyip grafik alanın büyük kısmını kapatıyor. |
+| B9 ✅ v0.58 | Telefonda ipucu balonu ve yarım ekran eşleşme paneli modeli kapatıyor; seçim yapılacak yüzler görünmüyor. |
+| B10 ✅ v0.58 | Silindirin kenarına yakın dokunuşta yüz yerine köşe (dikiş noktası) seçilebiliyor ("Pim · Köşe"). |
+| B11 ✅ v0.58 | Kütle özellikleri parça malzemesini değil sabit çeliği kullanıyor. |
 | B12 ✅ v0.57 | Esc montajda montaj seçimini değil parça seçimini temizliyor. |
 
 ## C. SolidWorks'e göre eksik (bilinen)

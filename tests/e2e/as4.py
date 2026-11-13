@@ -25,6 +25,7 @@ with sync_playwright() as p:
     A("a.doc.comps[3].p=[100,37,20]; return 0")
     A("a.sel=a.doc.comps[3].id; a.startMate(); return 0"); time.sleep(0.2)
     chk("eşleşmede montaj ana düzlemleri ağaçta", pg.locator("#tree li:has-text('Montaj ana düzlemleri')").count()==1)
+    pg.locator("#tree li:has-text('Montaj ana düzlemleri')").first.click(); time.sleep(0.2)  # v0.58: kapalı başlar
     pg.locator("#tree li:has-text('Üst düzlem')").first.click(); time.sleep(0.2)
     A(f"a.pickInto({json.dumps(E(C[3],'plane',[0,0,0],[0,-1,0]))}); return 0"); time.sleep(0.2)
     pg.click("#pm-ok"); time.sleep(0.3)

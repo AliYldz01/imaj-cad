@@ -121,6 +121,8 @@ export class Viewer {
   readonly mods = { ctrl: false, shift: false };
   /** tek parmak çizebilir mi (eskizde çizim aracı açıkken) */
   touchDrawOk: (() => boolean) | null = null;
+  /** tek parmak bu noktada nesneyi tutar mı (montajda bileşen sürükleme); true → olaylar işleyiciye, kaydırma yok */
+  touchGrab: ((x: number, y: number) => boolean) | null = null;
   /** uzun basma menüsüne izin (çizim sırasında kalem sabit tutulabilir) */
   longPressOk: ((pointerType: string) => boolean) | null = null;
   onLongPress: ((x: number, y: number, pointerType: string) => void) | null = null;
@@ -223,6 +225,19 @@ export class Viewer {
           if (touches.size > 1) {
             multi = true;
             clearLp();
+            return;
+          }
+          if (this.touchGrab?.(e.clientX, e.clientY)) {
+            // B3: parmak bileşeni tutar (imleç kaydırması yok); ikinci parmak gelince gezinmeye döner
+            e.stopPropagation();
+            touches.delete(e.pointerId);
+            drawTouch = { id: e.pointerId, t: performance.now(), moved: false, x: e.clientX, y: e.clientY };
+            active = e.pointerId;
+            activeType = "touch";
+            activeDy = 0;
+            try { canvas.setPointerCapture(e.pointerId); } catch {}
+            this.handler?.down?.(this.wrap(e, 0));
+            startLp(e);
             return;
           }
           if (touchDraws() && this.touchDrawOk?.()) {

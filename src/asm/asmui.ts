@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { Viewer, InputHandler } from "../viewer";
 import type { Kernel } from "../kernel";
 import type { MeshData, Vec3 } from "../doc/types";
+import { MATERIALS } from "../doc/standards";
 import { compile } from "../doc/compile";
 import { h, numField, checkField, selectField, segField, group, button } from "../ui/dom";
 import { type AsmFeat, type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, mateTypesFor, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
@@ -71,6 +72,8 @@ export class AsmUI {
   selSet = new Set<string>();
   selMate: string | null = null;
   selSub: string | null = null;
+  /** ağaçta ana düzlemleri açık bileşenler (eşleşme seçimi için) */
+  openPlanes = new Set<string>();
   private mateDraft: MateDraft | null = null;
   private snap: Map<string, Pose> | null = null;
   /** hatalı (sağlanamayan) eşleşmeler */
@@ -133,6 +136,7 @@ export class AsmUI {
       const n = this.syncFromPart(cur);
       if (n) this.ctx.toast(`"${cur.name}" parçası değişmiş: ${n} bileşen güncellendi`), this.save();
     }
+    if (cur.key) for (const c of this.doc.comps) if (c.part.key === cur.key && (c.part.material ?? "") !== (cur.material ?? "")) (c.part.material = cur.material), this.save();
     await this.refresh();
     if (this.lost.size || this.doc.mates.length) (this.solve(), this.draw(), this.renderTree());
     this.ctx.viewer.fit();
@@ -141,6 +145,7 @@ export class AsmUI {
     if (!this.on) return;
     this.on = false;
     this.cancelMate();
+    this.ifc = null;
     this.picker = null;
     this.group.visible = false;
     this.ctx.viewer.handler = this.prevHandler;
@@ -462,9 +467,15 @@ export class AsmUI {
       geo.setIndex(new THREE.BufferAttribute(m.triangles, 1));
       const selC = this.sel === c.id || this.selSet.has(c.id);
       const hl = mateComps.has(c.id);
+      // girişim paneli: seçili çift kırmızımsı, girişime girmeyenler saydam / gizli
+      const ifc = this.ifc;
+      const inIfc = !!ifc && ifc.pairs.some((p, k) => (ifc.cur === null || ifc.cur === k) && (p.a === c.id || p.b === c.id));
+      const anyIfc = !!ifc && ifc.pairs.some((p) => p.a === c.id || p.b === c.id);
+      if (ifc?.only && !anyIfc) return;
+      const ghost = !!ifc && ifc.pairs.length > 0 && !inIfc;
       const mat = new THREE.MeshStandardMaterial({
         color: COLORS[i % COLORS.length], metalness: 0.1, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
-        emissive: selC ? 0x1c4fd8 : hl ? 0x2f9e44 : 0x000000, emissiveIntensity: 0.35, transparent: !!c.transparent, opacity: c.transparent ? 0.35 : 1,
+        emissive: selC ? 0x1c4fd8 : hl ? 0x2f9e44 : 0x000000, emissiveIntensity: 0.35, transparent: !!c.transparent || ghost || inIfc, opacity: ghost ? 0.15 : inIfc ? 0.55 : c.transparent ? 0.35 : 1, depthWrite: !(ghost || inIfc),
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.userData.comp = c.id;
@@ -478,6 +489,18 @@ export class AsmUI {
       g.position.add(this.explodeOffset(c));
       this.group.add(g);
       this.objs.set(c.id, g);
+    });
+    // girişim hacimleri (dünya koordinatında)
+    if (this.ifc) this.ifc.pairs.forEach((p, k) => {
+      if (!p.v || !p.t || (this.ifc!.cur !== null && this.ifc!.cur !== k)) return;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(p.v, 3));
+      geo.setIndex(p.t);
+      geo.computeVertexNormals();
+      const ms = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xe03131, depthTest: false, transparent: true, opacity: 0.85 }));
+      ms.renderOrder = 10;
+      ms.userData.ifc = true;
+      this.group.add(ms);
     });
     // patlatma çizgileri
     if (this.exT > 0 && (this.doc.steps ?? []).length) {
@@ -561,8 +584,11 @@ export class AsmUI {
       const W = (p: Vec3) => V3(p).applyQuaternion(g.quaternion).add(g.position);
       // görünürlük: kesişim noktasından çok gerideki kenarları atla
       const visible = (w: THREE.Vector3) => !hit || w.clone().sub(v.camera.position).dot(camDir) <= hitDist + 1;
-      md.edges.forEach((e) => {
+      const real = realVerts(md);
+      md.edges.forEach((e, ei) => {
+        if (real.seam.has(ei)) return; // silindir dikiş çizgisi: SolidWorks'te seçilmez
         for (const [P, k] of [[e.s, "point"], [e.e, "point"]] as [Vec3, string][]) {
+          if (!real.ok.has(vkey(P))) continue; // B10: kapalı daire / dikiş noktası köşe sayılmaz
           const w = W(P);
           if (!visible(w)) continue;
           const s = scr(w), d = Math.hypot(s[0] - x, s[1] - y);
@@ -1293,7 +1319,7 @@ export class AsmUI {
           if (!f) return;
           try {
             const d = JSON.parse(await f.text());
-            add({ name: d.name || f.name.replace(/\.\w+$/, ""), features: d.features, eqs: d.eqs, profiles: d.profiles });
+            add({ name: d.name || f.name.replace(/\.\w+$/, ""), features: d.features, eqs: d.eqs, profiles: d.profiles, material: d.material });
           } catch {
             this.ctx.toast("Dosya okunamadı", true);
           }
@@ -1577,10 +1603,12 @@ export class AsmUI {
   }
   /** kütle özellikleri (ağlardan; yoğunluk varsayılan çelik) */
   massProps() {
-    const rho = 7.85e-3; // g/mm³
-    let V = 0;
+    // B11: her bileşen kendi parçasının malzemesiyle (SolidWorks: parça malzemesi); tanımsızsa çelik
+    const mat = (c: AsmComp) => MATERIALS[c.part.material ?? "steel"] ?? MATERIALS.steel;
+    let V = 0, M = 0;
     const C = new THREE.Vector3();
     const rows: string[] = [];
+    const res: { name: string; vol: number; mass: number; mat: string }[] = [];
     for (const c of this.doc.comps) {
       if (c.hidden) continue;
       const m = this.meshes.get(c.id);
@@ -1597,14 +1625,19 @@ export class AsmUI {
       if (Math.abs(v) < 1e-9) continue;
       cc.multiplyScalar(1 / v).applyQuaternion(QQ(c)).add(V3(c.p));
       v = Math.abs(v);
+      const mt = mat(c);
+      const kg = (v * mt.rho) / 1e6;
       V += v;
-      C.addScaledVector(cc, v);
-      rows.push(`<tr><td>${c.name}</td><td>${(v / 1000).toFixed(2)}</td><td>${((v * rho) / 1000).toFixed(3)}</td></tr>`);
+      M += kg;
+      C.addScaledVector(cc, kg);
+      res.push({ name: c.name, vol: v, mass: kg, mat: mt.name });
+      rows.push(`<tr><td>${c.name}</td><td>${mt.name}${c.part.material ? "" : " (varsayılan)"}</td><td>${(v / 1000).toFixed(2)}</td><td>${kg.toFixed(3)}</td></tr>`);
     }
-    if (V > 0) C.multiplyScalar(1 / V);
+    if (M > 0) C.multiplyScalar(1 / M);
+    (this as any).__mass = { V, M, C: [C.x, C.y, C.z], rows: res };
     const dlg = document.createElement("dialog");
     dlg.className = "input-dialog";
-    dlg.innerHTML = `<h2>Kütle özellikleri — ${this.doc.name}</h2><p>Toplam hacim: <b>${(V / 1000).toFixed(2)} cm³</b> · Kütle (çelik 7,85 g/cm³): <b>${((V * rho) / 1000).toFixed(3)} kg</b><br>Ağırlık merkezi: X ${C.x.toFixed(2)} · Y ${C.y.toFixed(2)} · Z ${C.z.toFixed(2)} mm</p><table class="cut-table"><tr><th>Bileşen</th><th>Hacim (cm³)</th><th>Kütle (kg)</th></tr>${rows.join("")}</table>`;
+    dlg.innerHTML = `<h2>Kütle özellikleri — ${this.doc.name}</h2><p>Toplam hacim: <b>${(V / 1000).toFixed(2)} cm³</b> · Toplam kütle: <b>${M.toFixed(3)} kg</b><br>Ağırlık merkezi (kütleye göre): X ${C.x.toFixed(2)} · Y ${C.y.toFixed(2)} · Z ${C.z.toFixed(2)} mm</p><table class="cut-table"><tr><th>Bileşen</th><th>Malzeme</th><th>Hacim (cm³)</th><th>Kütle (kg)</th></tr>${rows.join("")}</table><p class="pm-hint">Malzeme parça belgesinden gelir (parçada Malzeme komutu).</p>`;
     dlg.appendChild(button("Kapat", () => dlg.close(), "btn primary"));
     document.body.appendChild(dlg);
     dlg.addEventListener("close", () => dlg.remove());
@@ -1654,15 +1687,52 @@ export class AsmUI {
     };
     render();
   }
-  async interference() {
-    const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+  /** B7: Girişim Algılama paneli (SolidWorks): sonuç listesi, girişim hacmi kırmızı, seçilen çift vurgulu, çakışanları göster */
+  ifc: { pairs: { a: string; b: string; vol: number; v?: number[]; t?: number[] }[]; cur: number | null; only: boolean } | null = null;
+  async interference(panel = true) {
+    const vis = this.doc.comps.filter((c) => !c.hidden);
+    const parts = vis.map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
     this.ctx.setStatus("busy", "Girişim hesaplanıyor…");
     const r = await this.ctx.kernel.asm("interfere", parts);
     this.meshes.clear();
     await this.refresh();
-    const vis = this.doc.comps.filter((c) => !c.hidden);
-    const pr = r.pairs ?? [];
-    this.ctx.toast(pr.length ? "Girişim: " + pr.map((x) => `${vis[x.a].name} ↔ ${vis[x.b].name} (${x.vol.toFixed(1)} mm³)`).join(" · ") : "Girişim yok ✓", pr.length > 0);
+    const pr = (r.pairs ?? []).map((x) => ({ a: vis[x.a].id, b: vis[x.b].id, vol: x.vol, v: x.v, t: x.t }));
+    this.ctx.setStatus("ok", pr.length ? `Girişim: ${pr.length} çift` : "Girişim yok");
+    if (!panel) return pr;
+    this.ifc = { pairs: pr, cur: pr.length ? 0 : null, only: false };
+    const close = () => {
+      this.ifc = null;
+      this.ctx.hidePM();
+      this.draw();
+    };
+    this.ctx.showPM("Girişim Algılama", close, close);
+    const name = (id: string) => this.doc.comps.find((c) => c.id === id)?.name ?? "?";
+    const render = () => {
+      const body = document.getElementById("pm-body")!;
+      body.innerHTML = "";
+      const st = this.ifc!;
+      const list = h("ul", "ifc-list");
+      if (!st.pairs.length) list.appendChild(h("li", "ok", "Girişim yok ✓"));
+      st.pairs.forEach((p, i) => {
+        const li = h("li", i === st.cur ? "sel" : "", `Girişim${i + 1}: ${name(p.a)} ↔ ${name(p.b)} — ${p.vol.toFixed(1)} mm³`);
+        li.addEventListener("click", () => ((st.cur = st.cur === i ? null : i), render(), this.draw()));
+        list.appendChild(li);
+      });
+      body.appendChild(group(`Sonuçlar (${st.pairs.length})`, list));
+      const tot = st.pairs.reduce((s, p) => s + p.vol, 0);
+      if (st.pairs.length) body.appendChild(h("p", "pm-hint", `Toplam girişim hacmi ${tot.toFixed(1)} mm³. Kırmızı = girişim hacmi; listeden bir çifte dokununca o çift vurgulanır.`));
+      body.appendChild(group("Seçenekler", checkField("Yalnız çakışan bileşenleri göster", st.only, (v) => ((st.only = v), this.draw())), button("Yeniden hesapla", async () => {
+        const np = (await this.interference(false)) as any[];
+        st.pairs = np;
+        st.cur = np.length ? 0 : null;
+        render();
+        this.draw();
+      }, "btn")));
+    };
+    render();
+    this.draw();
+    this.ctx.toast(pr.length ? `Girişim: ${pr.length} çift bulundu` : "Girişim yok ✓", pr.length > 0);
+    return pr;
   }
   async exportStep() {
     const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
@@ -2000,10 +2070,20 @@ export class AsmUI {
         ul.appendChild(li);
       }
     };
-    if (this.mateDraft || this.picker) {
-      ul.appendChild(h("li", "rollbar", "Montaj ana düzlemleri"));
-      planeRows(ASM_ID, "child");
-    }
+    // B8: ana düzlemler kapalı başlar; başlığa dokununca açılır (ağaç grafik alanı kaplamasın)
+    const planeToggle = (comp: string, label: string, cls: string) => {
+      const open = this.openPlanes.has(comp);
+      const li = h("li", cls + " plane-tog", `${open ? "▾" : "▸"} ${label}`);
+      li.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (open) this.openPlanes.delete(comp);
+        else this.openPlanes.add(comp);
+        this.renderTree();
+      });
+      ul.appendChild(li);
+      if (open) planeRows(comp, "child");
+    };
+    if (this.mateDraft || this.picker) planeToggle(ASM_ID, "Montaj ana düzlemleri", "rollbar");
     const subOf = (id: string) => (this.doc.subs ?? []).find((x) => x.comps.includes(id));
     const shownSub = new Set<string>();
     for (const c of this.doc.comps) {
@@ -2028,7 +2108,7 @@ export class AsmUI {
         this.renderTree();
       });
       ul.appendChild(li);
-      if ((this.mateDraft || this.picker) && (this.sel === c.id || this.selSet.has(c.id) || this.doc.comps.length <= 3)) planeRows(c.id, "child");
+      if (this.mateDraft || this.picker) planeToggle(c.id, "Ana düzlemler", "child");
     }
     if (this.doc.feats?.length) {
       ul.appendChild(h("li", "rollbar", "Montaj özellikleri"));
@@ -2158,6 +2238,14 @@ export class AsmUI {
     document.querySelector(".asm-matebar")?.remove();
     this.draw();
     this.renderTree();
+  }
+  /** B3: telefonda tek parmak bu noktadaki bileşeni sürükleyebilir mi (sabit / tam tanımlı değilse) */
+  grabOk(x: number, y: number) {
+    if (this.picker) return false;
+    const p = this.pick(x, y);
+    const c = p && this.doc.comps.find((k) => k.id === p.comp);
+    if (!c || c.fixed) return false;
+    return (dofAll(this.doc).get(c.id) ?? 6) > 0;
   }
   /** sağ tık / uzun basma: imleç altındaki bileşeni seçer (seçili değilse) */
   pickForMenu(x: number, y: number) {
@@ -2318,4 +2406,49 @@ function hash(s: string) {
   let x = 0;
   for (let i = 0; i < s.length; i++) x = (x * 31 + s.charCodeAt(i)) | 0;
   return x;
+}
+
+const r3 = (x: number) => String(Math.round(x * 1000) / 1000 || 0); // -0 → 0
+const vkey = (p: Vec3) => p.map(r3).join(",");
+const vcache = new WeakMap<MeshData, { ok: Set<string>; seam: Set<number> }>();
+/** gerçek köşeler ve dikiş çizgileri. OCC silindiri iki yarım yüze böler: aynı çemberin iki yayı bir "bölme noktasında" birleşir
+ * ve eksen yönünde dikiş çizgisi oluşur; SolidWorks bunları köşe / kenar olarak göstermez (B10). */
+function realVerts(md: MeshData) {
+  let r = vcache.get(md);
+  if (r) return r;
+  const E = md.edges as any[];
+  const closed = (e: any) => !!(e.c && e.r && Math.hypot(e.s[0] - e.e[0], e.s[1] - e.e[1], e.s[2] - e.e[2]) < 1e-6);
+  const ckey = (e: any) => [...e.c, e.r].map(r3).join(",");
+  const inc = new Map<string, number[]>();
+  E.forEach((e, i) => {
+    if (closed(e)) return;
+    for (const P of [e.s, e.e]) {
+      const k = vkey(P);
+      if (!inc.has(k)) inc.set(k, []);
+      inc.get(k)!.push(i);
+    }
+  });
+  const split = new Set<string>();
+  const axisAt = new Map<string, number[]>();
+  for (const [k, ids] of inc) {
+    const arcs = ids.filter((i) => E[i].c && E[i].r);
+    const seen = new Map<string, number>();
+    for (const i of arcs) seen.set(ckey(E[i]), (seen.get(ckey(E[i])) ?? 0) + 1);
+    const sp = [...seen].find(([, n]) => n >= 2);
+    if (sp) split.add(k), axisAt.set(k, E[arcs.find((i) => ckey(E[i]) === sp[0])!].ax ?? [0, 0, 1]);
+  }
+  E.forEach((e) => closed(e) && split.add(vkey(e.s)) && axisAt.set(vkey(e.s), e.ax ?? [0, 0, 1]));
+  const seam = new Set<number>();
+  E.forEach((e, i) => {
+    if (e.c || !e.d) return;
+    const a = vkey(e.s), b = vkey(e.e);
+    if (!split.has(a) || !split.has(b)) return;
+    const ax = axisAt.get(a)!, L = Math.hypot(...(e.d as number[])) || 1;
+    if (Math.abs((e.d[0] * ax[0] + e.d[1] * ax[1] + e.d[2] * ax[2]) / L) > 0.999) seam.add(i);
+  });
+  const ok = new Set<string>();
+  for (const [k, ids] of inc) if (!split.has(k) && ids.filter((i) => !seam.has(i)).length >= 2) ok.add(k);
+  r = { ok, seam };
+  vcache.set(md, r);
+  return r;
 }

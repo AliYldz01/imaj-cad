@@ -46,7 +46,7 @@ export class Kernel {
     await this.ready;
     return this.request<any>({ type: "pdraw", features, opts } as any);
   }
-  async asm(op: "step" | "interfere" | "clearance" | "draw", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]): Promise<{ blob?: Blob | null; pairs?: { a: number; b: number; vol: number }[]; dist?: { a: number; b: number; d: number }[]; message?: string; draw?: any; error?: string }> {
+  async asm(op: "step" | "interfere" | "clearance" | "draw", parts: { features: KFeature[]; q: number[]; p: Vec3; name: string }[]): Promise<{ blob?: Blob | null; pairs?: { a: number; b: number; vol: number; v?: number[]; t?: number[] }[]; dist?: { a: number; b: number; d: number }[]; message?: string; draw?: any; error?: string }> {
     await this.ready;
     return this.request({ type: "asm", op, parts } as any);
   }
