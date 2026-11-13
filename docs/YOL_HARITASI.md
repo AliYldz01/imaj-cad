@@ -556,3 +556,8 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Referans eksen: silindir yüzü, iki düzlem, iki nokta | ✅ |
 | Yapılandırmalar + tasarım tablosu (değişken değerleri, bastırma) | ✅ |
 | Süpürmede burulma / kılavuz eğri, sac aç/katla, flanş profili, köşe başına kaynak işlemi | ⬜ |
+
+## v0.42 — DXF içe aktarma
+| Özellik | Durum |
+|---|---|
+| Eskize DXF içe aktar (çizgi, daire, yay, çoklu çizgi, nokta; uçlar birleşir) | ✅ |

@@ -1139,6 +1139,64 @@ export class SketchEditor implements InputHandler {
     this.click(p, e);
   };
 
+  // ---------------- DXF içe aktarma ----------------
+  /** DXF (R12/R2000+) ENTITIES: LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE/VERTEX, POINT → eskiz öğeleri; uçlar birleştirilir */
+  importDxf(text: string): number {
+    const L = text.split(/\r?\n/).map((x) => x.trim());
+    const pairs: [number, string][] = [];
+    for (let i = 0; i + 1 < L.length; i += 2) pairs.push([parseInt(L[i]), L[i + 1]]);
+    const ents: { t: string; g: Map<number, string[]> }[] = [];
+    let inEnt = false, cur: { t: string; g: Map<number, string[]> } | null = null;
+    for (const [c, v] of pairs) {
+      if (c === 2 && v === "ENTITIES") inEnt = true;
+      if (!inEnt) continue;
+      if (c === 0) {
+        if (v === "ENDSEC") break;
+        cur = { t: v, g: new Map() };
+        ents.push(cur);
+      } else if (cur) {
+        if (!cur.g.has(c)) cur.g.set(c, []);
+        cur.g.get(c)!.push(v);
+      }
+    }
+    const sk = this.data;
+    const num = (e: { g: Map<number, string[]> }, c: number, i = 0) => parseFloat(e.g.get(c)?.[i] ?? "0");
+    const pid = new Map<string, string>();
+    const P = (x: number, y: number) => {
+      const k = `${x.toFixed(4)},${y.toFixed(4)}`;
+      if (!pid.has(k)) pid.set(k, addPt(sk, [x, y]));
+      return pid.get(k)!;
+    };
+    let n = 0;
+    this.op(() => {
+      let poly: Vec2[] = [], polyClosed = false;
+      const flushPoly = () => {
+        for (let i = 0; i + 1 < poly.length; i++) addLine(sk, P(...poly[i]), P(...poly[i + 1])), n++;
+        if (polyClosed && poly.length > 2) addLine(sk, P(...poly[poly.length - 1]), P(...poly[0])), n++;
+        poly = [];
+      };
+      for (const e of ents) {
+        if (e.t === "LINE") addLine(sk, P(num(e, 10), num(e, 20)), P(num(e, 11), num(e, 21))), n++;
+        else if (e.t === "CIRCLE") addCircle(sk, addPt(sk, [num(e, 10), num(e, 20)]), num(e, 40)), n++;
+        else if (e.t === "ARC") {
+          const cx = num(e, 10), cy = num(e, 20), r = num(e, 40), a0 = (num(e, 50) * Math.PI) / 180, a1 = (num(e, 51) * Math.PI) / 180;
+          addArc(sk, addPt(sk, [cx, cy]), P(cx + r * Math.cos(a0), cy + r * Math.sin(a0)), P(cx + r * Math.cos(a1), cy + r * Math.sin(a1))), n++;
+        } else if (e.t === "LWPOLYLINE") {
+          const xs = e.g.get(10) ?? [], ys = e.g.get(20) ?? [];
+          poly = xs.map((x, i) => [parseFloat(x), parseFloat(ys[i] ?? "0")] as Vec2);
+          polyClosed = (parseInt(e.g.get(70)?.[0] ?? "0") & 1) === 1;
+          flushPoly();
+        } else if (e.t === "POLYLINE") (poly = []), (polyClosed = (parseInt(e.g.get(70)?.[0] ?? "0") & 1) === 1);
+        else if (e.t === "VERTEX") poly.push([num(e, 10), num(e, 20)]);
+        else if (e.t === "SEQEND") flushPoly();
+        else if (e.t === "POINT") addPointEnt(sk, addPt(sk, [num(e, 10), num(e, 20)])), n++;
+      }
+    }, "DXF eklenemedi");
+    this.render();
+    this.host.changed?.();
+    return n;
+  }
+
   // ---------------- Serbest çizim ----------------
   /** elle çizilen iz (eskiz koordinatı), tanınan şekil, bekleme sayacı */
   free: { pts: Vec2[]; shape: Shape | null; timer: number; sx: number; sy: number; snapA?: string | null } | null = null;

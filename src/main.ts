@@ -4626,6 +4626,24 @@ function commands(): Cmd[] {
     "sep",
     { id: "repair", label: "Eskizi Onar", icon: "repair", run: () => (ed ? ed.repairSketch() : toast("Eskiz içinde kullanılır")) },
     {
+      id: "dxfin",
+      label: "DXF İçe Aktar",
+      icon: "dxf",
+      run: () => {
+        if (!ed) return toast("Önce bir eskiz açın; DXF çizimi eskiz düzlemine (mm) yerleşir", true);
+        const inp = h("input") as HTMLInputElement;
+        inp.type = "file";
+        inp.accept = ".dxf,.DXF";
+        inp.onchange = async () => {
+          const file = inp.files?.[0];
+          if (!file) return;
+          const n = ed.importDxf(await file.text());
+          toast(n ? `DXF: ${n} öğe eklendi` : "DXF'te çizgi/daire/yay bulunamadı", !n);
+        };
+        inp.click();
+      },
+    },
+    {
       id: "picture",
       label: "Eskiz Resmi",
       icon: "picture",
