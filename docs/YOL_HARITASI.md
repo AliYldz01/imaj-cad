@@ -595,3 +595,8 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 |---|---|
 | Kaynaklı yapı: köşe başına işlem (gönye / alın 1 / alın 2 / yok + köşeye özel boşluk) | ✅ |
 | Birim sistemi mm ↔ inç (görüntü ve giriş) | ✅ |
+
+## v0.48 — Perspektif görünüm
+| Özellik | Durum |
+|---|---|
+| Perspektif / ortografik görünüm (seçim ve yakalama perspektifte de doğru) | ✅ |

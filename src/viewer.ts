@@ -89,7 +89,7 @@ export class Viewer {
     const loop = () => {
       if (this.needsRender) {
         this.needsRender = false;
-        this.renderer.render(this.scene, this.camera);
+        this.renderer.render(this.scene, this.viewCam());
         this.renderHooks.forEach((h) => h());
       }
       requestAnimationFrame(loop);
@@ -615,9 +615,32 @@ export class Viewer {
     const r = this.renderer.domElement.getBoundingClientRect();
     return new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   }
+  /** perspektif görünüm: ortografik kameradan eşlenen perspektif kamera (gezinme ortografik kamerayla yapılır) */
+  perspective = false;
+  private pcam = new THREE.PerspectiveCamera(30, 1, 0.1, 1e6);
+  viewCam(): THREE.Camera {
+    if (!this.perspective) return this.camera;
+    const c = this.camera, t = this.controls.target;
+    const H = (c.top - c.bottom) / c.zoom;
+    const d = H / 2 / Math.tan((this.pcam.fov * Math.PI) / 360);
+    const dir = c.position.clone().sub(t).normalize();
+    this.pcam.up.copy(c.up);
+    this.pcam.position.copy(t).addScaledVector(dir, d);
+    this.pcam.aspect = (c.right - c.left) / Math.max(1e-9, c.top - c.bottom);
+    this.pcam.near = Math.max(0.01, d / 200);
+    this.pcam.far = d * 200 + 1e5;
+    this.pcam.lookAt(t);
+    this.pcam.updateProjectionMatrix();
+    this.pcam.updateMatrixWorld();
+    return this.pcam;
+  }
+  setPerspective(on: boolean) {
+    this.perspective = on;
+    this.requestRender();
+  }
   ray(clientX: number, clientY: number) {
     const rc = new THREE.Raycaster();
-    rc.setFromCamera(this.ndc(clientX, clientY), this.camera);
+    rc.setFromCamera(this.ndc(clientX, clientY), this.viewCam());
     return rc;
   }
   /** Ekran noktasını düzleme izdüşürür (dünya koordinatı) */
@@ -629,7 +652,7 @@ export class Viewer {
   }
   /** Dünya noktasının ekran (container) koordinatı */
   toScreen(p: Vec3): [number, number] {
-    const v = new THREE.Vector3(...p).project(this.camera);
+    const v = new THREE.Vector3(...p).project(this.viewCam());
     const w = this.container.clientWidth, h = this.container.clientHeight;
     return [((v.x + 1) / 2) * w, ((1 - v.y) / 2) * h];
   }

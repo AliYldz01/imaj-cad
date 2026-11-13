@@ -164,6 +164,7 @@ function varValue(name: string, seen = new Set<string>()): number | undefined {
   return evalNum(ex, (n) => varValue(n, seen)) ?? undefined;
 }
 setVarResolver((n) => varValue(n));
+if (localStorage.getItem("imajcad.persp") === "1") setTimeout(() => viewer.setPerspective(true), 0);
 setEqHook({
   get: (k) => doc.eqs?.[k],
   set: (k, e) => {
@@ -5124,6 +5125,7 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
       } catch {}
       return toast(v ? "Tekerlek: ileri = yakınlaş" : "Tekerlek: ileri = uzaklaş (SolidWorks varsayılanı)");
     }
+    if (act === "persp") return allActs().find((x) => x.id === "v.persp")?.run();
     if (act === "units") {
       setUnits(unitsNow() === "mm" ? "in" : "mm");
       toast(`Birim: ${unitsNow() === "mm" ? "milimetre (mm)" : "inç (in) — model mm olarak saklanır"}`);
@@ -6367,6 +6369,7 @@ function fixedActs(): Act[] {
     V("v.stHlr", "Gizli çizgileri kaldır", "", style("hlr")),
     V("v.stHlv", "Gizli çizgiler görünür", "", style("hlv")),
     V("v.stWire", "Tel kafes", "", style("wire")),
+    V("v.persp", "Perspektif", "", () => (viewer.setPerspective(!viewer.perspective), localStorage.setItem("imajcad.persp", viewer.perspective ? "1" : "0"), toast(viewer.perspective ? "Perspektif görünüm" : "Ortografik görünüm")), "iso"),
     V("v.planes", "Düzlemleri göster / gizle", "", () => ((planesOn = !planesOn), updatePlanes(), renderViewbar()), "planes"),
     V("v.tree", "Özellik ağacını göster / gizle", "F9", () => toggleTree(), "tree"),
     V("v.full", "Tam ekran", "F11", () => toggleFullscreen()),
@@ -6393,7 +6396,7 @@ type MI = string | "-" | { sub: string; items: () => Act[] };
 const MENUS: [string, MI[]][] = [
   ["Dosya", ["f.new", "f.open", "f.recent", "f.save", "f.saveas", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist", "f.techdraw"]],
   ["Düzen", ["e.undo", "e.redo", "-", "e.rebuild", "e.redraw", "-", "e.copy", "e.paste", "e.delete", "e.selall", "e.rename", "-", "e.repeat"]],
-  ["Görünüm", ["v.front", "v.back", "v.left", "v.right", "v.top", "v.bottom", "v.iso", "v.normal", "-", "v.fit", "v.zin", "v.zout", "v.zarea", "v.prev", "v.mag", "-", { sub: "Görüntü stili", items: () => allActs().filter((a) => a.id.startsWith("v.st")) }, "v.planes", "v.tree", "-", "v.full", "v.lock"]],
+  ["Görünüm", ["v.front", "v.back", "v.left", "v.right", "v.top", "v.bottom", "v.iso", "v.normal", "-", "v.fit", "v.zin", "v.zout", "v.zarea", "v.prev", "v.mag", "v.persp", "-", { sub: "Görüntü stili", items: () => allActs().filter((a) => a.id.startsWith("v.st")) }, "v.planes", "v.tree", "-", "v.full", "v.lock"]],
   [
     "Ekle",
     [
