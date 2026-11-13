@@ -51,7 +51,8 @@ with sync_playwright() as p:
     chk("kenar üzerinde vurgu", A("return !!a.hovObj && a.hovKey.includes('line')"), A("return a.hovKey.slice(0,40)"))
     # 3 çakışık: blok alt ↔ plaka üst, blok yan ↔ plaka yan, blok ön ↔ plaka ön — gerçek tıklamayla
     def mate_click(p1, p2):
-        pg.click("#cmds button:has-text('Eşleşme')"); time.sleep(0.3)
+        # v0.57: eşleşme paneli ✓ sonrası açık kalır (SolidWorks); kapalıysa aç
+        if pg.evaluate("document.querySelector('#pm').hidden"): pg.click("#cmds button:has-text('Eşleşme')"); time.sleep(0.3)
         pg.mouse.click(*p1); time.sleep(0.2); pg.mouse.click(*p2); time.sleep(0.4)
         st = pg.inner_text("#mate-status"); pg.click("#pm-ok"); time.sleep(0.4)
         return st

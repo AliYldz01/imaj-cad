@@ -29,6 +29,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.54: Teknik resimde ölçüleri sürükleme, Detay B, 2. sayfa ve montajda patlatılmış görünüş.
 - v0.55: Dairenin üst/alt/sol/sağ noktasından verilen ölçüler çap değişince kaymıyor.
 - v0.56: Fazla ölçü verince SolidWorks gibi "Gereksiz ölçü" uyarısı; istenirse sürülen ölçü olarak eklenir.
+- v0.57: Montajda paneller ✕ / Esc ile kapanıyor; Geri al artık montajı geri alıyor; Delete ve sağ tık bileşen menüsü; telefonda ✕ düğmesi açıkta.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

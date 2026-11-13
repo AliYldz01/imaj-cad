@@ -1272,7 +1272,8 @@ function askExit(what: string, okLabel: string): Promise<"save" | "discard" | "s
 }
 /** iptal isteği (Esc / ✕ / geri): değişiklik varsa sorar */
 async function guardedCancel(fromKey: boolean) {
-  if (!workOpen()) return;
+  // montaj panelleri (eşleşme, taşı, aynala…) mod "part" iken açılır: ✕ doğrudan kapatır
+  if (!workOpen()) return void (!$("#pm").hidden && pmCancel());
   if (!workDirty()) return void pmCancel();
   const what = mode.k === "sketch" ? "Eskizde" : "Bu işlemde";
   const v = await askExit(what, mode.k === "sketch" ? "Kaydet ve çık" : "Uygula ve çık");
@@ -5187,11 +5188,7 @@ function renderCommands() {
     b.innerHTML = ICONS[c.icon] ?? "";
     b.appendChild(h("span", "lbl", c.label));
     b.title = c.label;
-    b.addEventListener("click", () => {
-      lastCmd = c.run;
-      c.run();
-      renderCommands();
-    });
+    b.addEventListener("click", () => runCmd(c, tab));
     box.appendChild(b);
   }
   let gbar = document.getElementById("cmdgroups");
@@ -5234,13 +5231,37 @@ setIcon("#redo", "redo", "İleri");
 setIcon("#file-btn", "file", "Dosya");
 setIcon("#help-btn", "help", "Yardım");
 
+/** komut çalıştır; montajda açık panelin komutuna yeniden basmak paneli kapatır (SolidWorks) */
+let asmPanelCmd: string | null = null;
+function runCmd(c: { id: string; run: () => unknown }, t: string) {
+  const asmPanel = t === "asm" && !!asmUI?.on && mode.k === "part" && !$("#pm").hidden;
+  if (asmPanel) {
+    const same = asmPanelCmd === c.id;
+    pmCancel();
+    if (!$("#pm").hidden) hidePM();
+    asmPanelCmd = null;
+    if (same) return void renderCommands();
+  }
+  lastCmd = c.run as any;
+  c.run();
+  if (t === "asm" && !$("#pm").hidden) asmPanelCmd = c.id;
+  renderCommands();
+  updateUndo();
+}
 function updateUndo() {
+  if (asmUI?.on && mode.k === "part") {
+    ($("#undo") as HTMLButtonElement).disabled = !asmUI.canUndo();
+    ($("#redo") as HTMLButtonElement).disabled = !asmUI.canRedo();
+    return;
+  }
   const ed = mode.k === "sketch" ? mode.editor : null;
   ($("#undo") as HTMLButtonElement).disabled = ed ? !ed.canUndo() : undoStack.length === 0 || mode.k !== "part";
   ($("#redo") as HTMLButtonElement).disabled = ed ? !ed.canRedo() : redoStack.length === 0 || mode.k !== "part";
 }
 function undo() {
   if (mode.k === "sketch") return mode.editor.undo(), updateUndo();
+  // montaj açıkken montajın kendi geçmişi (arkadaki parça belgesi değişmez)
+  if (asmUI?.on) return void (mode.k === "part" && asmUI.undo().then(updateUndo));
   if (mode.k !== "part") return;
   const s = undoStack.pop();
   if (!s) return;
@@ -5252,6 +5273,7 @@ function undo() {
 }
 function redo() {
   if (mode.k === "sketch") return mode.editor.redo(), updateUndo();
+  if (asmUI?.on) return void (mode.k === "part" && asmUI.redo().then(updateUndo));
   if (mode.k !== "part") return;
   const s = redoStack.pop();
   if (!s) return;
@@ -5581,7 +5603,12 @@ function escAction() {
     } else if (mode.k === "pickSketchPlane") cancelPick();
     else if (mode.k === "pm") void guardedCancel(true);
     else if (mode.k === "measure" || mode.k === "section" || mode.k === "flat") endAux(), renderCommands();
-    else {
+    else if (asmUI?.on) {
+      // montaj: önce açık panel, sonra montaj seçimi
+      if (!$("#pm").hidden) pmCancel();
+      else asmUI.clearSel();
+      renderCommands();
+    } else {
       clearPartSel();
       treeSel = null;
       renderTree();
@@ -5657,6 +5684,20 @@ function openContextMenu(x: number, y: number) {
     if (fa) menuItem(box, "Dik (Ctrl+8)", () => lookNormal(fa.frame), "normal");
     menuItem(box, "Tamam (✓)", () => pmOk());
     menuItem(box, "İptal (✕)", () => pmCancel());
+  } else if (asmUI?.on && mode.k === "part") {
+    // montaj: imleç altındaki bileşeni seçer, bileşen işlemleri (ağaçtakilerle aynı)
+    const a = asmUI;
+    a.pickForMenu(x, y);
+    if (!$("#pm").hidden) {
+      menuItem(box, "Tamam (✓)", () => pmOk());
+      menuItem(box, "İptal (✕)", () => pmCancel());
+    }
+    for (const it of a.actions()) menuItem(box, it.t, () => (it.fn(), renderCommands()), it.cls?.includes("danger") ? "del" : undefined);
+    if (!a.actions().length) menuItem(box, "Eşleşme", () => (a.startMate(), renderCommands()), "normal");
+    const fa = frameAt(x, y);
+    if (fa) menuItem(box, "Dik (Ctrl+8)", () => lookNormal(fa.frame), "normal");
+    menuItem(box, "Ekrana sığdır (F)", () => fitAll(), "fit");
+    menuItem(box, "Parçaya dön", () => (a.leave(), renderCommands()), "exitSketch");
   } else {
     // SolidWorks: sağ tık imleç altındaki düzlemi / yüzü seçer
     const fa = treeCtx ? null : frameAt(x, y);
@@ -5955,6 +5996,17 @@ function renderActBar() {
   } else if (mode.k === "pm") {
     b("✓", "Tamam", () => pmOk(), "ok");
     b("✕", "İptal", () => pmCancel());
+  } else if (asmUI?.on) {
+    // montaj: panel açıksa ✓ / ✕, değilse seçim temizle / sil / eşleşme
+    const a = asmUI;
+    if (!$("#pm").hidden) {
+      b("✓", "Tamam", () => pmOk(), "ok");
+      b("✕", "Paneli kapat", () => pmCancel());
+    } else {
+      b("✕", "Seçimi temizle", () => escAction());
+      if (a.sel || a.selSet.size || a.selMate) b("Sil", "Seçili bileşeni / eşleşmeyi sil", () => void a.deleteSel(), "small");
+      b("⊥", "Eşleşme", () => (a.startMate(), renderCommands()), "small");
+    }
   } else {
     b("✕", "Seçimi temizle", () => escAction());
     b(selFilter === "face" ? "Yüz" : selFilter === "edge" ? "Kenar" : "Tümü", "Seçim filtresi", () => {
@@ -5976,7 +6028,7 @@ function renderActBar() {
 }
 setInterval(() => {
   // mod / araç değişince çubuğu güncelle (ucuz karşılaştırma)
-  const key = [selFilter, mode.k, mode.k === "sketch" ? mode.editor.tool + mode.editor.isDrawing() + !!(mode.editor as any).st?.arc : "", viewer.mods.ctrl, actBarOn(), prefs.leftHanded].join("|");
+  const key = [selFilter, mode.k, asmUI?.on ? `asm${$("#pm").hidden ? 0 : 1}${asmUI.sel ?? ""}${asmUI.selSet.size}${asmUI.selMate ?? ""}` : "", mode.k === "sketch" ? mode.editor.tool + mode.editor.isDrawing() + !!(mode.editor as any).st?.arc : "", viewer.mods.ctrl, actBarOn(), prefs.leftHanded].join("|");
   if (key !== (actbar as any)._k) {
     (actbar as any)._k = key;
     renderActBar();
@@ -6166,6 +6218,7 @@ asmUI = new AsmUI({
     document.body.appendChild(bar);
   },
   setStatus: (k, t) => setStatus(k as any, t),
+  onUndo: () => updateUndo(),
   onLeave: () => {
     renderTree();
     renderCommands();
@@ -6511,9 +6564,7 @@ function catalog(): Act[] {
           icon: c.icon,
           run: () => {
             if (t === "asm" && tab !== "asm") setTab("asm");
-            lastCmd = c.run;
-            c.run();
-            renderCommands();
+            runCmd(c, t);
           },
         });
       }
@@ -6566,7 +6617,7 @@ function fixedActs(): Act[] {
     E("e.copy", "Kopyala", "Ctrl+C", () => sk()?.copySel()),
     E("e.paste", "Yapıştır", "Ctrl+V", () => sk()?.paste()),
     E("e.selall", "Tümünü seç", "Ctrl+A", () => sk()?.selectAll()),
-    E("e.delete", "Sil", "Delete", () => (mode.k === "sketch" ? mode.editor.deleteSelection() : mode.k === "part" ? deleteSelectedPart() : undefined), "del"),
+    E("e.delete", "Sil", "Delete", () => (mode.k === "sketch" ? mode.editor.deleteSelection() : mode.k === "part" ? (asmUI?.on ? void asmUI.deleteSel() : deleteSelectedPart()) : undefined), "del"),
     E("e.rename", "Yeniden adlandır", "F2", () => {
       if (mode.k !== "part" || !treeSel || !getFeat(treeSel)) return;
       const f = getFeat(treeSel)!;

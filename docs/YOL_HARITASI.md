@@ -616,3 +616,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.55 | Çeyrek noktasından ölçü: çap değişince nokta kaymıyor | ✅ |
 
 | v0.56 | Gereksiz (fazla) ölçü uyarısı, sürülen ölçü önerisi | ✅ |
+
+| v0.57 | Montaj modu: paneller ✕/Esc ile kapanır, montaj geri al, Delete, sağ tık bileşen menüsü, telefon ✕ ve ekran çubuğu | ✅ |

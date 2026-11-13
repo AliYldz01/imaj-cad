@@ -22,6 +22,8 @@ export interface AsmCtx {
   currentPart: () => AsmPart;
   setStatus: (k: string, t: string) => void;
   onLeave: () => void;
+  /** montaj geri al / ileri al sonrası (düğme durumları) */
+  onUndo?: () => void;
   /** bağlam içinde parça düzenle: parça modunda aç, bitince güncel parçayla geri çağır */
   editPart?: (part: AsmPart, done: (p: AsmPart) => void) => void;
 }
@@ -99,6 +101,17 @@ export class AsmUI {
     this.group.visible = false;
   }
   private save() {
+    // geri alma: taslak (eşleşme önizlemesi) sırasında ara hâller kaydedilmez
+    if (!this.mateDraft) {
+      const cur = this.ser();
+      if (this.last && cur !== this.last) {
+        this.hist.push(this.last);
+        if (this.hist.length > 60) this.hist.shift();
+        this.fut = [];
+      }
+      this.last = cur;
+    }
+    this.ctx.onUndo?.();
     try {
       localStorage.setItem(KEY, JSON.stringify(this.doc, (k, v) => (k.startsWith("_") ? undefined : v)));
     } catch {}
@@ -1203,7 +1216,8 @@ export class AsmUI {
     const d = this.mateDraft;
     if (!d) return;
     const m = this.draftMate();
-    if (!m) return this.ctx.toast("Seçimleri tamamlayın", true);
+    // SolidWorks: seçim yokken ✓ paneli kapatır; eksik seçimde uyarır
+    if (!m) return d.ents.every((e) => !e) && !d.edit ? this.cancelMate() : this.ctx.toast("Seçimleri tamamlayın", true);
     const old = d.edit ? this.doc.mates.find((x) => x.id === d.edit) : null;
     m.id = old?.id ?? uid();
     if (old?.ref && m.type === old.type) m.ref = old.ref;
@@ -1225,7 +1239,9 @@ export class AsmUI {
       }
       return;
     }
-    this.ctx.hidePM();
+    // SolidWorks: yeni eşleşmeden sonra panel açık kalır, sıradaki eşleşme için seçim beklenir
+    if (!d.edit) this.startMate();
+    else this.ctx.hidePM();
   }
   /** eşleşmeyi bastır / etkinleştir, hizalamayı çevir, sil */
   mateAct(m: Mate, act: "off" | "flip" | "del") {
@@ -1318,9 +1334,9 @@ export class AsmUI {
   }
   /** SolidWorks Bileşeni Taşı / Döndür paneli */
   openMove(rotate = false) {
-    const c = this.comp();
-    if (!c) return this.ctx.toast("Önce bir bileşen seçin", true);
-    if (c.fixed) return this.ctx.toast("Sabit bileşen taşınamaz (önce 'Serbest bırak')", true);
+    // SolidWorks: seçim yoksa da panel açılır; bileşen sonradan seçilir / sürüklenir (B5)
+    const c0 = this.comp();
+    if (c0?.fixed) this.ctx.toast("Sabit bileşen taşınamaz (önce 'Serbest bırak')", true);
     const st = { mode: rotate ? "rdelta" : "free", x: 0, y: 0, z: 0, ax: "y", ang: 90 };
     const start = this.poses();
     this.dragMode = rotate ? "rotate" : "move";
@@ -1333,6 +1349,9 @@ export class AsmUI {
     });
     const body = document.getElementById("pm-body")!;
     const go = () => {
+      const c = this.comp();
+      if (!c) return this.ctx.toast("Taşınacak bileşeni seçin", true);
+      if (c.fixed) return this.ctx.toast("Sabit bileşen taşınamaz (önce 'Serbest bırak')", true);
       const before = this.poses();
       if (st.mode === "delta") c.p = [c.p[0] + st.x, c.p[1] + st.y, c.p[2] + st.z];
       else if (st.mode === "to") {
@@ -1369,7 +1388,8 @@ export class AsmUI {
       body.appendChild(group(rotate ? "Döndür" : "Taşı", selectField("Yöntem", modes, st.mode, (v) => ((st.mode = v), render()))));
       if (st.mode !== "free") {
         const u = rotate ? "°" : "mm";
-        if (st.mode === "to") {
+        const c = this.comp();
+        if (st.mode === "to" && c) {
           const cc = this.compCenter(c);
           (st.x = +cc.x.toFixed(3)), (st.y = +cc.y.toFixed(3)), (st.z = +cc.z.toFixed(3));
         }
@@ -1592,12 +1612,11 @@ export class AsmUI {
   }
   /** bileşen çoğaltma: doğrusal / dairesel (SolidWorks Doğrusal/Dairesel Bileşen Çoğaltma) */
   openPattern() {
-    const c = this.comp();
-    if (!c) return this.ctx.toast("Önce çoğaltılacak bileşeni seçin", true);
     const st = { kind: "lin", ax: "x", n: 3, d: 50, ang: 360, n2: 1, d2: 50, ax2: "y" };
     const done = () => {
       const axis = (a: string) => new THREE.Vector3(a === "x" ? 1 : 0, a === "y" ? 1 : 0, a === "z" ? 1 : 0);
-      const src = c;
+      const src = this.comp();
+      if (!src) return this.ctx.toast("Çoğaltılacak bileşeni seçin (grafik alanda dokunun)", true);
       let k = this.doc.comps.filter((x) => x.part.name === src.part.name).length;
       const add = (p: THREE.Vector3, q: THREE.Quaternion) => {
         k++;
@@ -1631,7 +1650,7 @@ export class AsmUI {
         body.appendChild(group("Yön 1", selectField("Yön", axes, st.ax, (v) => (st.ax = v)), numField("Aralık", st.d, (v) => (st.d = v), { unit: "mm" }), numField("Adet", st.n, (v) => (st.n = Math.round(v)))));
         body.appendChild(group("Yön 2", selectField("Yön", axes, st.ax2, (v) => (st.ax2 = v)), numField("Aralık", st.d2, (v) => (st.d2 = v), { unit: "mm" }), numField("Adet", st.n2, (v) => (st.n2 = Math.round(v)))));
       } else body.appendChild(group("Eksen", selectField("Eksen", axes, st.ax, (v) => (st.ax = v)), numField("Toplam açı", st.ang, (v) => (st.ang = v), { unit: "°" }), numField("Adet", st.n, (v) => (st.n = Math.round(v)))));
-      body.appendChild(h("p", "pm-hint", `Kaynak: ${c.name}. Kopyalar serbest bileşen olarak eklenir.`));
+      body.appendChild(h("p", "pm-hint", this.comp() ? `Kaynak: ${this.comp()!.name}. Kopyalar serbest bileşen olarak eklenir.` : "Çoğaltılacak bileşeni grafik alanda seçin."));
     };
     render();
   }
@@ -2057,13 +2076,18 @@ export class AsmUI {
       li.addEventListener("dblclick", () => this.openExplode());
       ul.appendChild(li);
     }
-    const add = (t: string, fn: () => void, cls = "btn") => acts.appendChild(button(t, fn, cls));
+    for (const a of this.actions()) acts.appendChild(button(a.t, a.fn, a.cls ?? "btn"));
+  }
+  /** seçime göre işlemler: ağaç altındaki düğmeler ve grafik alanda sağ tık / uzun basma menüsü */
+  actions(): { t: string; fn: () => void; cls?: string }[] {
+    const out: { t: string; fn: () => void; cls?: string }[] = [];
+    const add = (t: string, fn: () => void, cls?: string) => void out.push({ t, fn, cls });
     const ss = (this.doc.subs ?? []).find((x) => x.id === this.selSub);
     if (ss) {
       add(ss.rigid ? "Esnek yap" : "Rijit yap", () => this.subAct(ss.id, "rigid"), "btn primary");
       add("Alt montajı dağıt", () => this.subAct(ss.id, "dissolve"));
       add("Alt montajı kaydet (.icasm)", () => this.subAct(ss.id, "save"));
-      return;
+      return out;
     }
     if (this.selSet.size >= 2) add("Seçilenlerden alt montaj oluştur", () => this.formSub(), "btn primary");
     const sm = this.doc.mates.find((m) => m.id === this.selMate);
@@ -2072,10 +2096,10 @@ export class AsmUI {
       add(sm.off ? "Etkinleştir" : "Bastır", () => this.mateAct(sm, "off"));
       if (ALIGNABLE.has(sm.type)) add("Hizalamayı çevir", () => this.mateAct(sm, "flip"));
       add("Sil", () => this.mateAct(sm, "del"), "btn danger");
-      return;
+      return out;
     }
     const c = this.comp();
-    if (!c) return;
+    if (!c) return out;
     add(c.fixed ? "Serbest bırak" : "Sabitle", () => ((c.fixed = !c.fixed), this.solve(), this.save(), this.draw(), this.renderTree()));
     add(c.hidden ? "Göster" : "Gizle", () => ((c.hidden = !c.hidden), this.save(), this.draw(), this.renderTree()));
     add(c.transparent ? "Opak" : "Saydam", () => ((c.transparent = !c.transparent || undefined), this.save(), this.draw(), this.renderTree()));
@@ -2097,17 +2121,107 @@ export class AsmUI {
       this.save();
       this.refresh();
     });
-    add("Sil", () => {
-      this.doc.comps = this.doc.comps.filter((x) => x !== c);
-      this.doc.mates = this.doc.mates.filter((m) => ![m.a, m.b, m.c, m.d].some((e) => e?.comp === c.id));
-      for (const sb of this.doc.subs ?? []) sb.comps = sb.comps.filter((x) => x !== c.id);
-      this.doc.subs = (this.doc.subs ?? []).filter((sb) => sb.comps.length > 1);
-      this.sel = null;
-      this.selSet.clear();
-      this.save();
+    add("Sil", () => this.removeComps([...new Set([c.id, ...this.selSet])]), "btn danger");
+    return out;
+  }
+  /** bileşenleri ve onlara bağlı eşleşmeleri sil */
+  removeComps(ids: string[]) {
+    const del = new Set(ids);
+    if (!del.size) return;
+    this.doc.comps = this.doc.comps.filter((x) => !del.has(x.id));
+    this.doc.mates = this.doc.mates.filter((m) => ![m.a, m.b, m.c, m.d].some((e) => e && del.has(e.comp)));
+    for (const sb of this.doc.subs ?? []) sb.comps = sb.comps.filter((x) => !del.has(x));
+    this.doc.subs = (this.doc.subs ?? []).filter((sb) => sb.comps.length > 1);
+    this.sel = null;
+    this.selSet.clear();
+    this.solve();
+    this.save();
+    this.draw();
+    this.renderTree();
+  }
+  /** Delete tuşu: seçili eşleşme ya da bileşen(ler) */
+  deleteSel(): boolean {
+    const m = this.doc.mates.find((x) => x.id === this.selMate);
+    if (m) return this.mateAct(m, "del"), true;
+    const ids = [...new Set([...(this.sel ? [this.sel] : []), ...this.selSet])];
+    if (!ids.length) return false;
+    this.removeComps(ids);
+    return true;
+  }
+  /** Esc: montaj seçimini temizle */
+  clearSel() {
+    this.sel = null;
+    this.selSet.clear();
+    this.selMate = null;
+    this.selSub = null;
+    this.pre = [];
+    document.querySelector(".asm-matebar")?.remove();
+    this.draw();
+    this.renderTree();
+  }
+  /** sağ tık / uzun basma: imleç altındaki bileşeni seçer (seçili değilse) */
+  pickForMenu(x: number, y: number) {
+    const p = this.pick(x, y);
+    if (p && !this.selSet.has(p.comp) && this.sel !== p.comp) {
+      this.sel = p.comp;
+      this.selSet = new Set([p.comp]);
+      this.selMate = null;
+      this.selSub = null;
       this.draw();
       this.renderTree();
-    }, "btn danger");
+    }
+    return p;
+  }
+
+  // ---------- geri al / ileri al (montaj belgesi) ----------
+  private hist: string[] = [];
+  private fut: string[] = [];
+  private last = "";
+  private ser() {
+    return JSON.stringify(this.doc, (k, v) => (k.startsWith("_") ? undefined : v));
+  }
+  /** bir eşleşme / panel taslağı sürerken geri alma yapılmaz */
+  busy() {
+    return !!this.mateDraft;
+  }
+  canUndo() {
+    return this.on && !this.busy() && this.hist.length > 0;
+  }
+  canRedo() {
+    return this.on && !this.busy() && this.fut.length > 0;
+  }
+  async undo() {
+    if (!this.canUndo()) return;
+    this.fut.push(this.last || this.ser());
+    await this.applyState(this.hist.pop()!);
+  }
+  async redo() {
+    if (!this.canRedo()) return;
+    this.hist.push(this.last || this.ser());
+    await this.applyState(this.fut.pop()!);
+  }
+  private async applyState(s: string) {
+    const d = JSON.parse(s) as AsmDoc;
+    this.doc = d;
+    this.last = s;
+    // geometrisi değişen bileşenin ağı yeniden kurulur; eşleşme taşıma yapılmaz (kayıtlı hâl zaten tutarlı)
+    for (const c of d.comps) {
+      const fs = JSON.stringify(this.featsOf(c));
+      if ((this as any)["k_" + c.id] !== c.id + ":" + fs.length + ":" + hash(fs)) delete (this as any)["k_" + c.id], this.meshes.delete(c.id);
+    }
+    this.exT = d.exploded ? 1 : 0;
+    this.sel = null;
+    this.selSet.clear();
+    this.selMate = null;
+    this.selSub = null;
+    try {
+      localStorage.setItem(KEY, s);
+    } catch {}
+    await this.refresh();
+    this.solve();
+    this.draw();
+    this.renderTree();
+    this.ctx.onUndo?.();
   }
 
   // ---------- komutlar (SolidWorks Montaj sekmesi) ----------
