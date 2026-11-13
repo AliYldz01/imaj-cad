@@ -476,3 +476,11 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | MateXpert (sağlanamayan eşleşme + bastırma önerisi), boşluk doğrulama, montaj kesiti | ✅ |
 | Hareket etüdü: döner / doğrusal motor, eşleşmelerle birlikte hareket | ✅ |
 | Yol, kam, yuva eşleşmeleri; montaj kesme/delik özellikleri | ⬜ |
+
+## v0.33.1 — Montaj güvenilirliği ve ön seçim vurgusu
+| Özellik | Durum |
+|---|---|
+| Döndürülmüş / büyük parçalarda çakışık vb. eşleşmeler (çözücü ölçeklemesi) | ✅ |
+| Eşleşme matrisi testi: 27 varlık çifti × tüm türler × rastgele başlangıç, serbestlik SolidWorks ile aynı | ✅ |
+| Eş merkezli / paralel hizalı–ters hizalı, dairesel kenar–düz yüz çakışık, nokta–dairesel kenar çakışık, mesafede mevcut taraf, içten teğet | ✅ |
+| Ön seçim vurgusu: montajda yüz (turuncu + sınır), kenar, köşe; parça modunda turuncu + sınır | ✅ |

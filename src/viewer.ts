@@ -30,7 +30,7 @@ const COL = {
   face: 0x9fb4cc,
   edge: 0x1f2a37,
   selFace: 0x2b7de9,
-  hovFace: 0x74b0ff,
+  hovFace: 0xffb066,
   selEdge: 0x0b5ed7,
   hovEdge: 0xf76707,
   plane: 0x4c9be8,
@@ -847,14 +847,39 @@ export class Viewer {
           this.hl.add(this.fatLines(Array.from(pos), color, 4));
         }
       };
+      // ön seçim (SolidWorks dinamik vurgu): yüz turuncu + sınırı kalın
+      const addOutline = (i: number, color: number) => {
+        const pos = this.faceOutline(this.mesh!, i);
+        if (pos.length) this.hl.add(this.fatLines(pos, color, 2.5, false, false));
+      };
       sel.faces.forEach((i) => addFace(i, COL.selFace));
       sel.edges.forEach((i) => addEdge(i, COL.selEdge));
-      if (hover?.kind === "face" && !sel.faces.includes(hover.index)) addFace(hover.index, COL.hovFace);
+      if (hover?.kind === "face" && !sel.faces.includes(hover.index)) (addFace(hover.index, COL.hovFace), addOutline(hover.index, COL.hovEdge));
       if (hover?.kind === "edge" && !sel.edges.includes(hover.index)) addEdge(hover.index, COL.hovEdge);
     }
     this.requestRender();
   }
 
+  /** yüzün sınır çizgileri (üçgenlerden: tek kez kullanılan kenarlar) → çizgi parçası konumları */
+  faceOutline(md: MeshData, fi: number): number[] {
+    const g = md.faceGroups, v = md.vertices, t = md.triangles;
+    const key = (i: number) => `${Math.round(v[i * 3] * 1e3)},${Math.round(v[i * 3 + 1] * 1e3)},${Math.round(v[i * 3 + 2] * 1e3)}`;
+    const cnt = new Map<string, [number, number, number]>();
+    for (let k = 0; k < g.length; k += 3) {
+      if (g[k + 2] !== fi) continue;
+      for (let j = g[k]; j < g[k] + g[k + 1]; j += 3)
+        for (let e = 0; e < 3; e++) {
+          const a = t[j + e], b = t[j + ((e + 1) % 3)];
+          const ka = key(a), kb = key(b);
+          const kk = ka < kb ? ka + "|" + kb : kb + "|" + ka;
+          const c = cnt.get(kk);
+          cnt.set(kk, c ? [c[0] + 1, a, b] : [1, a, b]);
+        }
+    }
+    const out: number[] = [];
+    for (const [n, a, b] of cnt.values()) if (n === 1) out.push(v[a * 3], v[a * 3 + 1], v[a * 3 + 2], v[b * 3], v[b * 3 + 1], v[b * 3 + 2]);
+    return out;
+  }
   /** Kalın çizgi parçaları (piksel genişliğinde) */
   fatLines(positions: number[], color: number, width = 2, dashed = false, onTop = true): LineSegments2 {
     const geo = new LineSegmentsGeometry();

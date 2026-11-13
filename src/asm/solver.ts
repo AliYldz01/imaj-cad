@@ -54,12 +54,17 @@ const wrap = (a: number, ref: number) => a + 2 * Math.PI * Math.round((ref - a) 
 const lastTw = new Map<string, number>();
 
 /** hizalama: a = true → aynı yön, false → zıt yön; residu yön farkı */
-const align = (A: THREE.Vector3, B: THREE.Vector3, same: boolean) => v3(same ? sub(B, A) : B.clone().add(A));
+const alignU = (A: THREE.Vector3, B: THREE.Vector3, same: boolean) => v3(same ? sub(B, A) : B.clone().add(A));
 const ineq = (x: number, lo: number, hi: number) => (x < lo ? x - lo : x > hi ? x - hi : 0);
 
 /** bir eşleşmenin artıkları (sıfır = sağlandı); lim=true: eşitsizlik (serbestlik saymaz) */
 export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?: boolean } {
   const E = (e: MateEnt) => wEnt(e, cm.get(e.comp)!);
+  // açısal artıklar parça ölçeğiyle mm'ye çevrilir (mesafe artıklarıyla aynı birim → büyük parçalarda da yakınsar)
+  const K = m.L ?? Math.max(50, (cm.get(m.a.comp) as any)?._L ?? 0, (cm.get(m.b.comp) as any)?._L ?? 0);
+  const align = (P: THREE.Vector3, Q: THREE.Vector3, sm: boolean) => alignU(P, Q, sm).map((x) => x * K);
+  const cr = (P: THREE.Vector3, Q: THREE.Vector3) => v3(cross(P, Q)).map((x) => x * K);
+  const dt = (P: THREE.Vector3, Q: THREE.Vector3) => dot(P, Q) * K;
   const A = E(m.a), B = E(m.b);
   const same = !!m.flip; // varsayılan ters hizalı (SolidWorks çakışık düz yüzler)
   const t = m.type;
@@ -76,27 +81,35 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
         const [P, O] = pl(ka) ? [A, B] : [B, A];
         const dd = dot(sub(O.P, P.P), P.N);
         if (O.k === "point") return { r: [dd] };
-        return { r: [dot(P.N, O.N), dd] }; // eksen düzlemde
+        // dairesel kenar düz yüzde: kenar düzlemi = yüz (normaller paralel, merkez yüzde)
+        if (O.k === "circle") return { r: [...cr(P.N, O.N), dd] };
+        return { r: [dt(P.N, O.N), dd] }; // eksen / doğrusal kenar düzlemde
       }
       if (ka === "point" && kb === "point") return { r: v3(d) };
       if (ka === "point" || kb === "point") {
         const [X, Pt] = ka === "point" ? [B, A] : [A, B];
+        // çakışık nokta–dairesel kenar: nokta çemberin üzerinde; eş merkezli: nokta eksende
+        if (t === "coincident" && X.k === "circle") {
+          const w = sub(Pt.P, X.P);
+          const ax = dot(w, X.N);
+          return { r: [ax, w.addScaledVector(X.N, -ax).length() - X.r] };
+        }
         return { r: v3(cross(sub(Pt.P, X.P), X.N)) };
       }
-      // eksen – eksen (eş merkezli / doğrusal); daire kenarı – daire kenarı çakışık: merkezler de çakışık
-      const r = [...v3(cross(A.N, B.N)), ...v3(cross(d, A.N))];
+      // eksen – eksen (eş merkezli / doğrusal): hizalı / ters hizalı; daire kenarı – daire kenarı çakışık: merkezler de çakışık
+      const r = [...align(A.N, B.N, same), ...v3(cross(d, A.N))];
       if (t === "coincident" && ka === "circle" && kb === "circle") r.push(dot(d, A.N));
       return { r };
     }
     case "parallel":
-      if (pl(ka) !== pl(kb)) return { r: [dot(A.N, B.N)] };
-      return { r: v3(cross(A.N, B.N)) };
+      if (pl(ka) !== pl(kb)) return { r: [dt(A.N, B.N)] };
+      return { r: align(A.N, B.N, same) };
     case "perpendicular":
-      if (pl(ka) !== pl(kb)) return { r: v3(cross(A.N, B.N)) };
-      return { r: [dot(A.N, B.N)] };
+      if (pl(ka) !== pl(kb)) return { r: cr(A.N, B.N) };
+      return { r: [dt(A.N, B.N)] };
     case "angle": {
       const c = Math.cos(((m.v ?? 90) * Math.PI) / 180);
-      return { r: [dot(A.N, B.N) * (same ? 1 : -1) - c] };
+      return { r: [(dot(A.N, B.N) * (same ? 1 : -1) - c) * K] };
     }
     case "distance":
     case "limit": {
@@ -105,9 +118,9 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
       if (pl(ka) && pl(kb)) (r = align(A.N, B.N, same)), (x = dot(d, A.N));
       else if (pl(ka) || pl(kb)) {
         const [P, O] = pl(ka) ? [A, B] : [B, A];
-        if (O.k !== "point") r = [dot(P.N, O.N)];
+        if (O.k !== "point") r = [dt(P.N, O.N)];
         x = dot(sub(O.P, P.P), P.N) - (O.k === "cyl" ? Math.sign(dot(sub(O.P, P.P), P.N) || 1) * O.r : 0);
-      } else if (isAxis(ka) && isAxis(kb)) (r = v3(cross(A.N, B.N))), (x = axDist(A.P, B.P, A.N));
+      } else if (isAxis(ka) && isAxis(kb)) (r = cr(A.N, B.N)), (x = axDist(A.P, B.P, A.N));
       else if (isAxis(ka) || isAxis(kb)) {
         const [X, Pt] = isAxis(ka) ? [A, B] : [B, A];
         x = axDist(X.P, Pt.P, X.N);
@@ -137,15 +150,17 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
     case "limitAngle": {
       const ang = (Math.acos(Math.max(-1, Math.min(1, dot(A.N, B.N) * (same ? 1 : -1)))) * 180) / Math.PI;
       const lo = m.v ?? 0, hi = m.vmax ?? lo;
-      return { r: [ineq(ang, Math.min(lo, hi), Math.max(lo, hi)) * 0.05], lim: true };
+      return { r: [((ineq(ang, Math.min(lo, hi), Math.max(lo, hi)) * Math.PI) / 180) * K], lim: true };
     }
     case "tangent": {
       if (pl(ka) || pl(kb)) {
         const [P, O] = pl(ka) ? [A, B] : [B, A];
-        const s = (same ? -1 : 1) * Math.sign(dot(sub(O.P, P.P), P.N) || 1);
-        return { r: [dot(P.N, O.N), dot(sub(O.P, P.P), P.N) - s * O.r] };
+        // silindir yüzün bulunduğu tarafta kalır (SolidWorks)
+        const s = Math.sign(dot(sub(O.P, P.P), P.N) || 1);
+        return { r: [dt(P.N, O.N), dot(sub(O.P, P.P), P.N) - s * O.r] };
       }
-      return { r: [...v3(cross(A.N, B.N)), axDist(A.P, B.P, A.N) - (A.r + B.r)] };
+      // silindir–silindir: dıştan (r1+r2) ya da içten (|r1−r2|, "Ters" ile)
+      return { r: [...cr(A.N, B.N), axDist(A.P, B.P, A.N) - (same ? Math.abs(A.r - B.r) : A.r + B.r)] };
     }
     case "lock": {
       // göreli konum, eşleşme oluşturulduğundaki gibi kalır
@@ -169,8 +184,8 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
       // simetri düzlemine paralel bileşenler eşit (aynı hizada)
       const w = d.clone().addScaledVector(S.N, -dot(d, S.N));
       if (!pl(ka)) r.push(...v3(w));
-      if (pl(ka)) r.push(...v3(sub(B.N, refl)));
-      else if (ka !== "point") r.push(...v3(cross(B.N, refl)));
+      if (pl(ka)) r.push(...v3(sub(B.N, refl)).map((x) => x * K));
+      else if (ka !== "point") r.push(...cr(B.N, refl));
       return { r };
     }
     case "width": {
@@ -179,8 +194,8 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
       const W = A.P.clone().add(B.P).multiplyScalar(0.5);
       const T = D ? C.P.clone().add(D.P).multiplyScalar(0.5) : C.P;
       const r = [dot(sub(T, W), A.N)];
-      if (C.k === "plane") r.push(...v3(cross(A.N, C.N)));
-      else r.push(dot(A.N, C.N));
+      if (C.k === "plane") r.push(...cr(A.N, C.N));
+      else r.push(dt(A.N, C.N));
       return { r };
     }
     case "gear":
@@ -216,7 +231,7 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
     case "hinge": {
       // a,b: eş merkezli silindirler; c,d: çakışık düz yüzler; açı limiti (isteğe bağlı)
       const C = E(m.c!), D = E(m.d!);
-      const r = [...v3(cross(A.N, B.N)), ...v3(cross(d, A.N)), ...align(C.N, D.N, false), dot(sub(D.P, C.P), C.N)];
+      const r = [...cr(A.N, B.N), ...v3(cross(d, A.N)), ...align(C.N, D.N, false), dot(sub(D.P, C.P), C.N)];
       return { r };
     }
   }
@@ -320,15 +335,21 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
             g[a] -= J[i][a] * r0[i];
             for (let b = 0; b < n; b++) A[a][b] += J[i][a] * J[i][b];
           }
-        for (let a = 0; a < n; a++) A[a][a] += lam * (A[a][a] + 1e-6);
+        // sönüm: dönme değişkenleri daha "pahalı" (önce öteleme; SolidWorks gibi en kısa hareket)
+        for (let a = 0; a < n; a++) A[a][a] += lam * (A[a][a] + (a % 6 >= 3 ? 4 : 1));
         const dx = gauss(A, g);
         if (!dx) {
           lam *= 10;
           continue;
         }
-        // büyük adımı sınırla
+        // büyük adımı sınırla: öteleme ölçeğe göre, dönme adım başına ≤ 0.5 rad (doğrusallaştırma geçerli kalsın)
         const mx = Math.max(...dx.map(Math.abs));
-        const sc = mx > 200 ? 200 / mx : 1;
+        const cap = Math.max(200, ...vars.map((c) => 4 * sizeOf(c)));
+        let sc = mx > cap ? cap / mx : 1;
+        vars.forEach((c, i) => {
+          const rv = Math.hypot(dx[i * 6 + 3], dx[i * 6 + 4], dx[i * 6 + 5]) / sizeOf(c);
+          if (rv * sc > 0.5) sc = 0.5 / rv;
+        });
         apply(dx.map((v) => v * sc), base);
         const e1 = resid(withDrag).reduce((s, v) => s + v * v, 0);
         if (e1 < e0) {
@@ -343,7 +364,7 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
     }
   };
   if (o.drag) run(true, o.iters ?? 25);
-  run(false, o.iters ?? 60);
+  run(false, o.iters ? Math.max(o.iters, 40) : 150);
   const bad: string[] = [];
   for (const m of mates) {
     if (m.id.startsWith("__rig_")) continue;

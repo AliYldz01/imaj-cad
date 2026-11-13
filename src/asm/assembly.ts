@@ -280,3 +280,21 @@ export function removeFromLib(name: string) {
     localStorage.setItem(LIB, JSON.stringify(l));
   } catch {}
 }
+
+/** SolidWorks: seçilen varlık türlerine göre geçerli standart eşleşmeler (ilki önerilen) */
+export function mateTypesFor(ents: MateEnt[]): MateType[] {
+  if (ents.length < 2) return MATE_GROUPS.std;
+  const k = ents.map((e) => (e.kind === "cyl" || e.kind === "line" || e.kind === "circle" ? "ax" : e.kind)).sort().join("-");
+  const T: Record<string, MateType[]> = {
+    "plane-plane": ["coincident", "parallel", "perpendicular", "distance", "angle", "lock"],
+    "ax-ax": ["concentric", "coincident", "parallel", "perpendicular", "distance", "angle", "tangent", "lock"],
+    "ax-plane": ["tangent", "coincident", "parallel", "perpendicular", "distance", "lock"],
+    "plane-point": ["coincident", "distance", "lock"],
+    "ax-point": ["coincident", "distance", "lock"],
+    "point-point": ["coincident", "distance", "lock"],
+  };
+  let t = T[k] ?? MATE_GROUPS.std;
+  // teğet yalnız silindirle
+  if (!ents.some((e) => e.kind === "cyl")) t = t.filter((x) => x !== "tangent");
+  return t;
+}

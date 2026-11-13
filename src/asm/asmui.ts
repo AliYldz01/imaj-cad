@@ -7,9 +7,9 @@ import type { Kernel } from "../kernel";
 import type { MeshData, Vec3 } from "../doc/types";
 import { compile } from "../doc/compile";
 import { h, numField, checkField, selectField, segField, group, button } from "../ui/dom";
-import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
+import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, mateTypesFor, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
 import { fastener, FASTENER_NAMES, FASTENER_SIZES, type FastenerKind } from "./toolbox";
-import { solveAll, dofAll, wEnt } from "./solver";
+import { solveAll, dofAll, wEnt, mateRes } from "./solver";
 
 export interface AsmCtx {
   viewer: Viewer;
@@ -44,7 +44,7 @@ function slotsOf(t: MateType): [string, number][] {
   return [["Eşleşme seçimleri", 2]];
 }
 /** hizalama (hizalı / ters hizalı) anlamlı mı */
-const ALIGNABLE = new Set<MateType>(["coincident", "parallel", "distance", "angle", "concentric", "tangent", "limit", "limitAngle"]);
+const ALIGNABLE = new Set<MateType>(["coincident", "parallel", "distance", "angle", "concentric", "tangent", "limit", "limitAngle", "profileCenter"]);
 
 interface MateDraft {
   edit?: string;
@@ -185,6 +185,8 @@ export class AsmUI {
 
   /** sahne nesnelerini oluştur / konumla */
   draw() {
+    this.hovKey = "";
+    this.hovObj = null;
     for (const o of [...this.group.children]) this.group.remove(o);
     this.objs.clear();
     const mateComps = new Set<string>();
@@ -350,8 +352,83 @@ export class AsmUI {
     return { comp: id, ent: null, point: hit.point };
   }
 
+  // ---------- ön seçim vurgusu (SolidWorks dinamik vurgu) ----------
+  private hovKey = "";
+  private hovObj: THREE.Object3D | null = null;
+  private hovRaf = 0;
+  private hovEv: { x: number; y: number } | null = null;
+  private setHover(p: { comp: string; ent: MateEnt | null } | null) {
+    const key = p ? `${p.comp}|${p.ent ? p.ent.kind + JSON.stringify(p.ent.c) + JSON.stringify(p.ent.n) : ""}` : "";
+    if (key === this.hovKey) return;
+    this.hovKey = key;
+    this.hovObj?.parent?.remove(this.hovObj);
+    this.hovObj = null;
+    this.ctx.viewer.renderer.domElement.style.cursor = p ? "pointer" : "";
+    const v = this.ctx.viewer;
+    const g = p && this.objs.get(p.comp);
+    const md = p && this.meshes.get(p.comp);
+    if (!p || !g || !md) return v.requestRender();
+    const COL = 0xf76707;
+    const o = new THREE.Group();
+    const e = p.ent;
+    if (!e || e.kind === "plane" || e.kind === "cyl") {
+      // yüzü bul (ışın) ve tümüyle boya
+      const fi = this.faceAt(p.comp, this.hovEv!.x, this.hovEv!.y);
+      if (fi >= 0) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(md.vertices, 3));
+        geo.setAttribute("normal", new THREE.BufferAttribute(md.normals, 3));
+        const idx: number[] = [];
+        for (let k = 0; k < md.faceGroups.length; k += 3) if (md.faceGroups[k + 2] === fi) for (let j = md.faceGroups[k]; j < md.faceGroups[k] + md.faceGroups[k + 1]; j++) idx.push(md.triangles[j]);
+        geo.setIndex(idx);
+        o.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffb066, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })));
+        const ol = v.faceOutline(md, fi);
+        if (ol.length) o.add(v.fatLines(ol, COL, 2.5, false, false));
+      }
+    } else if (e.kind === "point") {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(Math.max(1, v.worldPerPixel() * 5), 12, 8), new THREE.MeshBasicMaterial({ color: COL, depthTest: false }));
+      m.position.set(...e.c);
+      m.renderOrder = 30;
+      o.add(m);
+    } else {
+      // kenar: kenar grubunun çizgileri
+      const ei = md.edges.findIndex((x) => (e.kind === "circle" ? x.c && Math.hypot(x.c[0] - e.c[0], x.c[1] - e.c[1], x.c[2] - e.c[2]) < 1e-6 && Math.abs((x.r ?? 0) - (e.r ?? 0)) < 1e-6 : Math.hypot(x.m[0] - e.c[0], x.m[1] - e.c[1], x.m[2] - e.c[2]) < 1e-6));
+      if (ei >= 0) {
+        const pos: number[] = [];
+        for (let k = 0; k < md.edgeGroups.length; k += 3) if (md.edgeGroups[k + 2] === ei) pos.push(...md.lines.slice(md.edgeGroups[k] * 3, (md.edgeGroups[k] + md.edgeGroups[k + 1]) * 3));
+        if (pos.length) o.add(v.fatLines(pos, COL, 4));
+      }
+    }
+    g.add(o);
+    this.hovObj = o;
+    v.requestRender();
+  }
+  /** bileşende imleç altındaki yüz indeksi */
+  private faceAt(comp: string, x: number, y: number): number {
+    const g = this.objs.get(comp), md = this.meshes.get(comp);
+    if (!g || !md) return -1;
+    const meshes: THREE.Mesh[] = [];
+    g.traverse((o) => (o as any).isMesh && o.userData.comp === comp && meshes.push(o as THREE.Mesh));
+    const hit = this.ctx.viewer.ray(x, y).intersectObjects(meshes, false)[0];
+    if (!hit || hit.faceIndex == null) return -1;
+    const tri = hit.faceIndex * 3;
+    for (let i = 0; i < md.faceGroups.length; i += 3) if (tri >= md.faceGroups[i] && tri < md.faceGroups[i] + md.faceGroups[i + 1]) return md.faceGroups[i + 2];
+    return -1;
+  }
+
   input: InputHandler = {
+    hover: (e) => {
+      // kare başına bir kez (büyük montajlarda akıcı kalsın)
+      this.hovEv = { x: e.clientX, y: e.clientY };
+      if (this.hovRaf) return;
+      this.hovRaf = requestAnimationFrame(() => {
+        this.hovRaf = 0;
+        if (!this.on || !this.hovEv || this.press) return;
+        this.setHover(this.pick(this.hovEv.x, this.hovEv.y));
+      });
+    },
     down: (e) => {
+      this.setHover(null);
       const p = this.pick(e.clientX, e.clientY);
       const c = p ? this.doc.comps.find((x) => x.id === p.comp) : null;
       let local: Vec3 | undefined, world: THREE.Vector3 | undefined;
@@ -496,20 +573,7 @@ export class AsmUI {
   // ---------- eşleşme ----------
   /** seçim türlerine göre geçerli standart eşleşmeler */
   static typesFor(ents: MateEnt[]): MateType[] {
-    if (ents.length < 2) return MATE_GROUPS.std;
-    const k = ents.map((e) => (e.kind === "cyl" || e.kind === "line" || e.kind === "circle" ? "ax" : e.kind)).sort().join("-");
-    const T: Record<string, MateType[]> = {
-      "plane-plane": ["coincident", "parallel", "perpendicular", "distance", "angle", "lock"],
-      "ax-ax": ["concentric", "coincident", "parallel", "perpendicular", "distance", "angle", "tangent", "lock"],
-      "ax-plane": ["tangent", "coincident", "parallel", "perpendicular", "distance", "lock"],
-      "plane-point": ["coincident", "distance", "lock"],
-      "ax-point": ["coincident", "distance", "lock"],
-      "point-point": ["coincident", "distance", "lock"],
-    };
-    let t = T[k] ?? MATE_GROUPS.std;
-    // teğet yalnız silindirle
-    if (!ents.some((e) => e.kind === "cyl")) t = t.filter((x) => x !== "tangent");
-    return t;
+    return mateTypesFor(ents);
   }
   /** eşleşme açılır araç çubuğu (Ctrl ile iki varlık seçilince) */
   showMateBar(x: number, y: number) {
@@ -535,7 +599,9 @@ export class AsmUI {
           const [a, b2] = r.split(/[;\s]+/).map((z) => parseFloat(z.replace(",", ".")) || 0);
           (v = a), (vmax = b2 ?? a);
         }
-        this.addMate({ id: uid(), type: t, a: ents[0], b: ents[1], v, vmax, flip: this.autoFlip(t, ents[0], ents[1]) || undefined });
+        const mm: Mate = { id: uid(), type: t, a: ents[0], b: ents[1], v, vmax, flip: this.autoFlip(t, ents[0], ents[1]) || undefined };
+        mm.flipD = this.autoSide(mm) || undefined;
+        this.addMate(mm);
         this.pre = [];
       });
       bar.appendChild(b);
@@ -548,8 +614,16 @@ export class AsmUI {
     document.body.appendChild(bar);
   }
   /** SolidWorks: hizalama, varlıkların şu anki yönüne en yakın olan seçilir (çakışık düzlemler varsayılan ters) */
+  /** mesafe / limit: mevcut tarafı koru → ölçüyü ters çevir gerekirse açılır */
+  private autoSide(m: Mate): boolean {
+    if (m.type !== "distance" && m.type !== "limit") return !!m.flipD;
+    const cm = new Map<string, AsmComp>(this.doc.comps.map((c) => [c.id, c]));
+    if (!cm.has(m.a.comp) || !cm.has(m.b.comp)) return !!m.flipD;
+    const r = mateRes({ ...m, type: "distance", v: 0, flipD: false }, cm).r;
+    return (r[r.length - 1] ?? 0) < -1e-9;
+  }
   private autoFlip(t: MateType, a: MateEnt, b: MateEnt) {
-    if (!ALIGNABLE.has(t)) return false;
+    if (!ALIGNABLE.has(t) || t === "tangent") return false;
     const ca = this.doc.comps.find((c) => c.id === a.comp), cb = this.doc.comps.find((c) => c.id === b.comp);
     if (!ca || !cb) return false;
     const d = wEnt(a, ca).N.dot(wEnt(b, cb).N);
@@ -730,7 +804,10 @@ export class AsmUI {
       b.dataset.mate = t;
       b.addEventListener("click", () => {
         d.type = t;
-        if (d.ents[0] && d.ents[1]) d.flip = this.autoFlip(t, d.ents[0], d.ents[1]);
+        if (d.ents[0] && d.ents[1]) {
+          d.flip = this.autoFlip(t, d.ents[0], d.ents[1]);
+          d.flipD = this.autoSide({ id: "x", type: t, a: d.ents[0], b: d.ents[1], flip: d.flip });
+        }
         this.renderMatePM();
         this.preview();
       });
