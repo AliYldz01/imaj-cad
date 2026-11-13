@@ -676,6 +676,8 @@ export interface PartDoc {
   configs?: { name: string; vars: Record<string, string>; off: string[] }[];
   /** görünüm: parça rengi ve yüz renkleri (yüz referansıyla; model değişince kalıcı referansla izlenir) */
   look?: { part?: string; faces?: { ref: FaceRef; color: string }[] };
+  /** teknik resim ayarları: sürüklenmiş ölçü ötelemeleri, detay görünüşü (ön görünüş koordinatlarında) */
+  drawing?: { off?: Record<string, [number, number]>; detail?: { x: number; y: number; r: number; k: number } | null };
   config?: string;
   /** özellik alanlarına bağlı denklemler: "özellikId.alan" -> ifade */
   eqs?: Record<string, string>;

@@ -23,7 +23,15 @@ export interface TechInfo {
   bom?: { no: number; name: string; qty: number }[];
   /** balon: bileşen sırası → BOM no */
   balloonOf?: number[];
+  /** sürüklenmiş ölçüler: anahtar → [dx, dy] kağıt mm */
+  off?: Record<string, [number, number]>;
+  /** detay görünüşü B: ön görünüş koordinatlarında merkez / yarıçap, büyütme k */
+  detail?: { x: number; y: number; r: number; k: number } | null;
+  /** sayfa no / toplam (antette) */
+  page?: [number, number];
 }
+/** ön görünüşün kağıttaki yerleşimi (önizlemede tıklayarak detay merkezi seçmek için) */
+export interface FrontPlace { ox: number; oy: number; s: number; min: Vec2; max: Vec2 }
 
 const SCALES = [10, 5, 2, 1, 1 / 2, 1 / 2.5, 1 / 5, 1 / 10, 1 / 20, 1 / 25, 1 / 50, 1 / 100, 1 / 200];
 export const scaleLabel = (s: number) => (s >= 1 ? `${Math.round(s * 10) / 10}:1` : `1:${Math.round((1 / s) * 10) / 10}`);
@@ -39,7 +47,14 @@ export function circlesOf(v: DrawView): { c: Vec2; r: number }[] {
   return out;
 }
 
-export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: number } {
+/** ölçüyü sürüklenebilir grup içine al */
+function dimG(svg: Svg, key: string, ax: "x" | "y" | "xy", draw: () => void) {
+  svg.parts.push(`<g data-dim="${key}" data-ax="${ax}" style="cursor:move">`);
+  draw();
+  svg.parts.push(`</g>`);
+}
+
+export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: number; front?: FrontPlace } {
   const W = info.paper === "A3" ? 420 : 297, H = info.paper === "A3" ? 297 : 210, M = 10;
   const TB = { w: 130, h: 36 };
   const tbx = W - M - TB.w, tby = H - M - TB.h;
@@ -98,10 +113,11 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
   // ölçüler
   if (info.dims && !asm && out.front && out.top) {
     const { X, Y, w, h, ox, oy } = out.front;
-    svg.dimH(ox, oy + h, ox + w, oy + h, oy + h + 8, f1(vw(F)));
-    svg.dimV(ox, oy, ox, oy + h, ox - 8, f1(vh(F)));
+    const O = (k: string) => info.off?.[k] ?? [0, 0];
+    dimG(svg, "fw", "y", () => svg.dimH(ox, oy + h, ox + w, oy + h, oy + h + 8 + O("fw")[1], f1(vw(F))));
+    dimG(svg, "fh", "x", () => svg.dimV(ox, oy, ox, oy + h, ox - 8 + O("fh")[0], f1(vh(F))));
     const tp = out.top;
-    svg.dimV(tp.ox + tp.w, tp.oy, tp.ox + tp.w, tp.oy + tp.h, tp.ox + tp.w + 8, f1(vh(T)));
+    dimG(svg, "th", "x", () => svg.dimV(tp.ox + tp.w, tp.oy, tp.ox + tp.w, tp.oy + tp.h, tp.ox + tp.w + 8 + O("th")[0], f1(vh(T))));
     // delikler: ön görünüşte çaplar ve konumlar (sol alt köşeden)
     const cs = circlesOf(F).filter((c) => c.r * 2 < Math.min(vw(F), vh(F)) * 0.98);
     const byR = new Map<string, number>();
@@ -115,16 +131,26 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
       if (!labeled.has(key)) {
         labeled.add(key);
         const n = byR.get(key)!;
-        const lx = cx + r * 0.71 + 6, ly = cy - r * 0.71 - 6;
-        svg.line(cx + r * 0.71, cy - r * 0.71, lx, ly, "d");
-        svg.line(lx, ly, lx + 12, ly, "d");
-        svg.arrow(cx + r * 0.71, cy - r * 0.71, -0.71, 0.71);
-        svg.text(lx + 1, ly - 0.8, `${n > 1 ? n + "× " : ""}Ø${key}`, 2.8, "start");
+        const [dx, dy] = O("d:" + key);
+        const lx = cx + r * 0.71 + 6 + dx, ly = cy - r * 0.71 - 6 + dy;
+        dimG(svg, "d:" + key, "xy", () => {
+          svg.line(cx + r * 0.71, cy - r * 0.71, lx, ly, "d");
+          svg.line(lx, ly, lx + 12, ly, "d");
+          const L = Math.hypot(lx - cx - r * 0.71, ly - cy + r * 0.71) || 1;
+          svg.arrow(cx + r * 0.71, cy - r * 0.71, -(lx - cx - r * 0.71) / L, -(ly - cy + r * 0.71) / L);
+          svg.text(lx + 1, ly - 0.8, `${n > 1 ? n + "× " : ""}Ø${key}`, 2.8, "start");
+        });
       }
       const kx = f1(c.c[0] - F.min[0]), ky = f1(c.c[1] - F.min[1]);
-      if (!usedX.has(kx) && usedX.size < 6) svg.dimH(ox, oy + h, cx, cy, oy + h + 14 + usedX.size * 5, kx), usedX.add(kx);
-      if (!usedY.has(ky) && usedY.size < 6) svg.dimV(ox, oy + h, cx, cy, ox - 14 - usedY.size * 5, ky), usedY.add(ky);
+      if (!usedX.has(kx) && usedX.size < 6) { const n2 = usedX.size; dimG(svg, "x:" + kx, "y", () => svg.dimH(ox, oy + h, cx, cy, oy + h + 14 + n2 * 5 + O("x:" + kx)[1], kx)); usedX.add(kx); }
+      if (!usedY.has(ky) && usedY.size < 6) { const n2 = usedY.size; dimG(svg, "y:" + ky, "x", () => svg.dimV(ox, oy + h, cx, cy, ox - 14 - n2 * 5 + O("y:" + ky)[0], ky)); usedY.add(ky); }
     });
+  }
+  // detay görünüşü işareti (ön görünüşte daire + B)
+  if (info.detail && !asm && out.front) {
+    const { X, Y } = out.front, D = info.detail;
+    svg.parts.push(`<circle class="g" cx="${X(D.x).toFixed(2)}" cy="${Y(D.y).toFixed(2)}" r="${(D.r * s).toFixed(2)}" fill="none" stroke-dasharray="3 1"/>`);
+    svg.text(X(D.x) + D.r * s * 0.75 + 1.5, Y(D.y) - D.r * s * 0.75 - 1, "B", 3.5, "start", 0, "tb");
   }
   // montaj: balonlar ve malzeme listesi
   if (asm && out.iso && d.centers && info.balloonOf && I) {
@@ -193,6 +219,11 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
   });
   svg.line(tbx + 28, tby, tbx + 28, tby + TB.h, "g");
   svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD", 2.4, "start", 0, "tk");
+  if (info.page) svg.text(tbx + TB.w - 2, tby - 2, `Sayfa ${info.page[0]} / ${info.page[1]}`, 2.6, "end", 0, "tk");
+  return { svg: wrapSvg(svg, W, H), scale: s, front: out.front ? { ox: out.front.ox, oy: out.front.oy, s, min: F.min, max: F.max } : undefined };
+}
+
+function wrapSvg(svg: Svg, W: number, H: number) {
   const style = `<style>
     .v{stroke:#000;stroke-width:0.45;fill:none;stroke-linecap:round}
     .h{stroke:#555;stroke-width:0.25;fill:none;stroke-dasharray:1.6 0.9}
@@ -203,7 +234,97 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
     text{font-family:Arial,'DejaVu Sans',sans-serif}
     .t{fill:#000}.tk{fill:#555}.tb{fill:#000;font-weight:bold}.vt{fill:#333;font-weight:bold}
   </style><defs><pattern id="hatch" width="2.5" height="2.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2.5" stroke="#000" stroke-width="0.25"/></pattern></defs>`;
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}">${style}<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${svg.parts.join("")}</svg>`, scale: s };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}">${style}<rect x="0" y="0" width="${W}" height="${H}" fill="#fff"/>${svg.parts.join("")}</svg>`;
+}
+
+/** antet (her sayfada) */
+function titleBlock(svg: Svg, info: TechInfo, W: number, H: number, s: number) {
+  const M = 10, TB = { w: 130, h: 36 };
+  const tbx = W - M - TB.w, tby = H - M - TB.h;
+  svg.parts.push(`<rect class="v" x="${M}" y="${M}" width="${W - 2 * M}" height="${H - 2 * M}" fill="none"/>`);
+  const rows: [string, string][] = [
+    ["Parça / montaj", info.title],
+    ["Malzeme", info.material || "-"],
+    ["Ölçek", scaleLabel(s) + "   ·   İlk açı (ISO E)"],
+    ["Çizen / Tarih", `${info.drawnBy || "-"}  ·  ${info.date}`],
+    ["Resim no", info.no || "-"],
+  ];
+  svg.parts.push(`<rect class="v" x="${tbx}" y="${tby}" width="${TB.w}" height="${TB.h}" fill="none"/>`);
+  const rh = TB.h / rows.length;
+  rows.forEach(([k, v], i) => {
+    const yy = tby + rh * (i + 1);
+    if (i < rows.length - 1) svg.line(tbx, yy, tbx + TB.w, yy, "g");
+    svg.text(tbx + 2, yy - rh / 2 + 1, k, 2.3, "start", 0, "tk");
+    svg.text(tbx + 30, yy - rh / 2 + 1.1, v, i === 0 ? 3.4 : 2.9, "start", 0, i === 0 ? "tb" : "t");
+  });
+  svg.line(tbx + 28, tby, tbx + 28, tby + TB.h, "g");
+  if (info.page) svg.text(tbx + TB.w - 2, tby - 2, `Sayfa ${info.page[0]} / ${info.page[1]}`, 2.6, "end", 0, "tk");
+  return { tbx, tby };
+}
+
+/**
+ * 2. sayfa: detay görünüşü B (ön görünüşün büyütülmüş, daireyle kırpılmış parçası) ve
+ * büyük izometrik — montajda patlatılmış izometrik + balonlar.
+ */
+export function techSheet2(d: TechData, info: TechInfo, sheet1Scale: number, exploded?: TechData | null): { svg: string; scale: number } {
+  const W = info.paper === "A3" ? 420 : 297, H = info.paper === "A3" ? 297 : 210, M = 10;
+  const svg = new Svg();
+  const tbh = 36, availH = H - 2 * M - tbh - 16;
+  const D = info.detail && !info.bom ? info.detail : null;
+  const isoV = exploded?.iso ?? d.iso;
+  const leftW = D ? (W - 2 * M) * 0.45 : 0;
+  // detay
+  if (D) {
+    const F = d.views[0];
+    const Rmax = Math.min(leftW / 2 - 8, availH / 2 - 8);
+    // k = 0: otomatik — daire sol yarıyı dolduracak en büyük standart ölçek
+    const sd = D.k > 0 ? sheet1Scale * D.k : SCALES.find((x) => x <= Rmax / D.r) ?? sheet1Scale * 2;
+    const R = Math.min(D.r * sd, Rmax);
+    const cx = M + 8 + R + 4, cy = M + 14 + R;
+    const ox = cx - (D.x - F.min[0]) * sd, oy = cy - (F.max[1] - D.y) * sd;
+    svg.parts.push(`<clipPath id="clipB"><circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${R.toFixed(2)}"/></clipPath><g clip-path="url(#clipB)">`);
+    placeView(svg, F, ox, oy, sd);
+    svg.parts.push(`</g><circle class="g" cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${R.toFixed(2)}" fill="none"/>`);
+    // detay içindeki delik çapları
+    for (const c of circlesOf(F)) {
+      const px = ox + (c.c[0] - F.min[0]) * sd, py = oy + (F.max[1] - c.c[1]) * sd;
+      if (Math.hypot(px - cx, py - cy) + c.r * sd > R) continue;
+      svg.line(px - c.r * sd - 1.5, py, px + c.r * sd + 1.5, py, "c");
+      svg.line(px, py - c.r * sd - 1.5, px, py + c.r * sd + 1.5, "c");
+      svg.text(px, py - c.r * sd - 2, `Ø${f1(c.r * 2)}`, 2.8, "middle");
+    }
+    svg.text(cx, cy + R + 7, `DETAY B  (${scaleLabel(sd)})`, 3.4, "middle", 0, "tb");
+  }
+  // izometrik / patlatılmış izometrik
+  let s = sheet1Scale;
+  if (isoV) {
+    const x0 = M + 8 + leftW, w0 = W - M - 8 - x0, h0 = availH;
+    s = SCALES.find((x) => x <= Math.min(w0 / vw(isoV), h0 / vh(isoV))) ?? SCALES[SCALES.length - 1];
+    const ox = x0 + (w0 - vw(isoV) * s) / 2, oy = M + 12 + (h0 - vh(isoV) * s) / 2;
+    const p = placeView(svg, isoV, ox, oy, s);
+    svg.text(ox + p.w / 2, oy + p.h + 8, exploded ? "PATLATILMIŞ GÖRÜNÜŞ" : "İZOMETRİK", 3, "middle", 0, "vt");
+    if (exploded && exploded.centers && info.balloonOf) {
+      const dir: Vec3 = [1 / Math.sqrt(3), 1 / Math.sqrt(3), 1 / Math.sqrt(3)], xa: Vec3 = [1 / Math.SQRT2, 0, -1 / Math.SQRT2];
+      const ya: Vec3 = [dir[1] * xa[2] - dir[2] * xa[1], dir[2] * xa[0] - dir[0] * xa[2], dir[0] * xa[1] - dir[1] * xa[0]];
+      const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      const done = new Set<number>();
+      exploded.centers.forEach((q, i) => {
+        const no = info.balloonOf![i];
+        if (!q || done.has(no)) return;
+        done.add(no);
+        const r: Vec3 = [q[0] - exploded.c[0], q[1] - exploded.c[1], q[2] - exploded.c[2]];
+        const px = p.X(dot(r, xa)), py = p.Y(dot(r, ya));
+        const bx = px + 14, by = py - 14;
+        svg.parts.push(`<circle cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="0.6" fill="#000"/>`);
+        svg.line(px, py, bx - 2.8, by + 2.8, "g");
+        svg.parts.push(`<circle class="v" cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="4" fill="#fff"/>`);
+        svg.text(bx, by + 1.2, String(no), 3.4, "middle", 0, "tb");
+      });
+    }
+  }
+  titleBlock(svg, info, W, H, s);
+  svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD", 2.4, "start", 0, "tk");
+  return { svg: wrapSvg(svg, W, H), scale: s };
 }
 
 /** sayfadaki çizgi ve daireleri DXF'e (R12) aktar: SVG'den okur (mm, y aşağı → yukarı) */

@@ -306,7 +306,20 @@ export class AsmUI {
     if (!r.draw) return this.ctx.toast("Montaj resmi: " + (r.error ?? "çizilemedi"), true);
     const b = bom({ ...this.doc, comps: vis });
     const balloonOf = vis.map((c) => b.find((x) => x.name === c.part.name)!.no);
-    (window as any).__openTechDrawing?.({ data: r.draw, bom: b, balloonOf, name: this.doc.name });
+    // patlatma adımları varsa ikinci sayfa için patlatılmış konumlarla ayrıca çiz
+    let exploded: any = null;
+    if ((this.doc.steps ?? []).length) {
+      const ex = vis.map((c) => {
+        const o = new THREE.Vector3();
+        for (const s of this.doc.steps ?? []) if (s.comps.includes(c.id)) o.addScaledVector(V3(s.dir).normalize(), s.d);
+        return { features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: [c.p[0] + o.x, c.p[1] + o.y, c.p[2] + o.z] as Vec3, name: c.name };
+      });
+      const r2 = await this.ctx.kernel.asm("draw", ex);
+      exploded = r2.draw ?? null;
+      this.meshes.clear();
+      await this.refresh();
+    }
+    (window as any).__openTechDrawing?.({ data: r.draw, bom: b, balloonOf, name: this.doc.name, exploded });
   }
   /** SolidWorks Delik Hizalama: farklı bileşenlerdeki paralel, örtüşen ama eş eksenli olmayan delikler */
   holeAlignment(tol = 0.01) {

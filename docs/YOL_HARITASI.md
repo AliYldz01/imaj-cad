@@ -610,3 +610,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.52 | Yüzey loft, sınır doldurma yüzeyi; kalınlaştırma yön düzeltmesi | ✅ |
 
 | v0.53 | Yüzey kırp (düzlem / yüzey), yüzey dik (kapalıysa katı) | ✅ |
+
+| v0.54 | Teknik resim: ölçü sürükleme, detay görünüşü, 2. sayfa, montajda patlatılmış görünüş | ✅ |

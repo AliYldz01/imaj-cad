@@ -22,7 +22,7 @@ import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, sampleLoop, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
-import { techSheet, sheetDxf, type TechInfo } from "./drawing/techdraw";
+import { techSheet, techSheet2, sheetDxf, circlesOf, type TechInfo, type FrontPlace } from "./drawing/techdraw";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, MECH, beamCalc, type BeamSupport, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
@@ -304,7 +304,7 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
 
 // ---------- Teknik resim (SolidWorks Drawing) ----------
 /** parça (ya da montaj: asm verilirse) için teknik resim penceresi: görünüş seçimi, ölçek, kağıt, antet; PDF / SVG / DXF */
-async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string }) {
+async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string; exploded?: any }) {
   const st = JSON.parse(localStorage.getItem("imajcad.techdraw") ?? "{}");
   const o = { iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: (doc as any).material ?? st.material ?? "", drawnBy: st.drawnBy ?? "", no: "" };
   let data: any = asmIn?.data ?? null;
@@ -322,14 +322,83 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
   dlg.innerHTML = `<h2>Teknik resim — ${asmIn ? asmIn.name : doc.name}</h2>`;
   const opts = h("div", "pm-row td-opts");
   const fr = h("iframe", "draw-frame") as HTMLIFrameElement;
-  let cur = { svg: "", scale: 1 };
+  let cur: { svg: string; scale: number; front?: FrontPlace } = { svg: "", scale: 1 };
+  let sheets: string[] = [];
+  // sürüklenmiş ölçüler ve detay görünüşü parçayla saklanır (montajda yalnız bu pencere için)
+  const dr: { off: Record<string, [number, number]>; detail: { x: number; y: number; r: number; k: number } | null } = asmIn ? { off: {}, detail: null } : { off: { ...(doc.drawing?.off ?? {}) }, detail: doc.drawing?.detail ?? null };
+  let page2 = !!st.page2 || !!asmIn?.exploded;
+  const keepDr = () => {
+    if (asmIn) return;
+    doc.drawing = { off: dr.off, detail: dr.detail };
+    saveDoc();
+  };
   const W = () => (o.paper === "A3" ? 420 : 297), H = () => (o.paper === "A3" ? 297 : 210);
-  const info = (): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf });
+  const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg });
   const draw = () => {
-    cur = techSheet(data, info());
-    fr.srcdoc = sheetsHtml([cur.svg], doc.name).replace("size:A4 landscape", `size:${o.paper} landscape`).replace(/297mm;height:210mm/, `${W()}mm;height:${H()}mm`);
-    localStorage.setItem("imajcad.techdraw", JSON.stringify({ iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy }));
+    const n = page2 ? 2 : 1;
+    cur = techSheet(data, info(n > 1 ? [1, n] : undefined));
+    sheets = [cur.svg];
+    if (page2) sheets.push(techSheet2(data, info([2, n]), cur.scale, asmIn?.exploded ?? null).svg);
+    const y0 = fr.contentWindow?.scrollY ?? 0;
+    fr.srcdoc = sheetsHtml(sheets, doc.name).replace("size:A4 landscape", `size:${o.paper} landscape`).replace(/297mm;height:210mm/g, `${W()}mm;height:${H()}mm`);
+    fr.onload = () => (fr.contentWindow?.scrollTo(0, y0), wire());
+    localStorage.setItem("imajcad.techdraw", JSON.stringify({ iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy, page2 }));
     (dlg as any)._svg = cur.svg;
+    (dlg as any)._sheets = sheets;
+    (dlg as any)._dr = dr;
+    (dlg as any)._front = cur.front;
+  };
+  /** önizlemede: ölçüleri sürükle (bırakınca konum kaydedilir), detay açıkken ön görünüşe tıkla → detay merkezi */
+  const wire = () => {
+    const d2 = fr.contentDocument;
+    const sv = d2?.querySelector(".page svg") as SVGSVGElement | null;
+    if (!d2 || !sv) return;
+    const toSvg = (e: PointerEvent) => {
+      const m = sv.getScreenCTM();
+      if (!m) return [0, 0];
+      const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+      return [p.x, p.y];
+    };
+    let drag: { g: SVGGElement; key: string; ax: string; p0: number[]; moved: boolean } | null = null;
+    sv.addEventListener("pointerdown", (e) => {
+      const g = (e.target as Element).closest?.("[data-dim]") as SVGGElement | null;
+      if (!g) return;
+      e.preventDefault();
+      sv.setPointerCapture(e.pointerId);
+      drag = { g, key: g.dataset.dim!, ax: g.dataset.ax!, p0: toSvg(e), moved: false };
+    });
+    sv.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const p = toSvg(e);
+      const dx = drag.ax === "y" ? 0 : p[0] - drag.p0[0], dy = drag.ax === "x" ? 0 : p[1] - drag.p0[1];
+      if (Math.hypot(dx, dy) > 0.3) drag.moved = true;
+      drag.g.setAttribute("transform", `translate(${dx} ${dy})`);
+    });
+    sv.addEventListener("pointerup", (e) => {
+      if (drag) {
+        const p = toSvg(e), k = drag.key, ax = drag.ax;
+        const dx = ax === "y" ? 0 : p[0] - drag.p0[0], dy = ax === "x" ? 0 : p[1] - drag.p0[1];
+        const moved = drag.moved;
+        drag = null;
+        if (moved) {
+          const o0 = dr.off[k] ?? [0, 0];
+          dr.off[k] = [Math.round((o0[0] + dx) * 10) / 10, Math.round((o0[1] + dy) * 10) / 10];
+          keepDr();
+          draw();
+          return;
+        }
+      }
+      // detay merkezi
+      if (!dr.detail || !cur.front) return;
+      const [x, y] = toSvg(e), F = cur.front;
+      const vx = F.min[0] + (x - F.ox) / F.s, vy = F.max[1] - (y - F.oy) / F.s;
+      if (vx < F.min[0] - 1 || vx > F.max[0] + 1 || vy < F.min[1] - 1 || vy > F.max[1] + 1) return;
+      // delik merkezine yakınsa merkeze yakala
+      const near = circlesOf(data.views[0]).find((c) => Math.hypot(c.c[0] - vx, c.c[1] - vy) < Math.max(2, 4 / F.s));
+      dr.detail = { ...dr.detail, x: near ? near.c[0] : Math.round(vx * 10) / 10, y: near ? near.c[1] : Math.round(vy * 10) / 10 };
+      keepDr();
+      draw();
+    });
   };
   const chk = (label: string, key: "iso" | "section" | "dims", reload: boolean) => {
     const l = h("label", "check");
@@ -363,6 +432,34 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     return l;
   };
   if (!asmIn) opts.append(chk("İzometrik", "iso", true), chk("Kesit A-A", "section", true), chk("Ölçüler", "dims", false));
+  const cbox = (label: string, v: boolean, on: (x: boolean) => void) => {
+    const l = h("label", "check");
+    const c = h("input") as HTMLInputElement;
+    c.type = "checkbox";
+    c.checked = v;
+    c.addEventListener("change", () => (on(c.checked), draw()));
+    l.append(c, " " + label);
+    return l;
+  };
+  const p2box = cbox(asmIn ? "2. sayfa (patlatılmış)" : "2. sayfa (detay / izometrik)", page2, (x) => (page2 = x));
+  opts.append(p2box);
+  if (!asmIn) {
+    opts.append(
+      cbox("Detay B", !!dr.detail, (x) => {
+        if (x && data?.views?.[0]) {
+          const F = data.views[0], c0 = circlesOf(F)[0];
+          dr.detail = { x: c0 ? c0.c[0] : F.min[0], y: c0 ? c0.c[1] : F.min[1], r: c0 ? Math.max(3, c0.r * 1.6) : Math.max(3, Math.min(F.max[0] - F.min[0], F.max[1] - F.min[1]) / 5), k: 0 };
+          page2 = true;
+          toast("Detay merkezi için önizlemede ön görünüşe dokunun");
+        } else dr.detail = null;
+        keepDr();
+        p2box.querySelector("input")!.checked = page2;
+      }),
+      sel("Detay ölçeği", [["0", "Otomatik"], ["2", "×2"], ["3", "×3"], ["4", "×4"], ["5", "×5"]], String(dr.detail?.k ?? 0), (x) => dr.detail && ((dr.detail.k = +x), keepDr())),
+      txt("Detay yarıçapı", String(dr.detail?.r ?? ""), (x) => dr.detail && +x > 0 && ((dr.detail.r = +x), keepDr())),
+      button("Ölçü konumlarını sıfırla", () => ((dr.off = {}), keepDr(), draw()), "btn"),
+    );
+  }
   opts.append(
     sel("Kağıt", [["A4", "A4 yatay"], ["A3", "A3 yatay"]], o.paper, (x) => (o.paper = x as any)),
     sel("Ölçek", [["0", "Otomatik"], ["5", "5:1"], ["2", "2:1"], ["1", "1:1"], ["0.5", "1:2"], ["0.2", "1:5"], ["0.1", "1:10"], ["0.05", "1:20"]], "0", (x) => (o.scale = parseFloat(x))),
@@ -376,8 +473,8 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
   const base = (asmIn ? asmIn.name : doc.name).replace(/[\\/:*?"<>|]/g, "_");
   left.append(
     button("Yazdır / PDF", () => fr.contentWindow?.print(), "btn primary"),
-    button("SVG indir", () => download(new Blob([cur.svg], { type: "image/svg+xml" }), `${base}_resim.svg`), "btn"),
-    button("DXF indir", () => download(new Blob([sheetDxf(cur.svg, H())], { type: "application/dxf" }), `${base}_resim.dxf`), "btn"),
+    button("SVG indir", () => sheets.forEach((s, i) => download(new Blob([s], { type: "image/svg+xml" }), `${base}_resim${i ? "_s" + (i + 1) : ""}.svg`)), "btn"),
+    button("DXF indir", () => sheets.forEach((s, i) => download(new Blob([sheetDxf(s, H())], { type: "application/dxf" }), `${base}_resim${i ? "_s" + (i + 1) : ""}.dxf`)), "btn"),
   );
   const form = h("form");
   form.method = "dialog";
