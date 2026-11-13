@@ -9,6 +9,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 ## v0.12 — Arayüz düzeni ve eskiz referansları
 
 - Gruplu komut çubuğu, tam ekran, imleç geri bildirimi, model yüzü kenarlarına yakalama ve ölçü, orta nokta / merkez uyandırma
+- v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)
 - v0.33.1: Montaj çözücüsü gerçek ölçekte ve döndürülmüş parçalarda güvenilir (ölçekli artıklar, öteleme öncelikli sönüm, dönme adım sınırı; 135 eşleşme kombinasyonu × rastgele başlangıç hatasız); eş merkezli/paralel hizalama, dairesel kenar–yüz çakışık, mesafede taraf korunur, içten teğet; ön seçim vurgusu (yüz turuncu + sınır, kenar, köşe) montajda ve parçada
 - v0.33: Montaj ekleri: montaj ve bileşen ana düzlemleri/orijin ile eşleşme, alt montaj (rijit/esnek, oluştur, ekle, dağıt, kaydet), bileşen değiştir, eşleşmeleriyle kopyala, bağlam içinde parça düzenleme, bağlantı elemanları (cıvata/somun/pul), profil merkezi ve üniversal mafsal eşleşmeleri, MateXpert, boşluk doğrulama, montaj kesiti, hareket etüdü (döner/doğrusal motor)
 - v0.32.1: 3B eskiz Akıllı Ölçü: ölçü çizgileri, uzatma çizgileri, oklar, açı yayı, yarıçap/çap kılavuzu; imleci izleyen önizleme ve yerleştirme; nokta–çizgi, paralel çizgi, nokta–yay merkezi mesafesi, çap (D); açı yerleştirildiği bölgeye göre; fazlalık/çelişen ölçü → sürülen (referans) ölçü; ölçüyü tek tık seç / çift tık düzenle / sürükle / Delete

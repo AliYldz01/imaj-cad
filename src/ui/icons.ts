@@ -20,6 +20,7 @@ export const ICONS: Record<string, string> = {
   mirror: s("M12 2v20 M10 6L4 18h6z M14 6l6 12h-6z"),
   plane: s("M3 16l6-10h12l-6 10z"),
   dim: s("M4 8v8 M20 8v8 M4 12h16 M7 9l-3 3 3 3 M17 9l3 3-3 3"),
+  free: s("M3 17c2-6 5-9 7-6s1 7 4 6 4-8 7-9 M15 20h6 M18 17v6"),
   line: s("M4 20L20 4 M4 20m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0 M20 4m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0"),
   centerline: s("M3 21l3-3 M8 16l3-3 M13 11l3-3 M18 6l3-3"),
   rect: s("M4 6h16v12H4z"),

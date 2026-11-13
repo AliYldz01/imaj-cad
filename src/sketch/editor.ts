@@ -19,8 +19,10 @@ import {
   nearestOnSeg, niceStep, norm2, normAng, perp, pointInPoly, sub2, TAU,
 } from "./geom";
 
+import { recognize, hvOf, SHAPE_NAMES, type Shape } from "./freehand";
+
 export type SkTool =
-  | "select" | "line" | "centerline" | "rect" | "crect" | "circle" | "carc" | "tarc" | "arc3"
+  | "select" | "free" | "line" | "centerline" | "rect" | "crect" | "circle" | "carc" | "tarc" | "arc3"
   | "slot" | "polygon" | "point" | "fillet" | "trim" | "dim"
   | "rect3" | "para" | "circle3" | "schamfer" | "extend" | "convert"
   | "offset" | "mirror" | "spat" | "scpat" | "move"
@@ -32,6 +34,7 @@ export const OP_TOOLS: SkTool[] = ["offset", "mirror", "spat", "scpat", "move"];
 
 export const TOOL_NAMES: Record<SkTool, string> = {
   select: "Seç",
+  free: "Serbest Çizim",
   line: "Çizgi",
   centerline: "Merkez Çizgisi",
   rect: "Köşe Dikdörtgen",
@@ -87,6 +90,7 @@ const HINTS: Partial<Record<SkTool, string>> = {
   ordinate: "Önce sıfır noktasına (ör. orijin), sonra ölçülecek noktalara dokunun.",
   picture: "Resmi gerçek ölçüye getirmek için 'İki noktayla ölçekle'ye basın, resimde ölçüsünü bildiğiniz iki noktaya dokunun ve gerçek mesafeyi girin.",
   select: "Öğelere dokunarak seçin, sürükleyerek şekli değiştirin. Ölçüye dokunarak değerini değiştirin.",
+  free: "Basılı tutup şekli kabaca çizin, bırakmadan bir an bekleyin: çizgi / yay / daire / çokgene dönüşür. Bırakınca eklenir. Bekleme yapmadan bırakırsanız da tanınır.",
   line: "Noktalara tıklayarak zincir çizin. İlk noktaya dönünce kapanır. Bitirmek için iki kez dokunun veya Bitir'e basın.",
   centerline: "Merkez çizgisi (yapı geometrisi): döndürme ekseni ve simetri için kullanılır.",
   rect: "İlk köşeye, sonra karşı köşeye dokunun.",
@@ -1050,17 +1054,19 @@ export class SketchEditor implements InputHandler {
     this.noInfer = e.ctrlKey && this.tool !== "select";
     this.lift = this.liftMode(e);
     this.trimmedIds.clear();
+    if (this.tool === "free") return this.freeStart(p, e);
     if (this.lift) this.preview(p, e);
   };
   /** kaldırınca yerleştir: kalem/parmakla çizim araçlarında */
   private lift = false;
   private trimmedIds = new Set<string>();
   private liftMode(e: { pointerType: string }) {
-    return e.pointerType !== "mouse" && prefs.placeOnLift && this.tool !== "select" && this.tool !== "dim";
+    return e.pointerType !== "mouse" && prefs.placeOnLift && this.tool !== "select" && this.tool !== "dim" && this.tool !== "free";
   }
   /** basış iptal (ikinci parmak / uzun basma) */
   cancel = () => {
     this.press = null;
+    this.freeStop();
     this.lift = false;
     if (this.boxSel) {
       this.boxSel.el.remove();
@@ -1072,6 +1078,7 @@ export class SketchEditor implements InputHandler {
   move = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p || !this.press) return;
+    if (this.tool === "free") return this.freeMove(p, e);
     if (this.lift) {
       this.press.moved = true;
       return this.preview(p, e);
@@ -1105,6 +1112,7 @@ export class SketchEditor implements InputHandler {
     const d = this.press;
     this.press = null;
     if (this.boxSel) return this.endBox();
+    if (this.tool === "free") return this.freeEnd(p);
     if (!p || !d) return;
     if (this.lift) {
       this.lift = false;
@@ -1125,10 +1133,131 @@ export class SketchEditor implements InputHandler {
   tap = (e: PointerEvent) => {
     const p = this.local(e);
     if (!p) return;
+    if (this.tool === "free") return;
     this.tolPx = 20 * prefs.snapSize;
     this.preview(p, e);
     this.click(p, e);
   };
+
+  // ---------------- Serbest çizim ----------------
+  /** elle çizilen iz (eskiz koordinatı), tanınan şekil, bekleme sayacı */
+  free: { pts: Vec2[]; shape: Shape | null; timer: number; sx: number; sy: number; snapA?: string | null } | null = null;
+  private freeStart(p: Vec2, e: PointerEvent) {
+    this.freeStop();
+    const h = this.hitTest(p, this.tolPx, { ents: false });
+    const a = h && h.kind === "pt" ? h.id : null;
+    this.free = { pts: [p], shape: null, timer: 0, sx: e.clientX, sy: e.clientY, snapA: a };
+    this.freeArm();
+    this.render();
+  }
+  private freeArm() {
+    const f = this.free;
+    if (!f) return;
+    clearTimeout(f.timer);
+    f.timer = window.setTimeout(() => this.freeRecognize(true), 550);
+  }
+  private freeMove(p: Vec2, e: PointerEvent) {
+    const f = this.free;
+    if (!f) return;
+    const moved = Math.hypot(e.clientX - f.sx, e.clientY - f.sy);
+    if (f.shape) {
+      // tanındıktan sonra belirgin hareket = çizime devam
+      if (moved < 10) return;
+      f.shape = null;
+    }
+    if (moved < 2) return;
+    f.sx = e.clientX;
+    f.sy = e.clientY;
+    f.pts.push(p);
+    this.freeArm();
+    this.render();
+  }
+  /** iz tanınır ve önizlenir (bekleme sonunda ya da bırakınca) */
+  freeRecognize(byHold = false) {
+    const f = this.free;
+    if (!f || f.pts.length < 2) return null;
+    f.shape = recognize(f.pts, this.wpp());
+    if (f.shape && byHold) {
+      navigator.vibrate?.(12);
+      this.host.toast("Tanındı: " + SHAPE_NAMES[f.shape.kind] + " — bırakınca eklenir");
+    }
+    this.render();
+    return f.shape;
+  }
+  private freeStop() {
+    if (this.free) clearTimeout(this.free.timer);
+    this.free = null;
+  }
+  private freeEnd(_p: Vec2 | null) {
+    const f = this.free;
+    if (!f) return;
+    clearTimeout(f.timer);
+    const sh = f.shape ?? recognize(f.pts, this.wpp());
+    const snapA = f.snapA;
+    this.free = null;
+    if (!sh) return this.render();
+    this.addShape(sh, snapA);
+  }
+  /** tanınan şekli eskize ekle: uçlar mevcut noktalara yakalanır, yatay/dikey/dik ilişkiler verilir */
+  addShape(sh: Shape, snapA: string | null = null) {
+    const sk = this.data;
+    // uç noktalar mevcut noktalara (orijin dahil) yakalanır; aynı noktaya iki kez yakalanma olmaz
+    const used = new Set<string>();
+    const ptAt = (q: Vec2, _pref?: string | null): string => {
+      const h = this.hitTest(q, this.tolPx, { ents: false, exclude: used });
+      if (h && h.kind === "pt") return used.add(h.id), h.id;
+      const id = addPt(sk, q);
+      used.add(id);
+      return id;
+    };
+    const name = SHAPE_NAMES[sh.kind];
+    this.op(() => {
+      if (sh.kind === "circle") {
+        addCircle(sk, addPt(sk, sh.c), sh.r);
+      } else if (sh.kind === "arc") {
+        const g = circle3(sh.s, sh.m, sh.e);
+        if (!g) return void addLine(sk, ptAt(sh.s, snapA), ptAt(sh.e));
+        // yay CCW: s→e; orta nokta yayın üzerinde olmalı
+        const cr = (sh.m[0] - sh.s[0]) * (sh.e[1] - sh.s[1]) - (sh.m[1] - sh.s[1]) * (sh.e[0] - sh.s[0]);
+        const [s0, e0] = cr > 0 ? [sh.s, sh.e] : [sh.e, sh.s];
+        const i0 = ptAt(s0, cr > 0 ? snapA : null), i1 = ptAt(e0, cr > 0 ? null : snapA);
+        // uç noktaları mevcut noktaya yakalandıysa yarıçap korunur, merkez uydurulur
+        addArc(sk, addPt(sk, g.c), i0, i1);
+      } else if (sh.kind === "line" || sh.kind === "poly") {
+        const pts = sh.kind === "line" ? [sh.a, sh.b] : sh.pts;
+        const closed = sh.kind === "poly" && sh.closed;
+        const ids = pts.map((q, i) => ptAt(q, i === 0 ? snapA : null));
+        const n = ids.length;
+        const lines: { id: string; a: Vec2; b: Vec2 }[] = [];
+        for (let i = 0; i < (closed ? n : n - 1); i++) {
+          const a = ids[i], b = ids[(i + 1) % n];
+          if (a === b) continue;
+          const l: any = { id: nid(sk, "l"), t: "line", p1: a, p2: b };
+          sk.ents.push(l);
+          lines.push({ id: l.id, a: pts[i], b: pts[(i + 1) % n] });
+        }
+        const dir: ("h" | "v" | null)[] = lines.map((l) => hvOf(l.a, l.b, 8));
+        lines.forEach((l, i) => {
+          if (dir[i] === "h") addRel(sk, "horizontal", [l.id]);
+          else if (dir[i] === "v") addRel(sk, "vertical", [l.id]);
+        });
+        // eksene hizalı olmayan ardışık çizgiler ~90° ise dik
+        for (let i = 0; i < lines.length; i++) {
+          const j = i + 1 < lines.length ? i + 1 : closed ? 0 : -1;
+          if (j < 0 || j === i || (dir[i] && dir[j])) continue;
+          const L1 = lines[i], L2 = lines[j];
+          const a1 = Math.atan2(L1.b[1] - L1.a[1], L1.b[0] - L1.a[0]), a2 = Math.atan2(L2.b[1] - L2.a[1], L2.b[0] - L2.a[0]);
+          let da = Math.abs(a2 - a1) % Math.PI;
+          if (Math.abs(da - Math.PI / 2) < (8 * Math.PI) / 180) addRel(sk, "perpendicular", [L1.id, L2.id]);
+        }
+      } else {
+        const ids = sh.pts.map((q, i) => ptAt(q, i === 0 ? snapA : null));
+        const cl = sh.pts.length > 3 && Math.hypot(sh.pts[0][0] - sh.pts[sh.pts.length - 1][0], sh.pts[0][1] - sh.pts[sh.pts.length - 1][1]) < 1e-9;
+        if (cl) ids[ids.length - 1] = ids[0];
+        sk.ents.push({ id: nid(sk, "s"), t: "spline", pts: ids, eq: true } as any);
+      }
+    }, name + " eklenemedi");
+  }
 
   private dragCreates() {
     return ["line", "centerline", "rect", "crect", "circle", "polygon"].includes(this.tool) && !this.chainActive();
@@ -3353,6 +3482,7 @@ export class SketchEditor implements InputHandler {
     const gi = this.st.inf as Inference | undefined;
     if (gi?.guides && this.tool !== "select") for (const g of gi.guides) this.addLines([g.a, g.b], g.rel ? 0xf59f00 : 0x339af0, 1.2, true);
     this.renderPreview();
+    this.renderFree();
     this.renderOpPreview();
     this.renderDims();
     if (this.opts.showRels) this.renderRels();
@@ -3360,6 +3490,25 @@ export class SketchEditor implements InputHandler {
     this.placeLabels();
   }
 
+  private renderFree() {
+    const f = this.free;
+    if (!f) return;
+    if (!f.shape) return void (f.pts.length > 1 && this.addLines(f.pts, C.prev, 2));
+    this.addLines(f.pts, 0xbbbbbb, 1, true);
+    const sh = f.shape, col = 0x1e90ff;
+    if (sh.kind === "line") this.addLines([sh.a, sh.b], col, 3);
+    else if (sh.kind === "poly") this.addLines(sh.closed ? [...sh.pts, sh.pts[0]] : sh.pts, col, 3);
+    else if (sh.kind === "circle") this.addLines(Array.from({ length: 65 }, (_, i) => [sh.c[0] + sh.r * Math.cos((i / 64) * 2 * Math.PI), sh.c[1] + sh.r * Math.sin((i / 64) * 2 * Math.PI)] as Vec2), col, 3);
+    else if (sh.kind === "arc") {
+      const g = circle3(sh.s, sh.m, sh.e);
+      if (!g) return this.addLines([sh.s, sh.e], col, 3);
+      const a0 = Math.atan2(sh.s[1] - g.c[1], sh.s[0] - g.c[0]), am = Math.atan2(sh.m[1] - g.c[1], sh.m[0] - g.c[0]), a1 = Math.atan2(sh.e[1] - g.c[1], sh.e[0] - g.c[0]);
+      const norm = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      let sw = norm(a1 - a0);
+      if (norm(am - a0) > sw) sw = sw - 2 * Math.PI;
+      this.addLines(Array.from({ length: 49 }, (_, i) => [g.c[0] + g.r * Math.cos(a0 + (sw * i) / 48), g.c[1] + g.r * Math.sin(a0 + (sw * i) / 48)] as Vec2), col, 3);
+    } else this.addLines(sh.pts, col, 3);
+  }
   private renderPreview() {
     const st = this.st;
     const cur: Vec2 | null = st.inf?.p ?? this.cursor;

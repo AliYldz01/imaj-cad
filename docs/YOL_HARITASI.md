@@ -484,3 +484,13 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Eşleşme matrisi testi: 27 varlık çifti × tüm türler × rastgele başlangıç, serbestlik SolidWorks ile aynı | ✅ |
 | Eş merkezli / paralel hizalı–ters hizalı, dairesel kenar–düz yüz çakışık, nokta–dairesel kenar çakışık, mesafede mevcut taraf, içten teğet | ✅ |
 | Ön seçim vurgusu: montajda yüz (turuncu + sınır), kenar, köşe; parça modunda turuncu + sınır | ✅ |
+
+## v0.34 — Serbest Çizim (elle çizimi şekle dönüştürme)
+| Özellik | Durum |
+|---|---|
+| Eskiz şeridinde Çizgi'nin solunda "Serbest Çizim" aracı (fare, kalem, parmak) | ✅ |
+| Basılı tutup kaba çizim, bırakmadan beklemeyle (0,55 sn) tanıma + mavi önizleme; çizmeye devam edince tanıma iptal | ✅ |
+| Tanınan şekiller: çizgi, yay, daire, açık/kapalı çokgen (kare, üçgen…), serbest eğri (spline) | ✅ |
+| Uçlar birleşir (kapalı şekil), uç noktalar mevcut noktalara / orijine yakalanır | ✅ |
+| Yatay / dikey (±8°) ve eğik dik köşelerde dik ilişkisi; tek adımda geri al | ✅ |
+| Elips / dikdörtgen yuvarlatma tanıma | ⬜ |

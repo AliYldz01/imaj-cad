@@ -4196,6 +4196,7 @@ function commands(): Cmd[] {
     skTool("select", "select"),
     skTool("dim", "dim"),
     "sep",
+    skTool("free", "free", "Serbest Çizim"),
     skTool("line", "line"),
     skTool("centerline", "centerline", "Merkez Çiz."),
     skTool("rect", "rect", "Dikdörtgen"),
