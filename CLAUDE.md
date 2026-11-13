@@ -171,6 +171,8 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 5. Sıradaki işler (öncelik sırasıyla)
 
+**YENİ: Tam denetim raporu `docs/DENETIM_v0.82.md`** (106 bulgu: 1 Kritik, 7 Yüksek, 32 Orta, 66 Düşük; §3'te düzeltme paketleri — kullanıcı onayıyla Paket 1'den başlanacak).
+
 **ANA LİSTE: `docs/YAPILACAKLAR.md`** — kullanıcı tüm listenin sırayla uygulanmasını istedi (2026-11-13). Her grup bitince yayınla ve orada ✅ işaretle; yeni sohbette ilk ⬜ maddeden devam et.
 
 0a. ~~Montaj denetimi~~ ✅ (v0.57–v0.58) ve ~~`docs/arsiv/MONTAJ_RAPORU.md` ⬜ maddeleri~~ ✅ v0.59 — montaj raporunda açık madde kalmadı.
