@@ -21,6 +21,8 @@ type Shape = any;
 let bodies: Shape[] = [];
 /** kaynak dikişleri: görüntü ve dışa aktarmaya katılır, gövde işlemlerine katılmaz */
 let welds: Shape[] = [];
+/** yüzey gövdeleri (özellik kimliğiyle) */
+let surfs: { id: string; s: Shape }[] = [];
 let weldInfo: WeldItem[] = [];
 let frames: Record<string, Frame> = {};
 let fontReady: Promise<void> | null = null;
@@ -74,12 +76,12 @@ function makePlane(f: Frame, shift = 0) {
 
 /** Tüm gövdeler tek şekil olarak */
 function all(): Shape | null {
-  const list = [...bodies, ...welds];
+  const list = [...bodies, ...welds, ...surfs.map((x) => x.s)];
   if (!list.length) return null;
   // makeCompound girdileri siler: kopyalarla çalış
   return list.length === 1 ? list[0] : makeCompound(list.map((b) => b.clone()));
 }
-const freeAll = (a: Shape) => { if (bodies.length + welds.length > 1) try { a.delete(); } catch {} };
+const freeAll = (a: Shape) => { if (bodies.length + welds.length + surfs.length > 1) try { a.delete(); } catch {} };
 const allFaces = () => bodies.flatMap((b) => b.faces as any[]);
 const allEdges = () => bodies.flatMap((b) => b.edges as any[]);
 
@@ -3086,6 +3088,48 @@ async function buildFeature(f: KFeature) {
       }
       return;
     }
+    case "surface": {
+      const frame = resolvePlane(f.pl);
+      const oc = getOC() as any;
+      const off = f.mid ? -f.d / 2 : 0;
+      let res: Shape;
+      if (f.mode === "planar") res = (profile(f.loops).sketchOnPlane(makePlane(frame)) as any).face();
+      else {
+        const wires: any[] = f.path ? [pathWire(f.path.segs, f.path.closed, frame)] : f.loops.map((l) => (loopDrawing(l).sketchOnPlane(makePlane(frame, off)) as any).wire);
+        const shapes: Shape[] = wires.map((w) => {
+          const ww = f.path && off ? w.translate(vmul(frame.n, off)) : w;
+          const pr = new oc.BRepPrimAPI_MakePrism(ww.wrapped, new oc.gp_Vec(frame.n[0] * f.d, frame.n[1] * f.d, frame.n[2] * f.d), true, true);
+          return cast(pr.Shape());
+        });
+        res = shapes.length === 1 ? shapes[0] : (makeCompound(shapes) as any);
+      }
+      surfs.push({ id: f.id, s: res });
+      return;
+    }
+    case "thicken":
+    case "surfcut": {
+      const i = surfs.findIndex((x) => x.id === f.surf);
+      if (i < 0) throw new Error("Yüzey bulunamadı (önce yüzey özelliği)");
+      const oc = getOC() as any;
+      const thick = (shape: Shape, t: number) => {
+        const mk = new oc.BRepOffsetAPI_MakeThickSolid();
+        mk.MakeThickSolidBySimple(shape.wrapped, t);
+        mk.Build(new oc.Message_ProgressRange());
+        if (!mk.IsDone()) throw new Error("Kalınlaştırma başarısız");
+        return cast(mk.Shape()) as Shape;
+      };
+      const S = surfs[i].s;
+      if (f.type === "thicken") {
+        const parts = f.side === 0 ? [thick(S.clone(), f.t / 2), thick(S.clone(), -f.t / 2)] : [thick(S.clone(), f.side * f.t)];
+        for (const p of parts) applyTool(p, false);
+        surfs.splice(i, 1);
+      } else {
+        const big = bodySize() * 2 + 100;
+        applyTool(thick(S.clone(), (f.side || 1) * big), true);
+        surfs.splice(i, 1);
+      }
+      return;
+    }
     case "dface": {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       const set = matchFaces(f.faces);
@@ -3244,6 +3288,7 @@ async function rebuildAll(features: KFeature[]) {
   memberReg = new Map();
   welds = [];
   weldInfo = [];
+  surfs = [];
   for (const f of features) {
     try {
       await buildFeature(f);
@@ -3253,7 +3298,7 @@ async function rebuildAll(features: KFeature[]) {
 // ---------- Artımlı yeniden oluşturma ----------
 // Her özellikten sonraki durum (gövdeler, araçlar, çerçeveler, kayıtlar) anlık görüntü olarak saklanır; anahtar = o ana
 // kadarki özelliklerin özeti. Yeni yapıda en uzun eşleşen önek geri yüklenir, yalnız değişen özellikten sonrası kurulur.
-type Snap = { key: string; bodies: Shape[]; welds: Shape[]; weldInfo: WeldItem[]; frames: Record<string, Frame>; tools: [string, { solid: Shape; cut: boolean; merge: boolean }][]; memberReg: [string, MemberReg][]; xSplits: typeof xSplits; fh: { before: Shape; after: Shape; refs: EdgeRef[]; rad: number } | null; errors: { featureId: string; message: string }[] };
+type Snap = { key: string; bodies: Shape[]; welds: Shape[]; surfs: { id: string; s: Shape }[]; weldInfo: WeldItem[]; frames: Record<string, Frame>; tools: [string, { solid: Shape; cut: boolean; merge: boolean }][]; memberReg: [string, MemberReg][]; xSplits: typeof xSplits; fh: { before: Shape; after: Shape; refs: EdgeRef[]; rad: number } | null; errors: { featureId: string; message: string }[] };
 let chains: Snap[][] = [];
 const cloneS = (x: Shape) => (x ? x.clone() : x);
 function hashStr(str: string, h = 2166136261) {
@@ -3265,6 +3310,7 @@ function takeSnap(key: string, errors: { featureId: string; message: string }[])
     key,
     bodies: bodies.map(cloneS),
     welds: welds.map(cloneS),
+    surfs: surfs.map((x) => ({ id: x.id, s: cloneS(x.s) })),
     weldInfo: JSON.parse(JSON.stringify(weldInfo)),
     frames: JSON.parse(JSON.stringify(frames)),
     tools: [...tools].map(([k, v]) => [k, { ...v, solid: cloneS(v.solid) }]),
@@ -3277,6 +3323,7 @@ function takeSnap(key: string, errors: { featureId: string; message: string }[])
 function restoreSnap(sn: Snap) {
   bodies = sn.bodies.map(cloneS);
   welds = sn.welds.map(cloneS);
+  surfs = sn.surfs.map((x) => ({ id: x.id, s: cloneS(x.s) }));
   weldInfo = JSON.parse(JSON.stringify(sn.weldInfo));
   frames = JSON.parse(JSON.stringify(sn.frames));
   tools.clear();
@@ -3296,6 +3343,7 @@ async function build(id: number, features: KFeature[]) {
   memberReg = new Map();
   welds = [];
   weldInfo = [];
+  surfs = [];
   xSplits = [];
   filletHist = null;
   const keys: string[] = [];
@@ -3335,7 +3383,7 @@ async function build(id: number, features: KFeature[]) {
     const mesh = toMesh(a);
     freeAll(a);
     // yüz -> gövde sırası
-    const counts = [...bodies, ...welds].map((b) => (b.faces as any[]).length);
+    const counts = [...bodies, ...welds, ...surfs.map((x) => x.s)].map((b) => (b.faces as any[]).length);
     if (counts.reduce((x, y) => x + y, 0) === mesh.faces.length) {
       let k = 0;
       counts.forEach((c, bi) => {
@@ -3488,6 +3536,7 @@ async function asmOp(id: number, op: "step" | "interfere" | "clearance" | "draw"
     memberReg = new Map();
     welds = [];
     weldInfo = [];
+    surfs = [];
     for (const f of p.features) {
       try {
         await buildFeature(f);

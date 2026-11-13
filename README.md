@@ -18,6 +18,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.43: **Parça / yüz rengi** (sağ tık > Görünüm) ve **STL içe aktarma**
 - v0.44: Süpürmede **burulma** ve **kılavuz eğri**; kenar/yüz kaybolunca **Yeniden seç** penceresi
 - v0.45: Sac **büküm tablosu** (açıya göre) ve **Yüz Taşı / Sil** (doğrudan düzenleme)
+- v0.46: **Yüzey modelleme** — yüzey ekstrüzyon, düzlemsel yüzey, kalınlaştır, yüzeyle kes
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

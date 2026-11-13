@@ -581,6 +581,27 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         case "chamfer":
           kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, angle: f.angle, flip: f.flip });
           break;
+        case "surface": {
+          const sk = sketchOf(f.sketch);
+          if (!sk) throw new Error("Eskiz seçin");
+          const pl = kplane(sk.plane, feats, sk.id);
+          if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+          const { loops } = extractLoops(sk.data);
+          let path: { segs: any[]; closed: boolean } | null = null;
+          if (!loops.length) {
+            const p = extractPath(sk.data);
+            if (p.error) throw new Error(`${sk.name}: ${p.error}`);
+            path = { segs: p.segs, closed: p.closed };
+          }
+          if (f.mode === "planar" && !loops.length) throw new Error("Düzlemsel yüzey için kapalı kontur gerekir");
+          kfeats.push({ id: f.id, type: "surface", mode: f.mode, pl, loops, path, d: f.d, mid: f.mid });
+          break;
+        }
+        case "thicken":
+        case "surfcut":
+          if (!f.surf) throw new Error("Yüzey özelliğini seçin");
+          kfeats.push({ id: f.id, type: f.type, surf: f.surf, t: f.t, side: f.side });
+          break;
         case "dface":
           kfeats.push({ id: f.id, type: "dface", mode: f.mode, d: f.d, faces: f.faces });
           break;

@@ -123,6 +123,10 @@ const FEAT_NAMES: Record<string, string> = {
   chamfer: "Pah",
   shell: "Kabuk",
   dface: "Yüz Taşı/Sil",
+  surface: "Yüzey",
+  planarSurface: "Düzlemsel Yüzey",
+  thicken: "Kalınlaştır",
+  surfcut: "Yüzeyle Kes",
   lpattern: "DoğrusalÇoğaltma",
   cpattern: "DaireselÇoğaltma",
   mirror: "Ayna",
@@ -1211,6 +1215,18 @@ function newFeature(kind: string) {
     case "chamfer":
       draft = { id, type: "chamfer", name: "", d: 2, edges: selectedEdgeRefs() };
       break;
+    case "surface":
+      draft = { id, type: "surface", name: "", mode: "extrude", sketch: lastFreeSketch()?.id ?? "", d: 20 } as any;
+      break;
+    case "planarSurface":
+      draft = { id, type: "surface", name: "", mode: "planar", sketch: lastFreeSketch()?.id ?? "", d: 0 } as any;
+      break;
+    case "thicken":
+    case "surfcut": {
+      const sf = [...doc.features].reverse().find((x) => x.type === "surface");
+      draft = { id, type: kind, name: "", surf: sf?.id ?? "", t: 2, side: 1 } as any;
+      break;
+    }
     case "dface":
       draft = { id, type: "dface", name: "", mode: "move", d: 5, faces: [...psel.faces].map((i) => faceRef(i)) } as any;
       break;
@@ -1412,7 +1428,7 @@ function newFeature(kind: string) {
       return;
   }
   draft.name = nextNamePeek(kind);
-  openFeaturePM(draft, undefined, kind);
+  openFeaturePM(draft, undefined, kind === "planarSurface" ? "surface" : kind);
 }
 function extractClosed(f: Feature) {
   if (f.type !== "sketch") return false;
@@ -1783,6 +1799,17 @@ function renderFeaturePM(kind: string) {
       if (d.edges.length || nf) g.appendChild(button("Seçimi temizle", () => ((d.edges = []), (d.faces = []), renderFeaturePM(kind), refreshHighlight())));
       body.appendChild(g);
       hint(isF ? "Yuvarlatılacak kenarlara veya yüzlere dokunun" : "Pah kırılacak kenarlara veya yüzlere dokunun");
+      break;
+    }
+    case "surface": {
+      const sks = doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }));
+      body.appendChild(group(d.mode === "planar" ? "Düzlemsel yüzey" : "Yüzey ekstrüzyon", selectField("Eskiz (açık veya kapalı)", sks, d.sketch, (v) => ((d.sketch = v), upd())), ...(d.mode === "extrude" ? [numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { unit: "mm" }), checkField("Orta düzlem", !!d.mid, (v) => ((d.mid = v || undefined), upd()))] : []), h("p", "pm-hint", "Yüzey kalınlıksızdır; Kalınlaştır ile katı yapılır ya da Yüzeyle Kes ile katı kesilir.")));
+      break;
+    }
+    case "thicken":
+    case "surfcut": {
+      const sfs = doc.features.filter((x) => x.type === "surface").map((x) => ({ v: x.id, t: x.name }));
+      body.appendChild(group(d.type === "thicken" ? "Kalınlaştır" : "Yüzeyle kes", selectField("Yüzey", sfs, d.surf, (v) => ((d.surf = v), upd())), ...(d.type === "thicken" ? [numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm" })] : []), segField(d.type === "thicken" ? [{ v: "1", t: "Taraf 1" }, { v: "-1", t: "Taraf 2" }, { v: "0", t: "İki taraf" }] : [{ v: "1", t: "Taraf 1'i kaldır" }, { v: "-1", t: "Taraf 2'yi kaldır" }], String(d.side), (v) => ((d.side = +v), upd()))));
       break;
     }
     case "dface": {
@@ -4352,6 +4379,9 @@ const FEAT_ICON: Record<string, string> = {
   chamfer: "chamfer",
   shell: "shell",
   dface: "dface",
+  surface: "surface",
+  thicken: "thicken",
+  surfcut: "surfcut",
   lpattern: "lpattern",
   cpattern: "cpattern",
   mirror: "mirror",
@@ -4615,6 +4645,10 @@ function commands(): Cmd[] {
       { id: "chamfer", label: "Pah", icon: "chamfer", run: () => newFeature("chamfer") },
       { id: "shell", label: "Kabuk", icon: "shell", run: () => newFeature("shell") },
       { id: "dface", label: "Yüz Taşı / Sil", icon: "movebody", run: () => newFeature("dface") },
+      { id: "surface", label: "Yüzey Ekstrüzyon", icon: "extrude", run: () => newFeature("surface") },
+      { id: "planarSurface", label: "Düzlemsel Yüzey", icon: "plane", run: () => newFeature("planarSurface") },
+      { id: "thicken", label: "Kalınlaştır", icon: "shell", run: () => newFeature("thicken") },
+      { id: "surfcut", label: "Yüzeyle Kes", icon: "cutExtrude", run: () => newFeature("surfcut") },
       { id: "draft", label: "Koniklik", icon: "draftf", run: () => newFeature("draft") },
       { id: "rib", label: "Kaburga", icon: "rib", run: () => newFeature("rib") },
       { id: "dome", label: "Kubbe", icon: "dome", run: () => newFeature("dome") },

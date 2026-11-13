@@ -582,3 +582,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Sac büküm tablosu (açıya göre büküm payı, ara açılar doğrusal) | ✅ |
 | Yüz taşı (düz yüz ±mesafe) — içe aktarılan STEP'te de | ✅ |
 | Yüz sil (silindirik deliği doldur) | ✅ |
+
+## v0.46 — Yüzey modelleme
+| Özellik | Durum |
+|---|---|
+| Yüzey ekstrüzyon (açık / kapalı eskiz), düzlemsel yüzey | ✅ |
+| Kalınlaştır (yüzey → katı), Yüzeyle kes | ✅ |
+| Yüzey loft / sınır / doldurma, dikiş, kırp | ⬜ |
