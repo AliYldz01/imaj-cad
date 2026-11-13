@@ -18,7 +18,12 @@ Yöntem: 77 e2e test + 6 deneme senaryosu + kod taraması (`SOLIDWORKS_OZELLIKLE
 9. Kayıtlar "STL içe aktarma" diyor; menüde yalnız STEP içe aktarma var.
 
 ## Durum
-- v0.36: Paket 0 ✅, Paket 1 kalıcı referanslar ✅ (testi `kr1`); kalan: yeniden seç penceresi, delik konumu ölçüsü.
+- v0.36: Paket 0 ✅, Paket 1 kalıcı referanslar ✅ (`kr1`)
+- v0.37: Paket 2 montaj–parça bağı ✅ (`as6`) · v0.38: Paket 3 montaj kesme/delik + delik hizalama ✅ (`as7`) · v0.39: Paket 4 teknik resim ✅ (`td1`)
+- v0.40: Paket 5 artımlı yapı, delik konum eskizi, aynı dosyaya kaydet / son belgeler ✅ (`inc1`, `fs1`)
+- v0.41: Paket 6 kısmi — helis/yay, loft profile dik, ref. eksen türleri, yapılandırmalar ✅ (`md1`)
+- v0.42–v0.43: Paket 7 kısmi — DXF içe aktarma, renkler, STL içe aktarma ✅ (`dx1`, `lk1`)
+- Kalan: "yeniden seç" penceresi, süpürme burulma/kılavuz, sac aç/katla + flanş profili + açıya göre büküm tablosu, köşe başına kaynak işlemi, diş hızı, perspektif, birim sistemi, yüzey modelleme, doğrudan düzenleme, analiz.
 
 ## Önerilen sıra
 0. Esc gerilemesi + 4 eski test + kayıt düzeltmesi
