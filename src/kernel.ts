@@ -105,6 +105,12 @@ export class Kernel {
     return r.items;
   }
 
+  /** İki yüzün kesişim eğrileri (düz yüz sınırsız düzlem sayılır) — nokta zincirleri */
+  async isect(a: import("./doc/types").FaceRef, b: import("./doc/types").FaceRef): Promise<Vec3[][]> {
+    await this.ready;
+    const r = await this.request<{ r: Vec3[][] }>({ type: "isect", a, b } as any);
+    return r.r ?? [];
+  }
   /** Geometri kontrolü: gövde başına geçerlilik, serbest kenar, kısa kenar, küçük yüz, hacim */
   async check(): Promise<{ bodies: { i: number; valid: boolean; free: number; short: number; small: number; volume: number; faces: number; edges: number }[]; surfs: number }> {
     await this.ready;

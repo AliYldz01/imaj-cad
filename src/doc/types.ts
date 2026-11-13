@@ -569,6 +569,12 @@ export interface Sketch3DFeature extends FeatBase {
   dims3?: { id: string; t: Dim3Type; e: string[]; v: number; ref?: boolean; o?: number; /** açı: çizgi yönlerinin işaretleri (ölçünün yerleştirildiği bölge) */ s?: [number, number] }[];
   /** 3B yaylar: başlangıç a, bitiş b, yay üzerindeki nokta m (nokta kimlikleri) */
   arcs3?: { id: string; a: string; b: string; m: string; cons?: boolean }[];
+  /** 3B spline: noktalardan geçen eğri (nokta kimlikleri) */
+  spl3?: { id: string; pts: string[]; cons?: boolean }[];
+  /** helis: taban merkezi, eksen, yarıçap, hatve, tur, sol el */
+  hel3?: { id: string; c: Vec3; ax: Vec3; r: number; pitch: number; turns: number; left?: boolean }[];
+  /** kesişim eğrisi (iki yüzün kesişimi; oluşturulduğu andaki nokta zincirleri) */
+  isc3?: { id: string; pts: Vec3[] }[];
 }
 
 /** Eleman referansı: yapı elemanı özelliği + segment sırası */
@@ -602,6 +608,12 @@ export interface MemberFeature extends FeatBase {
   groups?: MemberGroup[];
   /** önceki yapı elemanı özelliklerine değen uçları onların yüzünde kırp (varsayılan açık) */
   trimPrev?: boolean;
+  /** önceki yapı elemanı özellikleriyle köşede gönye (yoksa alın: önceki uzatılır, yeni kırpılır) */
+  prevMiter?: boolean;
+  /** yapı sistemi (SolidWorks Structure System): nokta-uzunluk birincil elemanlar */
+  ptl?: { p: Vec3; d: Vec3; L: number }[];
+  /** ikincil elemanlar: iki birincil segment arasında, her biri üzerinde 0–1 konumda */
+  sec?: { a: { sk: string; ent: string }; ta: number; b: { sk: string; ent: string }; tb: number }[];
 }
 /** Yapı elemanı grubu: kendi segmentleri ve profil konumu / köşe işlemi */
 export interface MemberGroup {
@@ -725,6 +737,8 @@ export interface PartDoc {
   features: Feature[];
   seq: Record<string, number>;
   /** malzeme anahtarı (bkz. MATERIALS) */
+  /** kesim listesi kalem özellikleri (SolidWorks Kesim Listesi Özellikleri): anahtar = kalem imzası */
+  cutProps?: Record<string, { desc?: string; material?: string; props?: { k: string; v: string }[] }>;
   material?: string;
   /** geri sarma çubuğu: bu indeksten sonraki özellikler hesaplanmaz */
   rollback?: number | null;
@@ -770,7 +784,7 @@ export type KFeature =
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
-  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean }; tool?: { d: number; len: number; ball?: boolean; flip?: boolean } }
+  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean }; tool?: { d: number; len: number; ball?: boolean; flip?: boolean }; path3?: { segs: { k: "l" | "a" | "p"; pts: Vec3[] }[]; closed: boolean } }
   | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number; conn?: { k: number; rev?: boolean }[]; faceStart?: number; faceEnd?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number; slot?: number; slotAng?: number; nearCs?: { d: number; angle: number }; farCs?: { d: number; angle: number } }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }

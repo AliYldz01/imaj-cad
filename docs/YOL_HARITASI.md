@@ -644,3 +644,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.69 | Sac: flanş profilini serbest eskizle düzenleme, büküm boşaltma türleri, dairesel köşe boşaltması, kaynaklı köşe | ✅ |
 
 | v0.70 | Sac: şekillendirme araçları (kabartma, panjur), havalandırma, çapraz kırma, sac köşe takviyesi (4. grup tamam) | ✅ |
+
+| v0.71 | Kaynaklı: kesim listesi özellikleri, yapı sistemi, 3B eskiz spline / helis / kesişim / birleşik eğri, özellikler arası gönye (5. grup tamam) | ✅ |

@@ -43,6 +43,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.68: referans noktası türleri, ağaçta klasörler, Ne yanlış? penceresi ve geometri kontrolü, radyüs/pah/kabuk sarı önizleme.
 - v0.69: flanş profili eskizi, oval / yırtma büküm boşaltması, dairesel köşe boşaltması, kaynaklı köşe.
 - v0.70: sac şekillendirme araçları, havalandırma, çapraz kırma, sac köşe takviyesi.
+- v0.71: kesim listesi özellikleri, yapı sistemi, 3B spline / helis / kesişim eğrisi ve 3B yol boyunca süpürme, özellikler arası gönye.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

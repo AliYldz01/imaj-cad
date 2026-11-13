@@ -388,3 +388,45 @@ export function dimValue(f: F, t: Dim3Type, e: string[], sgn?: [number, number])
   if (sh !== undefined && ((sh === l1[0]) !== (sh === l2[0]))) a = 180 - a;
   return a;
 }
+
+/** 3B Catmull–Rom spline örnekleri (noktalardan geçer) */
+export function splinePts3(P: Vec3[], N = 12): Vec3[] {
+  if (P.length < 2) return P.slice();
+  const out: Vec3[] = [P[0]];
+  const g = (i: number) => P[Math.max(0, Math.min(P.length - 1, i))];
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+    for (let k = 1; k <= N; k++) {
+      const t = k / N, t2 = t * t, t3 = t2 * t;
+      out.push([0, 1, 2].map((j) => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3)) as Vec3);
+    }
+  }
+  return out;
+}
+/** helis örnekleri */
+export function helixPts3(h: { c: Vec3; ax: Vec3; r: number; pitch: number; turns: number; left?: boolean }, perTurn = 36): Vec3[] {
+  const L = Math.hypot(...h.ax) || 1, a = h.ax.map((q) => q / L);
+  const ref = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const cr = (u: number[], v: number[]) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  let e1 = cr(a, ref);
+  const l1 = Math.hypot(...e1);
+  e1 = e1.map((q) => q / l1);
+  const e2 = cr(a, e1);
+  const n = Math.max(8, Math.round(h.turns * perTurn)), sg = h.left ? -1 : 1, out: Vec3[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * h.turns * 2 * Math.PI, z = (h.pitch * t) / (2 * Math.PI);
+    out.push([0, 1, 2].map((k) => h.c[k] + a[k] * z + h.r * (Math.cos(t) * e1[k] + sg * Math.sin(t) * e2[k])) as Vec3);
+  }
+  return out;
+}
+/** 3B eskizin eğrileri (spline / helis / kesişim) örnek noktalarıyla */
+export function curves3(d: { ids: string[]; xyz: Vec3[]; spl3?: { id: string; pts: string[]; cons?: boolean }[]; hel3?: any[]; isc3?: { id: string; pts: Vec3[] }[] }): { id: string; kind: "s" | "h" | "i"; pts: Vec3[]; cons?: boolean }[] {
+  const out: { id: string; kind: "s" | "h" | "i"; pts: Vec3[]; cons?: boolean }[] = [];
+  for (const sp of d.spl3 ?? []) {
+    const P = sp.pts.map((id) => d.xyz[d.ids.indexOf(id)]).filter(Boolean);
+    if (P.length >= 2) out.push({ id: sp.id, kind: "s", pts: splinePts3(P), cons: sp.cons });
+  }
+  for (const h of d.hel3 ?? []) out.push({ id: h.id, kind: "h", pts: helixPts3(h) });
+  for (const c of d.isc3 ?? []) out.push({ id: c.id, kind: "i", pts: c.pts });
+  return out;
+}

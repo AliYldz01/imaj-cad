@@ -43,10 +43,10 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.70 4.3 Çapraz kırma (kozmetik), havalandırma (sınır + kaburga / kiriş), şekillendirme araçları (yuvarlak / dikdörtgen kabartma, panjur; açınımda bastırılır), sac köşe takviyesi
 
 ## 5. Kaynaklı yapı
-- ⬜ 5.1 Kesim listesi özellik penceresi
-- ⬜ 5.2 Yapı sistemi (birincil / ikincil)
-- ⬜ 5.3 3B eskiz: spline, kesişim eğrisi, helis, kompozit eğri
-- ⬜ 5.4 Özellikler arası gönye köşe
+- ✅ v0.71 5.1 Kesim listesi özellik penceresi (tanım, kalem malzemesi, özel özellikler; tablo + CSV + imalat resmi)
+- ✅ v0.71 5.2 Yapı sistemi: birincil (eskiz segmenti / nokta-uzunluk), ikincil (iki birincil arası % konumda)
+- ✅ v0.71 5.3 3B eskiz: spline aracı, helis, kesişim eğrisi (iki yüz), birleşik eğri (3B eskiz süpürme yolu)
+- ✅ v0.71 5.4 Özellikler arası gönye köşe (önceki yapı elemanıyla açıortayda)
 
 ## 6. Genel / arayüz
 - ⬜ 6.1 Çoklu belge sekmeleri, proje / dosya yöneticisi

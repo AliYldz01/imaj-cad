@@ -467,6 +467,10 @@ function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
       }
       spine = assembleWire([makeBSplineApproximation(pts as any, { tolerance: 1e-3, degMax: 3 } as any)]);
     } else spine = makeHelix(H.pitch, H.pitch * H.turns, H.r, c as any, sframe.n as any, !!H.left);
+  } else if (f.path3) {
+    // 3B birleşik eğri: çizgi / yay / eğri (B-spline yaklaşımı) kenarlarından tel
+    const edges = f.path3.segs.map((q) => (q.k === "l" ? makeLine(q.pts[0] as any, q.pts[1] as any) : q.k === "a" ? makeThreePointArc(q.pts[0] as any, q.pts[1] as any, q.pts[2] as any) : makeBSplineApproximation(q.pts as any, { tolerance: 1e-3, degMax: 3 } as any)));
+    spine = assembleWire(edges as any);
   } else spine = pathWire(f.path.segs, f.path.closed, sframe);
   const oc = getOC();
   const sp: any = spine;
@@ -1901,12 +1905,12 @@ function memberTool(f: Extract<KFeature, { type: "member" }>) {
     memberReg.set(xs.key + "/2", { ...reg, key: xs.key + "/2", a: xs.V, len: L2 });
     memberReg.set(xs.key, { ...reg, b: xs.V, len: L1 });
   }
-  if (f.ori === 2 && f.tp) trimToPrevious(f.id, parts, f.gap);
+  if (f.ori === 2 && f.tp) trimToPrevious(f.id, parts, f.gap, !!(f as any).pm);
   for (const p of parts) for (const s of p.solids) if (s) for (const q of solidsOf(s)) applyTool(q, false, false);
 }
 /** Özellikler arası birleşim (SolidWorks Kırp/Uzat gibi, otomatik): bu özelliğin uçları önceki yapı elemanlarına değiyorsa
  *  T: uç, önceki elemanın yüzünde kırpılır; köşe (iki uç aynı noktada): önceki eleman uzatılır, yeni eleman onun yüzünde biter. */
-function trimToPrevious(fid: string, parts: MemberPart[], gap: number) {
+function trimToPrevious(fid: string, parts: MemberPart[], gap: number, miter = false) {
   const prev = [...memberReg.values()].filter((r) => !r.key.startsWith(fid + ":") && !r.arc);
   if (!prev.length) return;
   // önceki elemanların gövdeleri (yalnız önceki kayıtlarla eşleştir)
@@ -1936,6 +1940,27 @@ function trimToPrevious(fid: string, parts: MemberPart[], gap: number) {
           const corner = t < 1e-3 || t > h.len - 1e-3;
           // köşede başka önceki eleman da bitiyorsa (gönyeli çerçeve köşesi) uzatma: köşe zaten dolu
           const mates = prev.filter((o) => vlen(vsub(o.a, V)) < 1e-3 || vlen(vsub(o.b, V)) < 1e-3).length;
+          // özellikler arası gönye köşe (SolidWorks): iki eleman açıortay düzleminde buluşur
+          if (miter && corner && mates === 1 && !extended.has(h.key)) {
+            const hEnd = t < h.len / 2 ? 0 : 1;
+            const dP = hEnd === 0 ? h.d : vmul(h.d, -1); // önceki elemanın içine
+            const nN = vnorm(vsub(dO, dP));
+            const bi = bodyOf.get(h.key);
+            const E = 2 * (h.R + profileSupport(p.loops, li.x, li.d, dP)) + 1;
+            try {
+              // ikisini de köşe ötesine uzat, açıortay düzleminde kes
+              const oN = end === 0 ? vsub(V, vmul(li.d, E)) : V;
+              p.solids[i] = p.solids[i]!.fuse(profile(p.loops).sketchOnPlane(new Plane(oN, li.x, li.d)).extrude(E));
+              p.solids[i] = keepFar(p.solids[i]!.cut(halfSpace(vadd(V, vmul(nN, gap / 2)), nN)), V, dO);
+              if (bi !== undefined) {
+                const oP = hEnd === 0 ? vsub(h.a, vmul(h.d, E)) : h.b;
+                bodies[bi] = bodies[bi].fuse(profile(h.loops).sketchOnPlane(new Plane(oP, h.x, h.d)).extrude(E));
+                bodies[bi] = keepFar(bodies[bi].cut(halfSpace(vsub(V, vmul(nN, gap / 2)), vmul(nN, -1))), V, dP);
+              }
+              extended.add(h.key);
+            } catch {}
+            break;
+          }
           if (corner && mates === 1 && !extended.has(h.key)) {
             // önceki elemanı yeni elemanın profilini kaplayacak kadar uzat
             const hEnd = t < h.len / 2 ? 0 : 1;
@@ -4210,6 +4235,28 @@ function section(id: number, fr: Frame) {
 }
 
 /** Basit mukavemet: gövdenin en uzun ekseni boyunca orta kesit özellikleri (alan, atalet, uç lif) */
+/** İki yüzün kesişim eğrisi (3B eskiz Kesişim Eğrisi): düz yüz sınırsız düzlem olarak alınır */
+function faceIsect(id: number, a: FaceRef, b: FaceRef) {
+  const oc = getOC() as any;
+  try {
+    const fa = allFaces().find((x) => matchFaces([a]).has(x.hashCode)), fb = allFaces().find((x) => matchFaces([b]).has(x.hashCode));
+    if (!fa || !fb) return post({ id, type: "isect", r: [], message: "Yüz bulunamadı" } as any);
+    const pl = (f: any) => {
+      if (String(f.geomType) !== "PLANE") return null;
+      const c = tup(f.center), n = vnorm(tup(f.normalAt(c)));
+      return new oc.gp_Pln(new oc.gp_Pnt(...c), new oc.gp_Dir(...n));
+    };
+    const pb = pl(fb), pa = pl(fa);
+    const sec = pb ? new oc.BRepAlgoAPI_Section(fa.wrapped, pb, true) : pa ? new oc.BRepAlgoAPI_Section(fb.wrapped, pa, true) : new oc.BRepAlgoAPI_Section(fa.wrapped, fb.wrapped, true);
+    const edges = [...((cast(sec.Shape()) as any).edges ?? [])];
+    sec.delete();
+    const out: Vec3[][] = edges.map((e: any) => Array.from({ length: 25 }, (_, i) => tup(e.pointAt(i / 24)).map((v) => +v.toFixed(5)) as Vec3));
+    post({ id, type: "isect", r: out } as any);
+  } catch (e) {
+    post({ id, type: "isect", r: [], message: String(e) } as any);
+  }
+}
+
 /** Geometri kontrolü (SolidWorks Kontrol): BRepCheck_Analyzer geçerliliği, tek yüze bağlı (serbest) kenarlar, çok kısa kenarlar, çok küçük yüzler */
 function geomCheck(id: number) {
   const oc = getOC() as any;
@@ -4395,6 +4442,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "section") section(req.id, req.frame);
     else if (req.type === "beam") beamSec(req.id, req.ax ?? -1);
     else if ((req as any).type === "check") geomCheck(req.id);
+    else if ((req as any).type === "isect") faceIsect(req.id, (req as any).a, (req as any).b);
     else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);

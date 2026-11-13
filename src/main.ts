@@ -30,7 +30,7 @@ import { type Act, type Dir, DIRS8, comboOf, keyMap, keyOf, dirOf, gestCfg, open
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { AsmUI } from "./asm/asmui";
-import { Sketch3DTool, PLANES as S3PLANES, setLineLength } from "./sketch/sketch3d";
+import { Sketch3DTool, PLANES as S3PLANES, setLineLength, curves3 } from "./sketch/sketch3d";
 import { REL3_NAMES, dofOf as dof3, arcPts as arcPts3, solve3d, dimValue as dimValue3 } from "./sketch/solver3d";
 import { prefs, savePrefs, onPrefs, effectiveProfile, detected, isTouchDevice, PROFILE_INFO, DEFAULTS, type PenProfile } from "./input/prefs";
 import { h, numField, checkField, selectField, segField, group, button, setEqHook } from "./ui/dom";
@@ -963,6 +963,10 @@ function drawSketches() {
       const ps = arcPts3(a, m, b);
       for (let i = 0; i + 1 < ps.length; i++) arr.push(...ps[i], ...ps[i + 1]);
     }
+    for (const cv of curves3(f)) {
+      const arr = cv.cons ? cons : memSel?.has(f.id + ":" + cv.id) ? selSegs : segs;
+      for (let i = 0; i + 1 < cv.pts.length; i++) arr.push(...cv.pts[i], ...cv.pts[i + 1]);
+    }
     const col = editing || treeSel === f.id ? 0x0ca5e9 : 0x1f2a37;
     if (segs.length) sketchGroup.push(viewer.fatLines(segs, col, 2));
     if (cons.length) sketchGroup.push(viewer.fatLines(cons, 0x6b7686, 1, true));
@@ -1138,6 +1142,25 @@ const partInput: InputHandler = {
     }
   },
   down(e) {
+    // 3B eskiz kesişim eğrisi: iki yüze dokunma
+    const d3 = mode.k === "pm" && mode.draft.type === "sketch3d" ? (mode.draft as any) : null;
+    if (d3?._isc) {
+      const hit = viewer.pick(e.clientX, e.clientY, { face: true });
+      if (hit?.kind !== "face" || !viewer.mesh) return;
+      const fc = viewer.mesh.faces[hit.index];
+      d3._isc.push({ c: fc.c, n: fc.n, ...(fc.r ? { r: fc.r } : {}) });
+      if (d3._isc.length < 2) return void renderFeaturePM("sketch3d");
+      const [a, b] = d3._isc;
+      d3._isc = undefined;
+      void kernel.isect(a, b).then((cs) => {
+        if (!cs.length) return toast("Yüzler kesişmiyor", true);
+        d3.isc3 = [...(d3.isc3 ?? []), ...cs.map((pts) => ({ id: `i${d3.seq++}`, pts }))];
+        toast(`${cs.length} kesişim eğrisi eklendi`);
+        if (mode.k === "pm") renderFeaturePM("sketch3d");
+        drawSketches();
+      });
+      return;
+    }
     if (s3tool.active()) return s3tool.input.down!(e);
     partPress = { x: e.clientX, y: e.clientY, box: null };
   },
@@ -1211,6 +1234,7 @@ function pickWant() {
     if (t === "draft" && (mode.draft as any).mode === "parting") return { edge: true };
     if (t === "lpattern" && (mode.draft as any)._pick === "upTo") return { edge: true, face: true };
     if (t === "sform" || t === "crossbreak" || t === "sgusset") return { face: true };
+    if (t === "member" && String((mode.draft as any)._pick ?? "").startsWith("ptl:")) return { face: true, edge: true };
     if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
@@ -1255,6 +1279,14 @@ function partClick(e: PointerEvent) {
     return startSketch(ref, mode.tool);
   }
   if (mode.k === "pm" && mode.draft.type === "member" && (mode.draft as any)._pick === "align") return memberAlignPick(e.clientX, e.clientY);
+  if (mode.k === "pm" && mode.draft.type === "member" && String((mode.draft as any)._pick ?? "").startsWith("ptl:")) {
+    const dd = mode.draft as any, i = +dd._pick.slice(4);
+    if (!hit?.point || !dd.ptl?.[i]) return;
+    dd.ptl[i].p = snapPoint(hit.point);
+    dd._pick = undefined;
+    renderFeaturePM(kindOf(mode.draft));
+    return schedulePreview();
+  }
   if (mode.k === "pm" && mode.draft.type === "member" && memberSegPick(e.clientX, e.clientY)) return;
   if (mode.k === "pm") return pmPick(hit, e);
   if (mode.k === "measure") return measurePick(hit);
@@ -2434,7 +2466,8 @@ function renderFeaturePM(kind: string) {
         renderFeaturePM(kind);
         upd();
       }));
-      gp.appendChild(selectField(d.helix ? "Taban dairesi eskizi (helis ekseni = eskiz normali)" : "Yol (açık veya kapalı zincir)", opts, d.path, (v) => ((d.path = v), upd())));
+      const opts3 = d.helix ? opts : [...opts, ...doc.features.filter((x) => x.type === "sketch3d").map((x) => ({ v: x.id, t: x.name + " (3B, birleşik eğri)" }))];
+      gp.appendChild(selectField(d.helix ? "Taban dairesi eskizi (helis ekseni = eskiz normali)" : "Yol (açık veya kapalı zincir)", opts3, d.path, (v) => ((d.path = v), upd())));
       if (d.helix) {
         const H = d.helix;
         gp.append(
@@ -2848,7 +2881,8 @@ function renderFeaturePM(kind: string) {
         segField([{ v: "miter", t: "Gönye" }, { v: "butt1", t: "Alın 1" }, { v: "butt2", t: "Alın 2" }, { v: "none", t: "Yok" }], g.corner, (v) => ((g.corner = v), renderFeaturePM(kind), upd())),
       );
       if (g.corner !== "none") gc.appendChild(numField("Boşluk", g.gap, (v) => ((g.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }));
-      if (d.ori === 2) gc.appendChild(checkField("Önceki yapı elemanlarına göre kırp / uzat", d.trimPrev !== false, (v) => ((d.trimPrev = v), upd())));
+      if (d.ori === 2) gc.appendChild(checkField("Önceki yapı elemanlarına göre kırp / uzat", d.trimPrev !== false, (v) => ((d.trimPrev = v), renderFeaturePM(kind), upd())));
+      if (d.ori === 2 && d.trimPrev !== false) gc.appendChild(checkField("Önceki elemanlarla köşede gönye (özellikler arası)", !!d.prevMiter, (v) => ((d.prevMiter = v || undefined), upd())));
       gc.appendChild(h("p", "pm-hint", "Uç uca birleşen iki eleman köşede kesilir. T birleşimleri, gruplar arası köşeler ve 3+ elemanlı köşeler (ör. ayak + çerçeve) otomatik çözülür: sürekli eleman uzar, diğerleri onun yüzünde biter. Bağlı çizgiler aynı yöne çevrilir, L/U kanatları köşede ters dönmez."));
       body.appendChild(gc);
       // SolidWorks köşe başına işlem: iki elemanın uç uca buluştuğu köşeler
@@ -2884,6 +2918,41 @@ function renderFeaturePM(kind: string) {
           body.appendChild(gk);
         }
       } catch {}
+      // yapı sistemi (SolidWorks Structure System): nokta-uzunluk birincil + iki segment arası ikincil elemanlar (yalnız 1. grup)
+      if (g === d) {
+        const gs = group("Yapı sistemi");
+        const DIRS: [string, Vec3][] = [["+X", [1, 0, 0]], ["−X", [-1, 0, 0]], ["+Y", [0, 1, 0]], ["−Y", [0, -1, 0]], ["+Z", [0, 0, 1]], ["−Z", [0, 0, -1]]];
+        (d.ptl ?? []).forEach((q: any, i: number) => {
+          const row = h("div", "pm-row");
+          const di = DIRS.findIndex(([, v]) => dist3(v, q.d) < 1e-6);
+          row.append(
+            h("span", "pm-sub", `Birincil ${i + 1}: (${q.p.map((v: number) => fmtNum(v, 1)).join(", ")})`),
+            button(d._pick === `ptl:${i}` ? "Noktaya dokunun…" : "Noktayı seç", () => ((d._pick = `ptl:${i}`), renderFeaturePM(kind), hint("Elemanın başlangıç noktasına (köşe / kenar ortası) dokunun"))),
+            selectField("Yön", DIRS.map(([t], k) => ({ v: String(k), t })), String(Math.max(0, di)), (v) => ((q.d = [...DIRS[+v][1]]), upd())),
+            numField("Uzunluk", q.L, (v) => ((q.L = v), upd()), { min: 0.01, unit: "mm" }),
+            button("✕", () => (d.ptl.splice(i, 1), d.ptl.length || (d.ptl = undefined), renderFeaturePM(kind), upd()), "btn"),
+          );
+          gs.appendChild(row);
+        });
+        gs.appendChild(button("+ Nokta-uzunluk birincil eleman", () => ((d.ptl = [...(d.ptl ?? []), { p: [0, 0, 0], d: [0, 1, 0], L: 100 }]), (d._pick = `ptl:${d.ptl.length - 1}`), renderFeaturePM(kind), upd())));
+        const segs = (d.segs ?? []).map((sg: any, i: number) => ({ v: String(i), t: `Segment ${i + 1} (${getFeat(sg.sk)?.name ?? "?"})` }));
+        (d.sec ?? []).forEach((q: any, i: number) => {
+          const ia = d.segs.findIndex((x: any) => x.sk === q.a.sk && x.ent === q.a.ent), ib = d.segs.findIndex((x: any) => x.sk === q.b.sk && x.ent === q.b.ent);
+          const row = h("div", "pm-row");
+          row.append(
+            h("span", "pm-sub", `İkincil ${i + 1}`),
+            selectField("Birincil A", segs, String(Math.max(0, ia)), (v) => ((q.a = { ...d.segs[+v] }), upd())),
+            numField("A konumu", Math.round(q.ta * 100), (v) => ((q.ta = Math.max(0, Math.min(100, v)) / 100), upd()), { min: 0, unit: "%" }),
+            selectField("Birincil B", segs, String(Math.max(0, ib)), (v) => ((q.b = { ...d.segs[+v] }), upd())),
+            numField("B konumu", Math.round(q.tb * 100), (v) => ((q.tb = Math.max(0, Math.min(100, v)) / 100), upd()), { min: 0, unit: "%" }),
+            button("✕", () => (d.sec.splice(i, 1), d.sec.length || (d.sec = undefined), renderFeaturePM(kind), upd()), "btn"),
+          );
+          gs.appendChild(row);
+        });
+        if (segs.length >= 2) gs.appendChild(button("+ İkincil eleman (iki birincil arası)", () => ((d.sec = [...(d.sec ?? []), { a: { ...d.segs[0] }, ta: 0.5, b: { ...d.segs[1] }, tb: 0.5 }]), renderFeaturePM(kind), upd())));
+        gs.appendChild(h("p", "pm-hint", "Birincil elemanlar: eskiz segmentleri ya da nokta + yön + uzunluk. İkincil elemanlar iki birincil segment arasında, her birinde % konumda kurulur."));
+        body.appendChild(gs);
+      }
       // segmentler
       const segBox = h("div", "pm-feats");
       for (const sk of sketches) {
@@ -2953,13 +3022,33 @@ function renderFeaturePM(kind: string) {
       const gt = group(
         "Araç",
         (() => {
-          const sg = segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "arc", t: "Yay" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }, { v: "trim", t: "Kırp" }, { v: "extend", t: "Uzat" }], s3tool.mode, (v) => s3tool.setMode(v as any));
+          const sg = segField([{ v: "line", t: "Çizgi" }, { v: "rect", t: "Dikdörtgen" }, { v: "arc", t: "Yay" }, { v: "spline", t: "Spline" }, { v: "point", t: "Nokta" }, { v: "select", t: "Seç" }, { v: "dim", t: "Akıllı Ölçü" }, { v: "trim", t: "Kırp" }, { v: "extend", t: "Uzat" }], s3tool.mode, (v) => s3tool.setMode(v as any));
           sg.classList.add("seg-wrap");
           sg.querySelector(".seg")?.classList.add("seg-wrap");
           return sg;
         })(),
         h("p", "pm-hint", "Seç ile köşe noktası seçince Eskiz radyüsü; nokta/çizgi/yay seçince Ayna (XY/YZ/ZX; bir nokta da seçiliyse düzlem ondan geçer)."),
       );
+      // eğriler: helis, kesişim eğrisi (SolidWorks 3B eskiz)
+      {
+        const gc = h("div", "pm-buttons");
+        gc.append(
+          button("+ Helis", () => {
+            const hd = (f3 as any)._hel ?? { c: [0, 0, 0], ax: [0, 1, 0], r: 20, pitch: 10, turns: 3 };
+            f3.hel3 = [...(f3.hel3 ?? []), { id: `h${f3.seq++}`, ...JSON.parse(JSON.stringify(hd)) }];
+            renderFeaturePM(kind);
+            drawSketches();
+          }),
+          button((f3 as any)._isc ? `Yüzlere dokunun (${(f3 as any)._isc.length}/2)…` : "+ Kesişim eğrisi (iki yüz)", () => (((f3 as any)._isc = []), renderFeaturePM(kind), hint("Kesişim eğrisi için iki yüze dokunun"))),
+        );
+        gt.appendChild(gc);
+        (f3.hel3 ?? []).forEach((hx, i) => {
+          const row = h("div", "pm-row");
+          const v3f = (lab: string, arr: Vec3) => (["X", "Y", "Z"] as const).map((ax, k) => numField(`${lab} ${ax}`, arr[k], (v) => ((arr[k] = v), drawSketches()), {}));
+          row.append(h("span", "pm-sub", `Helis ${i + 1}`), ...v3f("Merkez", hx.c), ...v3f("Eksen", hx.ax), numField("Yarıçap", hx.r, (v) => ((hx.r = v), drawSketches()), { min: 0.01, unit: "mm" }), numField("Hatve", hx.pitch, (v) => ((hx.pitch = v), drawSketches()), { min: 0.01, unit: "mm" }), numField("Tur", hx.turns, (v) => ((hx.turns = v), drawSketches()), { min: 0.1 }), checkField("Sol el", !!hx.left, (v) => ((hx.left = v || undefined), drawSketches())), button("✕", () => ((f3.hel3 = f3.hel3!.filter((x) => x !== hx)), renderFeaturePM(kind), drawSketches()), "btn"));
+          gt.appendChild(row);
+        });
+      }
       // tanım durumu
       const fdof = dof3(f3);
       const fixedAny = (f3.cons3 ?? []).some((c) => c.t === "fix");
@@ -4230,7 +4319,7 @@ function snapCands(): Vec3[] {
 }
 
 // ---------- Kaynaklı yapı: kesim listesi ----------
-interface CutRow { no: number; qty: number; name: string; length: number; a1: number; a2: number; kg: number; bodies: number[]; kind: string; dims: [number, number, number]; c?: Vec3 }
+interface CutRow { no: number; qty: number; name: string; length: number; a1: number; a2: number; kg: number; bodies: number[]; kind: string; dims: [number, number, number]; c?: Vec3; key: string; vol: number }
 let lastWelds: import("./doc/types").WeldItem[] = [];
 async function cutRows(): Promise<CutRow[]> {
   const { items, welds } = await kernel.cutListFull();
@@ -4244,13 +4333,81 @@ async function cutRows(): Promise<CutRow[]> {
     if (g) {
       g.qty++;
       g.bodies.push(it.body);
-    } else groups.set(key, { no: 0, qty: 1, name: it.name, length: it.length, a1: p, a2: q, kg: (it.vol * rho) / 1e6, bodies: [it.body], kind: it.kind, dims: it.dims, c: it.c });
+    } else {
+      // kalem imzası: profil / levha adı + boy + açılar (kullanıcı özellikleri bununla saklanır)
+      const ck = it.kind === "member" ? `m|${it.name}|${Math.round(it.length * 10)}|${p}|${q}` : `p|${it.name}|${it.dims.map((x) => Math.round(x * 10)).join("x")}`;
+      const pm = doc.cutProps?.[ck]?.material;
+      const rr = pm ? MATERIALS[pm]?.rho ?? rho : rho;
+      groups.set(key, { no: 0, qty: 1, name: it.name, length: it.length, a1: p, a2: q, kg: (it.vol * rr) / 1e6, bodies: [it.body], kind: it.kind, dims: it.dims, c: it.c, key: ck, vol: it.vol });
+    }
   }
   const rows = [...groups.values()].sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name, "tr") || b.length - a.length : a.kind === "member" ? -1 : 1));
   rows.forEach((r, i) => (r.no = i + 1));
   return rows;
 }
-const rowDesc = (r: CutRow) => (r.kind === "member" ? r.name : `${r.name} · ${fmtNum(r.dims[0], 1)} × ${fmtNum(r.dims[1], 1)}`);
+const rowDesc = (r: CutRow) => doc.cutProps?.[r.key]?.desc || (r.kind === "member" ? r.name : `${r.name} · ${fmtNum(r.dims[0], 1)} × ${fmtNum(r.dims[1], 1)}`);
+const rowMat = (r: CutRow) => MATERIALS[doc.cutProps?.[r.key]?.material ?? doc.material ?? "steel"]?.name ?? "-";
+/** SolidWorks Kesim Listesi Özellikleri: kalem başına tanım, malzeme ve özel özellikler (parçayla kaydedilir) */
+function openCutProps(r: CutRow, done: () => void) {
+  const cp = (doc.cutProps ??= {});
+  const cur = JSON.parse(JSON.stringify(cp[r.key] ?? {})) as { desc?: string; material?: string; props?: { k: string; v: string }[] };
+  cur.props = cur.props ?? [];
+  const dlg = h("dialog", "input-dialog cutprops") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", `Kesim listesi özellikleri — ${r.no}. kalem`));
+  const ro = h("table", "cut-table");
+  const auto: [string, string][] = [["UZUNLUK", fmtNum(r.length, 1) + " mm"], ["AÇI 1", r.kind === "member" ? fmtNum(r.a1, 1) + "°" : "-"], ["AÇI 2", r.kind === "member" ? fmtNum(r.a2, 1) + "°" : "-"], ["ADET", String(r.qty)], ["KÜTLE", fmtNum(r.kg, 3) + " kg"], ["PROFİL", r.name]];
+  for (const [k, v] of auto) {
+    const tr = h("tr");
+    tr.append(h("td", "", k), h("td", "num", v));
+    ro.appendChild(tr);
+  }
+  dlg.appendChild(ro);
+  const desc = h("input") as HTMLInputElement;
+  desc.value = cur.desc ?? "";
+  desc.placeholder = r.kind === "member" ? r.name : "Tanım";
+  const lab = (t: string, el: HTMLElement) => { const l = h("label", "pm-field"); l.append(h("span", "", t), el); return l; };
+  const mat = h("select") as HTMLSelectElement;
+  mat.innerHTML = `<option value="">Parça malzemesi (${MATERIALS[doc.material ?? "steel"]?.name ?? "-"})</option>` + Object.entries(MATERIALS).map(([k, m]) => `<option value="${k}">${m.name}</option>`).join("");
+  mat.value = cur.material ?? "";
+  dlg.append(lab("TANIM", desc), lab("MALZEME", mat));
+  const pl = h("div", "cp-list");
+  const renderProps = () => {
+    pl.innerHTML = "";
+    cur.props!.forEach((p, i) => {
+      const row = h("div", "pm-row");
+      const k = h("input") as HTMLInputElement, v = h("input") as HTMLInputElement;
+      k.value = p.k;
+      v.value = p.v;
+      k.placeholder = "Özellik";
+      v.placeholder = "Değer";
+      k.addEventListener("input", () => (p.k = k.value));
+      v.addEventListener("input", () => (p.v = v.value));
+      row.append(k, v, button("✕", () => (cur.props!.splice(i, 1), renderProps()), "btn"));
+      pl.appendChild(row);
+    });
+  };
+  renderProps();
+  dlg.append(h("div", "pm-sub", "Özel özellikler"), pl, button("+ Özellik ekle", () => (cur.props!.push({ k: "", v: "" }), renderProps()), "btn"));
+  const bar = h("div", "pm-buttons");
+  bar.append(
+    button("Tamam", () => {
+      cur.desc = desc.value.trim() || undefined;
+      cur.material = mat.value || undefined;
+      cur.props = cur.props!.filter((p) => p.k.trim());
+      if (!cur.props.length) delete cur.props;
+      if (cur.desc || cur.material || cur.props) cp[r.key] = cur;
+      else delete cp[r.key];
+      saveDoc();
+      dlg.close();
+      done();
+    }, "btn primary"),
+    button("Vazgeç", () => dlg.close(), "btn"),
+  );
+  dlg.appendChild(bar);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
 async function openDrawings(rows: CutRow[]) {
   setStatus("busy", "İmalat resimleri hazırlanıyor…");
   const mat = MATERIALS[doc.material ?? "steel"]?.name ?? "-";
@@ -4263,7 +4420,7 @@ async function openDrawings(rows: CutRow[]) {
       toast(`${r.no}. kalem: ${d.error ?? "görünüş üretilemedi"}`, true);
       continue;
     }
-    const info: SheetInfo = { project: doc.name, no: r.no, qty: r.qty, desc: rowDesc(r), material: mat, kg: r.kg, a1: r.a1, a2: r.a2, length: d.length || r.length, date };
+    const info: SheetInfo = { project: doc.name, no: r.no, qty: r.qty, desc: rowDesc(r), material: doc.cutProps?.[r.key]?.material ? rowMat(r) : mat, kg: r.kg, a1: r.a1, a2: r.a2, length: d.length || r.length, date };
     sheets.push(sheetSvg(d, info));
     if (rows.length === 1 && d.kind === "plate") plate = { name: `${doc.name}_${r.no}_levha.dxf`, dxf: plateDxf(d.views[0]) };
   }
@@ -4306,7 +4463,7 @@ async function openCutList() {
   const wrap = h("div", "cut-wrap");
   const tbl = h("table", "cut-table");
   const head = h("tr");
-  ["No", "Adet", "Tanım", "Boy (mm)", "Açı 1", "Açı 2", "Birim kg", "Toplam kg", ""].forEach((x) => head.appendChild(h("th", "", x)));
+  ["No", "Adet", "Tanım", "Malzeme", "Boy (mm)", "Açı 1", "Açı 2", "Birim kg", "Toplam kg", ""].forEach((x) => head.appendChild(h("th", "", x)));
   tbl.appendChild(head);
   let total = 0, totalLen = new Map<string, number>();
   for (const r of rows) {
@@ -4319,7 +4476,8 @@ async function openCutList() {
     tr.append(
       h("td", "", String(r.no)),
       h("td", "", String(r.qty)),
-      h("td", "", rowDesc(r)),
+      h("td", "", rowDesc(r) + ((doc.cutProps?.[r.key]?.props?.length ?? 0) ? ` (${doc.cutProps![r.key].props!.map((p) => `${p.k}: ${p.v}`).join(", ")})` : "")),
+      h("td", "", rowMat(r)),
       h("td", "num", fmtNum(r.length, 1)),
       h("td", "num", r.kind === "member" ? `${fmtNum(r.a1, 1)}°` : "-"),
       h("td", "num", r.kind === "member" ? `${fmtNum(r.a2, 1)}°` : "-"),
@@ -4327,7 +4485,7 @@ async function openCutList() {
       h("td", "num", fmtNum(r.kg * r.qty, 2)),
     );
     const td = h("td");
-    td.append(button("Resim", () => openDrawings([r]), "btn"), st);
+    td.append(button("Özellikler", () => openCutProps(r, () => (dlg.close(), void openCutList())), "btn"), button("Resim", () => openDrawings([r]), "btn"), st);
     tr.appendChild(td);
     tr.addEventListener("click", (ev) => {
       if ((ev.target as HTMLElement).tagName === "BUTTON") return;
@@ -4362,9 +4520,14 @@ async function openCutList() {
   const sum = [...totalLen].map(([n, L]) => `${n}: ${fmtNum(L / 1000, 2)} m`).join(" · ");
   dlg.appendChild(h("p", "small", `Toplam ağırlık: ${fmtNum(total, 2)} kg${sum ? " · Profil toplam boyları — " + sum : ""}`));
   const csv = button("CSV (Excel) indir", () => {
-    const L = [["No", "Adet", "Tanım", "Boy (mm)", "Açı 1 (°)", "Açı 2 (°)", "Birim kg", "Toplam kg"].join(";")];
-    for (const r of rows) L.push([r.no, r.qty, rowDesc(r), fmtNum(r.length, 1), r.kind === "member" ? fmtNum(r.a1, 1) : "", r.kind === "member" ? fmtNum(r.a2, 1) : "", fmtNum(r.kg, 3), fmtNum(r.kg * r.qty, 3)].join(";"));
-    L.push(`;;;;;;Toplam;${fmtNum(total, 3)}`);
+    // özel özellik sütunları (tüm kalemlerdeki anahtarlar)
+    const keys = [...new Set(rows.flatMap((r) => (doc.cutProps?.[r.key]?.props ?? []).map((p) => p.k)))];
+    const L = [["No", "Adet", "Tanım", "Malzeme", "Boy (mm)", "Açı 1 (°)", "Açı 2 (°)", "Birim kg", "Toplam kg", ...keys].join(";")];
+    for (const r of rows) {
+      const pv = doc.cutProps?.[r.key]?.props ?? [];
+      L.push([r.no, r.qty, rowDesc(r), rowMat(r), fmtNum(r.length, 1), r.kind === "member" ? fmtNum(r.a1, 1) : "", r.kind === "member" ? fmtNum(r.a2, 1) : "", fmtNum(r.kg, 3), fmtNum(r.kg * r.qty, 3), ...keys.map((k) => pv.find((p) => p.k === k)?.v ?? "")].join(";"));
+    }
+    L.push(`;;;;;;;Toplam;${fmtNum(total, 3)}`);
     if (lastWelds.length) {
       L.push("", ["Kaynak", "a (mm)", "Dikiş adedi", "Toplam boy (mm)", "Kaynak metali kg"].join(";"));
       for (const w of lastWelds) L.push([w.name, fmtNum(w.a, 1), w.count, fmtNum(w.length, 1), fmtNum((w.vol * 7.85) / 1e6, 3)].join(";"));

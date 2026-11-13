@@ -7,6 +7,7 @@ import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } fro
 import type { MemberItem, Sketch3DFeature, CornerKind } from "./types";
 import { toWorld, toLocal } from "./math";
 import { solve } from "../sketch/solver";
+import { curves3 } from "../sketch/solver3d";
 
 /** Konturun örnek noktaları (içerme testi için) */
 export function loopSamples(l: Loop): Vec2[] {
@@ -329,6 +330,13 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
         }
         case "sweep": {
           const { pl, loops } = (f.circ && f.circ > 0) || f.tool ? { pl: null, loops: [] } : profileOf(f.sketch);
+          // 3B eskiz yolu (birleşik eğri: çizgi + yay + spline + helis + kesişim eğrisi uç uca)
+          const p3 = feats.find((x) => x.id === f.path && x.type === "sketch3d") as Sketch3DFeature | undefined;
+          if (p3) {
+            const path3 = chain3(p3);
+            kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: { frame: STD_FRAMES.front }, segs: [], closed: path3.closed }, path3, circ: f.circ, circIn: f.circIn, orient: f.orient });
+            break;
+          }
           const ps = sketchOf(f.path);
           if (!ps) throw new Error("Yol eskizini seçin");
           const ppl = kplane(ps.plane, feats, ps.id);
@@ -436,7 +444,25 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           break;
         }
         case "member": {
-          if (!f.segs.length && !(f.groups ?? []).some((g) => g.segs.length)) throw new Error("İskelet eskizinden en az bir segment seçin");
+          if (!f.segs.length && !(f.groups ?? []).some((g) => g.segs.length) && !f.ptl?.length) throw new Error("İskelet eskizinden en az bir segment seçin");
+          // doğrusal segmentin dünya uçları (2B / 3B eskiz) — yapı sistemi ikincil elemanları için
+          const segEnds = (sg: { sk: string; ent: string }): [Vec3, Vec3] => {
+            const any = feats.find((x) => x.id === sg.sk);
+            if (any && any.type === "sketch3d") {
+              const ln = any.lines.find((l) => l.id === sg.ent);
+              if (!ln) throw new Error("İkincil eleman: birincil segment bulunamadı");
+              return [any.xyz[any.ids.indexOf(ln.a)], any.xyz[any.ids.indexOf(ln.b)]];
+            }
+            const sk = sketchOf(sg.sk);
+            const fr = sk && resolveFrame(sk.plane, feats);
+            const e: any = sk?.data.ents.find((x) => x.id === sg.ent);
+            if (!sk || !fr || !e || e.t !== "line") throw new Error("İkincil eleman: birincil segment doğrusal olmalı");
+            return [toWorld(fr, pointPos(sk.data, e.p1)), toWorld(fr, pointPos(sk.data, e.p2))];
+          };
+          const upOf = (a: Vec3, b: Vec3): Vec3 => {
+            const d = n3(v3.sub(b, a));
+            return Math.abs(d[1]) > 0.95 ? [0, 0, 1] : [0, 1, 0];
+          };
           // profil çözümü (özellik ya da grup kendi profili)
           const prof = (pstd: string, psize: string) => {
             let custom: Loop[] | undefined, cname = "";
@@ -524,10 +550,33 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
               it.n = G.alignAx === "h" ? n3(v3.cross(d, a)) : n3(a);
             }
           }
+          // yapı sistemi (yalnız 1. grup): nokta-uzunluk birincil + iki segment arası ikincil elemanlar
+          if (gk === 0) {
+            for (const q of f.ptl ?? []) {
+              if (!(q.L > 0)) throw new Error("Nokta-uzunluk elemanı: uzunluk sıfırdan büyük olmalı");
+              const d = n3(q.d), b = v3.add(q.p, v3.mul(d, q.L));
+              gItems.push({ k: "l", a: q.p, b, n: upOf(q.p, b), key: `${f.id}:${gi++}` } as any);
+            }
+            for (const q of f.sec ?? []) {
+              const [a1, a2] = segEnds(q.a), [b1, b2] = segEnds(q.b);
+              const A = v3.add(a1, v3.mul(v3.sub(a2, a1), Math.max(0, Math.min(1, q.ta))));
+              const B = v3.add(b1, v3.mul(v3.sub(b2, b1), Math.max(0, Math.min(1, q.tb))));
+              if (v3.len(v3.sub(B, A)) < 1e-6) throw new Error("İkincil eleman uçları çakışıyor");
+              // profil normali: birincil eleman ile ikincilin oluşturduğu düzlemin normali (baskın bileşeni pozitif)
+              let nn = v3.cross(n3(v3.sub(a2, a1)), n3(v3.sub(B, A)));
+              if (v3.len(nn) < 1e-6) nn = upOf(A, B);
+              else {
+                nn = n3(nn);
+                const k = [0, 1, 2].reduce((m, i) => (Math.abs(nn[i]) > Math.abs(nn[m]) ? i : m), 0);
+                if (nn[k] < 0) nn = v3.mul(nn, -1);
+              }
+              gItems.push({ k: "l", a: A, b: B, n: nn, key: `${f.id}:${gi++}` } as any);
+            }
+          }
           for (const it of gItems) items.push({ ...it, g: gk });
           });
           const pr = pr0!;
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: P0.name, R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, tp: f.trimPrev !== false, ...(groups.length > 1 ? { gl } : {}), cornerOv: (f as any).cornerOv } as any);
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: P0.name, R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, tp: f.trimPrev !== false, pm: f.prevMiter, ...(groups.length > 1 ? { gl } : {}), cornerOv: (f as any).cornerOv } as any);
           break;
         }
         case "trim": {
@@ -792,6 +841,36 @@ const v3 = {
 const n3 = (a: Vec3): Vec3 => v3.mul(a, 1 / (v3.len(a) || 1));
 /** 3B çizgi için profil yönü: profil yüksekliği mümkünse dünya düşeyine (Y) yakın */
 /** 3B eskiz çizgisinde profilin dikey ekseni: dünya yukarısı (Y) çizgiye dik izdüşümü; düşey çizgide +Z */
+/** 3B eskizin taşıyıcı olmayan eğrilerini uç uca zincirle (SolidWorks birleşik eğri) */
+export function chain3(f: Sketch3DFeature): { segs: { k: "l" | "a" | "p"; pts: Vec3[] }[]; closed: boolean } {
+  const P = (id: string) => f.xyz[f.ids.indexOf(id)];
+  const pieces: { k: "l" | "a" | "p"; pts: Vec3[] }[] = [
+    ...f.lines.filter((l) => !l.cons).map((l) => ({ k: "l" as const, pts: [P(l.a), P(l.b)] })),
+    ...(f.arcs3 ?? []).filter((a) => !a.cons).map((a) => ({ k: "a" as const, pts: [P(a.a), P(a.m), P(a.b)] })),
+    ...curves3(f).filter((c) => !c.cons).map((c) => ({ k: "p" as const, pts: c.pts })),
+  ];
+  if (!pieces.length) throw new Error(`${f.name}: yol için eğri yok`);
+  const eq = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1e-3;
+  const first = (q: { pts: Vec3[] }) => q.pts[0], last = (q: { pts: Vec3[] }) => q.pts[q.pts.length - 1];
+  const rev = (q: { k: "l" | "a" | "p"; pts: Vec3[] }) => ({ k: q.k, pts: q.pts.slice().reverse() });
+  // başlangıç: ucu başka parçaya bağlı olmayan parça (yoksa ilk)
+  const deg = (p: Vec3) => pieces.filter((q) => eq(first(q), p) || eq(last(q), p)).length;
+  let si = pieces.findIndex((q) => deg(first(q)) === 1 || deg(last(q)) === 1);
+  if (si < 0) si = 0;
+  let cur = pieces[si];
+  if (deg(first(cur)) !== 1 && deg(last(cur)) === 1) cur = rev(cur);
+  const out = [cur];
+  const used = new Set([si]);
+  while (used.size < pieces.length) {
+    const e = last(out[out.length - 1]);
+    const j = pieces.findIndex((q, i) => !used.has(i) && (eq(first(q), e) || eq(last(q), e)));
+    if (j < 0) throw new Error(`${f.name}: yol eğrileri uç uca bağlı değil (birleşik eğri kurulamadı)`);
+    used.add(j);
+    out.push(eq(first(pieces[j]), e) ? pieces[j] : rev(pieces[j]));
+  }
+  return { segs: out, closed: eq(first(out[0]), last(out[out.length - 1])) && out.length > 1 };
+}
+
 function sketch3dNormal(d: Vec3, legacy = false): Vec3 {
   const up: Vec3 = Math.abs(d[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
   if (legacy) return n3(v3.cross(up, d));

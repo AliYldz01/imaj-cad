@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import type { Viewer, InputHandler } from "../viewer";
 import type { Sketch3DFeature, Vec3, Dim3Type } from "../doc/types";
-import { solve3d, dimValue, dofOf, REL3_TAG, arcPts, circum, type Solve3Result } from "./solver3d";
+import { solve3d, dimValue, dofOf, REL3_TAG, arcPts, circum, splinePts3, helixPts3, curves3, type Solve3Result } from "./solver3d";
 
 export type Axis3 = "x" | "y" | "z";
 export const PLANES = ["XY", "YZ", "ZX"] as const;
@@ -29,8 +29,8 @@ export interface S3Ctx {
   /** yalnız seçim değişti: paneli ve çizimi yenile (yeniden kurma yok) */
   selChanged?(): void;
 }
-export type S3Mode = "line" | "rect" | "point" | "arc" | "trim" | "extend" | "select" | "dim";
-export type S3Sel = { k: "p" | "l" | "a"; id: string };
+export type S3Mode = "line" | "rect" | "point" | "arc" | "spline" | "trim" | "extend" | "select" | "dim";
+export type S3Sel = { k: "p" | "l" | "a" | "c"; id: string };
 
 type Cand = { p: Vec3; idx: number; ax: Axis3 | null; kind: "pt" | "model" | "axis" | "plane" | "face" | "on"; lid?: string; alQ?: string; alK?: 0 | 1 | 2 };
 
@@ -114,9 +114,20 @@ export class Sketch3DTool {
     this.ctx.hint(`3B eskiz düzlemi: ${this.planeName} (Tab ile değiştir)`);
     if (this.last) this.draw(this.last, null);
   }
+  /** spline aracında toplanan nokta kimlikleri */
+  splP: string[] = [];
+  finishSpline() {
+    const d = this.ctx.draft();
+    if (!d) return;
+    if (this.splP.length >= 2) d.spl3 = [...(d.spl3 ?? []), { id: `s${d.seq++}`, pts: this.splP.slice() }];
+    this.splP = [];
+    this.ctx.changed();
+    this.ctx.hint("Spline eklendi. Yeni spline için ilk noktaya tıklayın.");
+  }
   endChain() {
     const d = this.ctx.draft();
     if (!d) return;
+    if (this.mode === "spline") return this.finishSpline();
     d._act = -1;
     this.last = null;
     this.clear();
@@ -473,6 +484,17 @@ export class Sketch3DTool {
         const t = L2 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)) : 0;
         const dd = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
         if (dd < bd) (bd = dd), (best = { k: "a", id: ar.id });
+      }
+    }
+    // eğriler (spline / helis / kesişim): k "c" (seç + sil)
+    for (const cv of curves3(d)) {
+      const pts = cv.pts.map((q) => this.screenOf(q));
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+        const t = L2 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2)) : 0;
+        const dd = Math.hypot(a[0] + t * dx - x, a[1] + t * dy - y);
+        if (dd < bd) (bd = dd), (best = { k: "c", id: cv.id });
       }
     }
     return best;
@@ -876,12 +898,16 @@ export class Sketch3DTool {
     const delL = new Set(this.sel.filter((q) => q.k !== "p").map((q) => q.id));
     for (const l of d.lines) if (delP.has(l.a) || delP.has(l.b)) delL.add(l.id);
     for (const a of d.arcs3 ?? []) if (delP.has(a.a) || delP.has(a.b) || delP.has(a.m)) delL.add(a.id);
+    for (const sp of d.spl3 ?? []) if (sp.pts.some((p) => delP.has(p))) delL.add(sp.id);
+    d.spl3 = (d.spl3 ?? []).filter((sp) => !delL.has(sp.id));
+    d.hel3 = (d.hel3 ?? []).filter((x) => !delL.has(x.id));
+    d.isc3 = (d.isc3 ?? []).filter((x) => !delL.has(x.id));
     // silinen yayın yay-üstü noktası da silinir
     for (const a of d.arcs3 ?? []) if (delL.has(a.id)) delP.add(a.m);
     d.lines = d.lines.filter((l) => !delL.has(l.id));
     d.arcs3 = (d.arcs3 ?? []).filter((a) => !delL.has(a.id));
     // artık hiçbir çizgide kullanılmayan noktaları da sil (yalnız çizgiye bağlıydıysa)
-    const used = new Set([...d.lines.flatMap((l) => [l.a, l.b]), ...(d.arcs3 ?? []).flatMap((a) => [a.a, a.b, a.m])]);
+    const used = new Set([...d.lines.flatMap((l) => [l.a, l.b]), ...(d.arcs3 ?? []).flatMap((a) => [a.a, a.b, a.m]), ...(d.spl3 ?? []).flatMap((x) => x.pts)]);
     const keep = d.ids.map((id, i) => !delP.has(id) && (used.has(id) || !this.sel.some((q) => q.k === "l")) ? i : -1).filter((i) => i >= 0);
     d.ids = keep.map((i) => d.ids[i]);
     d.xyz = keep.map((i) => d.xyz[i]);
@@ -1270,7 +1296,10 @@ export class Sketch3DTool {
     const all = [...this.sel, ...this.dimPick, ...(this.hov ? [this.hov] : [])];
     for (const q of all) {
       if (q.k === "p") pts.push(...d.xyz[d.ids.indexOf(q.id)]);
-      else if (q.k === "a") {
+      else if (q.k === "c") {
+        const cv = curves3(d).find((z) => z.id === q.id);
+        if (cv) for (let i = 0; i + 1 < cv.pts.length; i++) lines.push(...cv.pts[i], ...cv.pts[i + 1]);
+      } else if (q.k === "a") {
         const ar = d.arcs3?.find((z) => z.id === q.id);
         if (ar) {
           const ps = arcPts(d.xyz[d.ids.indexOf(ar.a)], d.xyz[d.ids.indexOf(ar.m)], d.xyz[d.ids.indexOf(ar.b)]);
@@ -1307,6 +1336,23 @@ export class Sketch3DTool {
         this.addArc(A, B, M);
       } else this.ctx.hint(this.arcPick.length === 1 ? "Yayın bitiş noktasına tıklayın" : "Yay üzerindeki bir noktaya tıklayın (yay düzlemi ve yarıçap)");
       this.draw(c, { x: e.clientX, y: e.clientY });
+      return;
+    }
+    if (c && this.mode === "spline") {
+      // SolidWorks 3B spline: noktalara tıkla, çift tık / Enter ile bitir
+      const d = this.ctx.draft()!;
+      d._act = -1;
+      let id: string;
+      if (c.idx >= 0) id = d.ids[c.idx];
+      else {
+        id = `p${d.seq++}`;
+        d.ids.push(id);
+        d.xyz.push(round3(c.p));
+      }
+      if (this.splP[this.splP.length - 1] !== id) this.splP.push(id);
+      if (dbl) return this.finishSpline();
+      this.ctx.hint(`${this.splP.length} nokta · sonraki noktaya tıklayın; bitirmek için çift tık / Enter`);
+      this.ctx.changed();
       return;
     }
     if (c && this.mode === "point") {
@@ -1497,3 +1543,5 @@ export function enforceAlong(f: Sketch3DFeature, i: number) {
     }
   }
 }
+
+export { curves3 } from "./solver3d";
