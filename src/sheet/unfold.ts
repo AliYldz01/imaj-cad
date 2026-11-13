@@ -97,7 +97,8 @@ export interface UnfoldOut {
 
 type Piece = { t: "l"; a: Vec2; b: Vec2 } | { t: "a"; a: Vec2; b: Vec2; m: Vec2 } | { t: "c"; c: Vec2; r: number };
 
-export function unfold(body: Shape, t: number, k: number): UnfoldOut {
+export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number, rin: number) => number)): UnfoldOut {
+  let k = typeof kIn === "number" ? kIn : 0.44;
   const faces = body.faces as Shape[];
   const types = faces.map((f) => String(f.geomType));
   const faceEdges = faces.map((f) => f.edges as Shape[]);
@@ -169,6 +170,19 @@ export function unfold(body: Shape, t: number, k: number): UnfoldOut {
         const inner = vdot(normalAt(faces[j], pm), rad1) < 0;
         const rin = inner ? rho : rho - t;
         if (rin < -1e-6) throw new Error("Büküm yarıçapı sac kalınlığıyla uyumsuz (kalınlık yanlış olabilir)");
+        if (typeof kIn === "function") {
+          // büküm açısı: silindir yüzünün eksen etrafındaki açıklığı
+          const w2 = vcross(a, rad1);
+          let lo = 0, hi = 0;
+          for (const ed of faceEdges[j]) for (const q of [0, 0.5, 1]) {
+            const r = vsub(tup(ed.pointAt(q)), L);
+            const pr = vsub(r, vmul(a, vdot(r, a)));
+            const ang = Math.atan2(vdot(pr, w2), vdot(pr, rad1));
+            lo = Math.min(lo, ang);
+            hi = Math.max(hi, ang);
+          }
+          k = kIn(((hi - lo) * 180) / Math.PI, Math.max(0, rin));
+        }
         mj = { k: "c", L, a, rho, p1: pm, rad1, s, rhoN: Math.max(0, rin) + k * t, rin: Math.max(0, rin), inner, p1f: rigidP(mi, pm), af: rigidV(mi, a), t1f: rigidV(mi, t1), nf: rigidV(mi, nP) };
       } else if (tj === "PLANE") {
         const mc = mi as CylMap;

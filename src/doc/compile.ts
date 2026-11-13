@@ -581,6 +581,9 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         case "chamfer":
           kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, angle: f.angle, flip: f.flip });
           break;
+        case "dface":
+          kfeats.push({ id: f.id, type: "dface", mode: f.mode, d: f.d, faces: f.faces });
+          break;
         case "shell":
           kfeats.push({ id: f.id, type: "shell", t: f.t, faces: f.faces, out: f.out });
           break;

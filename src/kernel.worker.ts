@@ -13,7 +13,7 @@ import type {
   Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData,
 } from "./doc/types";
 import { thinRegion, segPoints, revSeg } from "./sketch/profile";
-import { sheetOpenRegion } from "./sheet/sheet";
+import { sheetOpenRegion, tableK } from "./sheet/sheet";
 import { unfold, cylinderParams } from "./sheet/unfold";
 
 type Shape = any;
@@ -2822,7 +2822,7 @@ function sketchBend(f: Extract<KFeature, { type: "sketchbend" }>) {
   bodies = bodies.flatMap(solidsOf);
 }
 
-function flatPattern(id: number, bodyIdx: number, t: number, k: number) {
+function flatPattern(id: number, bodyIdx: number, t: number, k: number | ((a: number, r: number) => number)) {
   try {
     if (!bodies.length) throw new Error("Açılacak sac yok");
     const b = bodies[Math.max(0, Math.min(bodyIdx, bodies.length - 1))];
@@ -3083,6 +3083,32 @@ async function buildFeature(f: KFeature) {
             return kind === "dd" ? { distances: [f.d, f.d2 ?? f.d], selectedFace: sel } : { distance: f.d, angle: f.angle ?? 45, selectedFace: sel };
           }),
         );
+      }
+      return;
+    }
+    case "dface": {
+      if (!bodies.length) throw new Error("Önce bir katı oluşturun");
+      const set = matchFaces(f.faces);
+      if (!set.size) throw new Error("Yüz seçin");
+      const faces = allFaces().filter((x) => set.has(x.hashCode));
+      for (const face of faces) {
+        const gt = String(face.geomType);
+        if (f.mode === "fill") {
+          if (gt !== "CYLINDRE") throw new Error("Doldurmak için silindirik delik yüzü seçin");
+          const cp = cylinderParams(face);
+          let lo = Infinity, hi = -Infinity;
+          for (const e of face.edges as any[]) for (const q of [0, 0.5, 1]) {
+            const t = vdot(vsub(tup(e.pointAt(q)), cp.L), cp.a);
+            (lo = Math.min(lo, t)), (hi = Math.max(hi, t));
+          }
+          applyTool(makeCylinder(cp.rho + 1e-4, hi - lo, vadd(cp.L, vmul(cp.a, lo)), cp.a) as any, false);
+        } else {
+          if (gt !== "PLANE") throw new Error("Taşımak için düz yüz seçin");
+          const c = tup(face.center), n = vnorm(tup(face.normalAt(c)));
+          if (Math.abs(f.d) < 1e-9) continue;
+          const pr = basicFaceExtrusion(face.clone() as any, new Vector(vmul(n, f.d) as any)) as any;
+          applyTool(pr, f.d < 0);
+        }
       }
       return;
     }
@@ -3534,7 +3560,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "measure") measure(req.id, req.items);
     else if (req.type === "props") props(req.id);
     else if (req.type === "section") section(req.id, req.frame);
-    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, req.k);
+    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);

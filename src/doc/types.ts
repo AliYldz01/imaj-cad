@@ -315,6 +315,8 @@ export interface DraftFeature extends FeatBase {
   faces: FaceRef[];
   rev: boolean;
 }
+/** doğrudan düzenleme (SolidWorks Yüz Taşı / Yüz Sil–doldur): düz yüzü normali boyunca ötele, silindirik deliği doldur */
+export interface DirectFaceFeature extends FeatBase { type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
 export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[]; /** dışa kabuk */ out?: boolean }
 
 export type AxisName = "x" | "y" | "z";
@@ -625,7 +627,8 @@ export type Feature =
   | ImportFeature
   | RefAxisFeature
   | RefPointFeature
-  | CoordSysFeature;
+  | CoordSysFeature
+  | DirectFaceFeature;
 
 export type FeatureType = Feature["type"];
 
@@ -683,6 +686,7 @@ export type KFeature =
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean }
+  | { id: string; type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
   | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[]; skip?: string[] }
   | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number; skip?: string[] }
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame; only?: boolean }

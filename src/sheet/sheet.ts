@@ -70,7 +70,7 @@ export function sheetParamsBefore(feats: Feature[], id: string | null): SheetPar
 /** Belgedeki son sac parametre kaynağı (taban flanş veya saca dönüştür) */
 export function lastSheetBase(feats: Feature[]): (SheetParams & { id: string }) | null {
   let b: (SheetParams & { id: string }) | null = null;
-  for (const f of feats) if ((f.type === "sheetbase" || f.type === "tosheet") && !f.off) b = { id: f.id, t: f.t, r: f.r, k: effK(f as any), relief: f.relief };
+  for (const f of feats) if ((f.type === "sheetbase" || f.type === "tosheet") && !f.off) b = { id: f.id, t: f.t, r: f.r, k: effK(f as any), relief: f.relief, ...((f as any).bendMethod === "table" ? { btable: (f as any).btable } : {}) } as any;
   return b;
 }
 void (null as unknown as SheetBaseFeature);
@@ -80,8 +80,24 @@ void (null as unknown as SheetBaseFeature);
  * BA/BD değerleri 90° büküm için girilir ve eşdeğer K-faktörüne çevrilir:
  *   BA = (π/2)(r + K·t) ;  BD = 2(r + t) − BA
  */
-export function effK(f: { t: number; r: number; k: number; bendMethod?: "k" | "ba" | "bd"; ba?: number; bd?: number }): number {
+/** büküm tablosu: açıya göre büküm payı (doğrusal ara değer; tablo dışında uçtaki K korunur) */
+export function tableK(rows: { angle: number; ba: number }[], t: number, r: number, angleDeg: number): number {
+  const R = rows.filter((x) => x.angle > 0 && x.ba > 0).sort((a, b) => a.angle - b.angle);
+  if (!R.length) return 0.44;
+  const kOf = (x: { angle: number; ba: number }) => ((x.ba / ((x.angle * Math.PI) / 180)) - r) / t;
+  if (angleDeg <= R[0].angle) return Math.max(0, Math.min(1, kOf(R[0])));
+  if (angleDeg >= R[R.length - 1].angle) return Math.max(0, Math.min(1, kOf(R[R.length - 1])));
+  for (let i = 0; i + 1 < R.length; i++)
+    if (angleDeg <= R[i + 1].angle) {
+      const u = (angleDeg - R[i].angle) / (R[i + 1].angle - R[i].angle);
+      const ba = R[i].ba + u * (R[i + 1].ba - R[i].ba);
+      return Math.max(0, Math.min(1, (ba / ((angleDeg * Math.PI) / 180) - r) / t));
+    }
+  return 0.44;
+}
+export function effK(f: { t: number; r: number; k: number; bendMethod?: "k" | "ba" | "bd" | "table"; ba?: number; bd?: number; btable?: { angle: number; ba: number }[] }): number {
   const q = Math.PI / 2;
+  if (f.bendMethod === "table" && f.btable?.length) return tableK(f.btable, f.t, f.r, 90);
   if (f.bendMethod === "ba" && f.ba! > 0) return Math.max(0, Math.min(1, (f.ba! / q - f.r) / f.t));
   if (f.bendMethod === "bd" && f.bd !== undefined) return Math.max(0, Math.min(1, ((2 * (f.r + f.t) - f.bd) / q - f.r) / f.t));
   return f.k;

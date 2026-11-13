@@ -122,6 +122,7 @@ const FEAT_NAMES: Record<string, string> = {
   fillet: "Radyüs",
   chamfer: "Pah",
   shell: "Kabuk",
+  dface: "Yüz Taşı/Sil",
   lpattern: "DoğrusalÇoğaltma",
   cpattern: "DaireselÇoğaltma",
   mirror: "Ayna",
@@ -281,7 +282,7 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
   if (mode.k === "sketch") return { feats: doc.features.slice(0, featIndex(mode.featId)) };
   if (mode.k === "pm") {
     const d = mode.draft;
-    const live = !["fillet", "chamfer", "shell", "draft", "combine", "delbody", "indent", "thread", "tosheet"].includes(d.type) && !((d.type === "edgeflange" || d.type === "hem" || d.type === "miterflange") && !(d as any)._preview);
+    const live = !["fillet", "chamfer", "shell", "dface", "draft", "combine", "delbody", "indent", "thread", "tosheet"].includes(d.type) && !((d.type === "edgeflange" || d.type === "hem" || d.type === "miterflange") && !(d as any)._preview);
     const base = mode.editingId ? doc.features.slice(0, featIndex(mode.editingId)) : all;
     return { feats: live ? [...base, d] : base, draftId: d.id };
   }
@@ -680,7 +681,7 @@ function refreshHighlight() {
       sel.faces = m.faces.map((f, i) => (f.b !== undefined && bs.has(f.b) ? i : -1)).filter((i) => i >= 0);
       sel.faces.push(...(d.faces ?? []).map((r) => nearestFace(r)).filter((i) => i >= 0));
     }
-    if (m && (d.type === "shell" || d.type === "draft")) sel.faces = d.faces.map((r) => nearestFace(r)).filter((i) => i >= 0);
+    if (m && (d.type === "shell" || d.type === "dface" || d.type === "draft")) sel.faces = d.faces.map((r) => nearestFace(r)).filter((i) => i >= 0);
     if (m && d.type === "extrude" && d.face) sel.faces = [nearestFace(d.face)].filter((i) => i >= 0);
     const pr = d.type === "mirror" ? d.plane : d.type === "plane" ? d.base : null;
     if (pr?.k === "std") sel.planes.push(pr.n);
@@ -857,7 +858,7 @@ function pickWant() {
     if (t === "edgeflange" || t === "hem" || t === "miterflange") return (mode.draft as any)._preview ? {} : { edge: true };
     if (t === "tosheet") return { edge: true };
     if (t === "closecorner") return { face: true };
-    if (t === "shell" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
+    if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "point" || t === "csys") return { edge: true, face: true };
     if (t === "extrude") {
@@ -1210,6 +1211,9 @@ function newFeature(kind: string) {
     case "chamfer":
       draft = { id, type: "chamfer", name: "", d: 2, edges: selectedEdgeRefs() };
       break;
+    case "dface":
+      draft = { id, type: "dface", name: "", mode: "move", d: 5, faces: [...psel.faces].map((i) => faceRef(i)) } as any;
+      break;
     case "shell":
       draft = { id, type: "shell", name: "", t: 2, faces: [...psel.faces].map((i) => faceRef(i)) };
       break;
@@ -1465,6 +1469,7 @@ function commitFeature(kind: string) {
   const { draft, editingId } = mode;
   if ((draft.type === "fillet" || draft.type === "chamfer") && !draft.edges.length) return toast("En az bir kenar seçin", true);
   if (draft.type === "shell" && !draft.faces.length) return toast("Kaldırılacak en az bir yüz seçin", true);
+  if ((draft as any).type === "dface" && !(draft as any).faces.length) return toast("En az bir yüz seçin", true);
   if ((draft.type === "lpattern" || draft.type === "cpattern") && !draft.feats.length) return toast("Çoğaltılacak özelliği seçin", true);
   if (draft.type === "mirror" && !draft.body && !draft.feats.length) return toast("Aynalanacak özelliği seçin veya 'Tüm gövde'yi işaretleyin", true);
   if (draft.type === "revolve" && !draft.axis) return toast("Döndürme ekseni için eskize bir merkez çizgisi çizin", true);
@@ -1778,6 +1783,14 @@ function renderFeaturePM(kind: string) {
       if (d.edges.length || nf) g.appendChild(button("Seçimi temizle", () => ((d.edges = []), (d.faces = []), renderFeaturePM(kind), refreshHighlight())));
       body.appendChild(g);
       hint(isF ? "Yuvarlatılacak kenarlara veya yüzlere dokunun" : "Pah kırılacak kenarlara veya yüzlere dokunun");
+      break;
+    }
+    case "dface": {
+      body.appendChild(group("Doğrudan düzenleme", segField([{ v: "move", t: "Yüz taşı" }, { v: "fill", t: "Deliği doldur (yüz sil)" }], d.mode, (v) => ((d.mode = v), renderFeaturePM(kind), upd())), ...(d.mode === "move" ? [numField("Mesafe (+ dışa, − içe)", d.d, (v) => ((d.d = v), upd()), { unit: "mm" })] : [])));
+      const g = group("Yüzler", h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : d.mode === "move" ? "Taşınacak düz yüzlere dokunun" : "Doldurulacak delik yüzlerine dokunun"));
+      if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
+      body.appendChild(g);
+      hint(d.mode === "move" ? "Taşınacak düz yüzlere dokunun (içe aktarılan STEP için de)" : "Doldurulacak silindirik delik yüzlerine dokunun");
       break;
     }
     case "shell": {
@@ -2744,8 +2757,20 @@ function renderFeaturePM(kind: string) {
             renderFeaturePM(kind);
             upd();
           }),
-          selectField("Büküm hesabı", [{ v: "k", t: "K-faktörü" }, { v: "ba", t: "Büküm payı (90°)" }, { v: "bd", t: "Büküm düşümü (90°)" }], d.bendMethod ?? "k", (v) => ((d.bendMethod = v as any), renderFeaturePM(kind), upd())),
-          (d.bendMethod ?? "k") === "k"
+          selectField("Büküm hesabı", [{ v: "k", t: "K-faktörü" }, { v: "ba", t: "Büküm payı (90°)" }, { v: "bd", t: "Büküm düşümü (90°)" }, { v: "table", t: "Büküm tablosu (açıya göre)" }], d.bendMethod ?? "k", (v) => ((d.bendMethod = v as any), v === "table" && !d.btable && (d.btable = [30, 45, 60, 90, 120, 135].map((a) => ({ angle: a, ba: +bendAllowance(a, d.r, d.t, d.k).toFixed(3) }))), renderFeaturePM(kind), upd())),
+          d.bendMethod === "table"
+            ? (() => {
+                const box = h("div", "pm-picks");
+                box.appendChild(h("p", "pm-hint", "Açı (°) → büküm payı (mm). Ara açılar doğrusal hesaplanır."));
+                (d.btable as { angle: number; ba: number }[]).forEach((row, i) => {
+                  const r = h("div", "pm-row");
+                  r.append(numField("Açı", row.angle, (v) => ((row.angle = v), upd()), { unit: "°" }), numField("BA", row.ba, (v) => ((row.ba = v), upd()), { unit: "mm" }), button("✕", () => (d.btable.splice(i, 1), renderFeaturePM(kind), upd()), "btn danger"));
+                  box.appendChild(r);
+                });
+                box.appendChild(button("Satır ekle", () => (d.btable.push({ angle: 90, ba: +bendAllowance(90, d.r, d.t, d.k).toFixed(3) }), renderFeaturePM(kind), upd()), "btn"));
+                return box;
+              })()
+            : (d.bendMethod ?? "k") === "k"
             ? numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), info(), upd()), { min: 0, key: `${d.id}.k` })
             : d.bendMethod === "ba"
               ? numField("Büküm payı (90°)", d.ba ?? bendAllowance(90, d.r, d.t, d.k), (v) => ((d.ba = v), info(), upd()), { min: 0.01, unit: "mm" })
@@ -3983,7 +4008,7 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const i = d.faces.findIndex((r: FaceRef) => dist3(r.c, f.c) < 1e-3);
     if (i >= 0) d.faces.splice(i, 1);
     else d.faces.push({ c: f.c, n: f.n });
-  } else if (d.type === "shell" && hit.kind === "face" && m) {
+  } else if ((d.type === "shell" || d.type === "dface") && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     const i = d.faces.findIndex((r: FaceRef) => dist3(r.c, f.c) < 1e-3);
     if (i >= 0) d.faces.splice(i, 1);
@@ -4149,7 +4174,7 @@ async function computeFlat(bodyIdx: number): Promise<FlatResult | null> {
     return null;
   }
   setStatus("busy", "Açınım hesaplanıyor…");
-  const res = await kernel.flat(bodyIdx, sb.t, sb.k);
+  const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r);
   setStatus("ok", "Hazır");
   if (res.error) {
     toast(res.error, true);
@@ -4326,6 +4351,7 @@ const FEAT_ICON: Record<string, string> = {
   fillet: "fillet",
   chamfer: "chamfer",
   shell: "shell",
+  dface: "dface",
   lpattern: "lpattern",
   cpattern: "cpattern",
   mirror: "mirror",
@@ -4588,6 +4614,7 @@ function commands(): Cmd[] {
       { id: "fillet", label: "Radyüs", icon: "fillet", run: () => newFeature("fillet") },
       { id: "chamfer", label: "Pah", icon: "chamfer", run: () => newFeature("chamfer") },
       { id: "shell", label: "Kabuk", icon: "shell", run: () => newFeature("shell") },
+      { id: "dface", label: "Yüz Taşı / Sil", icon: "movebody", run: () => newFeature("dface") },
       { id: "draft", label: "Koniklik", icon: "draftf", run: () => newFeature("draft") },
       { id: "rib", label: "Kaburga", icon: "rib", run: () => newFeature("rib") },
       { id: "dome", label: "Kubbe", icon: "dome", run: () => newFeature("dome") },
