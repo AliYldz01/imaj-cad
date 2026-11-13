@@ -81,7 +81,7 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 
 ## 12. SolidWorks başvuru listesinde kalanlar (`docs/SOLIDWORKS_OZELLIKLERI.md` ⬜)
 - ✅ v0.78 12.1 Eskiz ilişkileri: eş yarıçaplı, eşit eğri uzunluğu, eşit kanallar, çift mesafe; ölçüyü sürükleyerek çap ↔ yarıçap
-- ⬜ 12.2 İnce özellik: iki yön farklı kalınlık, köşeleri yuvarla, uçları kapat; sacda normal kesim; ekstrüzyonda sağ tıkla bitiş koşulu
+- ✅ v0.79 12.2 İnce özellik: iki yön farklı kalınlık, köşeleri yuvarla, uçları kapat; sacda normal kesim; ekstrüzyonda sağ tıkla bitiş koşulu
 - ⬜ 12.3 Loft kapalı / ince; radyüs değişken / tam yuvarlak / setback / konik; pah öteleme yüzü; delik serisi; teğet düzlem
 - ⬜ 12.4 Sac tırnak ve yuva; plastik kenarlık / kilit
 

@@ -660,3 +660,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.77 | Bakım: sürücü olarak bırak, eski testler onarıldı, belgeler arşivlendi | ✅ |
 
 | v0.78 | Eşit eğri uzunluğu, eşit kanallar, çap ↔ yarıçap, çift mesafe | ✅ |
+
+| v0.79 | İnce özellik iki yön / köşe radyüsü / uçları kapat, sacda normal kesim, sağ tıkla bitiş koşulu | ✅ |

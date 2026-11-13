@@ -1180,6 +1180,29 @@ function renderCrumbs() {
   draw(null);
   void kernel.faceOwner(pt).then(draw).catch(() => {});
 }
+/** SolidWorks: modelde sağ tık → ekstrüzyonun bitiş koşulunu yerinde değiştir */
+async function openEndCond(pt: Vec3, fid?: string) {
+  const owner = fid ?? (await kernel.faceOwner(pt).catch(() => null));
+  const f = owner ? (getFeat(owner) as ExtrudeFeature | undefined) : undefined;
+  if (!f || f.type !== "extrude") return toast("Bu yüz bir ekstrüzyona ait değil", true);
+  document.querySelector("dialog.endcond")?.remove();
+  const d = h("dialog", "input-dialog endcond") as HTMLDialogElement;
+  d.appendChild(h("h3", "", `${f.name}: bitiş koşulu`));
+  const row = h("div", "pm-buttons");
+  const set = (fn: (x: ExtrudeFeature) => void) => (d.close(), d.remove(), commitDoc(() => fn(getFeat(f.id) as ExtrudeFeature)));
+  const opts: [string, ExtrudeFeature["end"]][] = [["Kör", "blind"], ["Orta düzlem", "mid"], ["Tümünden geçen", "through"], ["Sonrakine kadar", "next"]];
+  for (const [t, v] of opts) row.appendChild(button(t + (f.end === v ? " ✓" : ""), () => set((x) => (x.end = v)), f.end === v ? "btn primary" : "btn"));
+  row.appendChild(button("Yönü ters çevir", () => set((x) => (x.rev = !x.rev)), "btn"));
+  d.append(row);
+  if (f.end === "blind" || f.end === "mid") {
+    let v = f.d1;
+    d.appendChild(numField("Derinlik", f.d1, (x) => (v = x), { min: 0.001, unit: "mm" }));
+    d.appendChild(button("Derinliği uygula", () => set((x) => (x.d1 = v)), "btn"));
+  }
+  d.appendChild(button("Kapat", () => (d.close(), d.remove()), "btn"));
+  document.body.appendChild(d);
+  d.showModal();
+}
 function refreshHighlight() {
   renderCrumbs();
   const sel = { faces: [...psel.faces], edges: [...psel.edges], planes: [...psel.planes] };
@@ -2387,6 +2410,8 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         e.cut ? checkField("Kesme tarafını çevir (dışını kes)", !!e.flipCut, (v) => ((e.flipCut = v), upd())) : h("span", ""),
       );
+      if (e.cut && sheetParamsBefore(doc.features.slice(0, insertAt()), null))
+        body.appendChild(checkField("Normal kesim (sac yüzüne dik, kalınlık boyunca; bükümde de)", !!e.normalCut, (v) => ((e.normalCut = v || undefined), upd())));
       body.appendChild(
         segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], e.cut ? "cut" : "boss", (v) => {
           e.cut = v === "cut";
@@ -4043,7 +4068,14 @@ function thinGroup(e: any, kind: string) {
   const g = group("İnce özellik", checkField("İnce özellik (açık konturda da çalışır)", !!e.thin, (v) => ((e.thin = v), renderFeaturePM(kind), schedulePreview())));
   if (e.thin) {
     g.appendChild(numField("Kalınlık", e.thinT ?? 2, (v) => ((e.thinT = v), schedulePreview()), { min: 0.01, unit: "mm", key: `${e.id}.thinT` }));
-    g.appendChild(segField([{ v: "one", t: "Tek yön" }, { v: "mid", t: "Orta" }, { v: "rev", t: "Ters yön" }], e.thinMode ?? "one", (v) => ((e.thinMode = v), schedulePreview())));
+    g.appendChild(segField([{ v: "one", t: "Tek yön" }, { v: "mid", t: "Orta" }, { v: "rev", t: "Ters yön" }, { v: "two", t: "İki yön" }], e.thinMode ?? "one", (v) => ((e.thinMode = v), renderFeaturePM(kind), schedulePreview())));
+    if (e.thinMode === "two") g.appendChild(numField("Kalınlık (2. yön)", e.thinT2 ?? e.thinT ?? 2, (v) => ((e.thinT2 = v), schedulePreview()), { min: 0.01, unit: "mm", key: `${e.id}.thinT2` }));
+    g.appendChild(checkField("Köşeleri otomatik yuvarla", (e.thinR ?? 0) > 0, (v) => ((e.thinR = v ? Math.max(1, e.thinT ?? 2) : undefined), renderFeaturePM(kind), schedulePreview())));
+    if ((e.thinR ?? 0) > 0) g.appendChild(numField("Radyüs (eskiz köşesinde)", e.thinR, (v) => ((e.thinR = v > 0 ? v : undefined), schedulePreview()), { min: 0, unit: "mm" }));
+    if (kind === "extrude" && !e.cut) {
+      g.appendChild(checkField("Uçları kapat (kapalı profil)", (e.thinCap ?? 0) > 0, (v) => ((e.thinCap = v ? e.thinT ?? 2 : undefined), renderFeaturePM(kind), schedulePreview())));
+      if ((e.thinCap ?? 0) > 0) g.appendChild(numField("Kapak kalınlığı", e.thinCap, (v) => ((e.thinCap = v > 0 ? v : undefined), schedulePreview()), { min: 0.01, unit: "mm" }));
+    }
   }
   return g;
 }
@@ -7430,6 +7462,8 @@ function openContextMenu(x: number, y: number) {
       const fh = viewer.pick(x, y, { face: true });
       if (fh?.kind === "face") {
         const fi = fh.index;
+        const fpt = fh.point;
+        menuItem(box, "Bitiş koşulunu değiştir…", () => void openEndCond(fpt), "extrude");
         menuItem(box, "Görünüm: yüz rengi…", () => pickColor(doc.look?.part ?? "#9fb4cc", (c) => setFaceColor(fi, c)));
         if (doc.look?.faces?.length) menuItem(box, "Yüz rengini kaldır", () => setFaceColor(fi, null));
       }
@@ -8791,6 +8825,7 @@ function showCmd(title: string) {
 }
 (window as any).__app = {
   voiceInput,
+  openEndCond: (pt: Vec3, fid?: string) => openEndCond(pt, fid),
   get photos() { return photos; },
   get caliper() { return caliper; },
   decodeCaliper: (a: number[]) => decodeCaliper(new Uint8Array(a)),

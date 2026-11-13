@@ -88,11 +88,11 @@ Renkler (mavi tanımsız / siyah tam / kırmızı aşırı) ✅ · açık uç g�
 - **Ekstrüzyon yönü** (kenar seçerek eğik ekstrüzyon) ✅ (v0.13)
 - **Koniklik** aç/kapat, dışa doğru ✅
 - **Yön 2** (ayrı bitiş koşulu) ✅
-- **İnce özellik:** tek yön / orta / ters ✅ · iki yön farklı kalınlık, köşeleri otomatik yuvarla, uçları kapat ⬜
+- **İnce özellik:** tek yön / orta / ters ✅ · iki yön farklı kalınlık, köşeleri otomatik yuvarla, uçları kapat ✅ v0.79
 - **Seçili konturlar** ✅ (v0.13) · **Özellik kapsamı** (çok gövdede hangi gövdeler etkilenir) 🟡
-- Kesme: **kesme tarafını çevir** ✅ (v0.13), sacda **normal kesim** ⬜
+- Kesme: **kesme tarafını çevir** ✅ (v0.13), sacda **normal kesim** ✅ v0.79
 - Çıkıntı: **sonucu birleştir** aç/kapat ✅
-- Bitiş koşulunu modelde sağ tıkla değiştirme, sürükleme tutamağı (Instant3D) ✅ v0.14 / v0.74 (sağ tıkla bitiş koşulu ⬜)
+- Bitiş koşulunu modelde sağ tıkla değiştirme, sürükleme tutamağı (Instant3D) ✅ v0.14 / v0.74 (sağ tıkla bitiş koşulu ✅ v0.79)
 
 ### 2.2 Döndürme
 Eksen, açı, iki yön, orta düzlem, ince özellik, seçili konturlar. İmaj: ✅ (seçili kontur ✅ v0.13)

@@ -172,10 +172,18 @@ export interface ExtrudeFeature extends FeatBase {
   dirVec?: Vec3 | null;
   /** Kesme tarafını çevir (profilin dışını kes) */
   flipCut?: boolean;
+  /** sacda normal kesim: profil sac yüzüne dik, kalınlık boyunca kesilir (bükümde de) */
+  normalCut?: boolean;
   thin?: boolean;
   thinT?: number;
-  /** ince özellik yönü: tek taraf / ters / orta */
-  thinMode?: "one" | "rev" | "mid";
+  /** ince özellik yönü: tek taraf / ters / orta / iki yön (farklı kalınlık) */
+  thinMode?: "one" | "rev" | "mid" | "two";
+  /** iki yön: 2. yön kalınlığı */
+  thinT2?: number;
+  /** açık profilde köşeleri otomatik yuvarla (yarıçap) */
+  thinR?: number;
+  /** kapalı profilde uçları kapat (kapak kalınlığı) → içi boş kapalı gövde */
+  thinCap?: number;
   /** Bükümlü ekstrüzyon açısı */
   twist?: number;
   /** false: ayrı gövde oluştur (çoklu gövde) */
@@ -196,7 +204,9 @@ export interface RevolveFeature extends FeatBase {
   rev: boolean;
   thin?: boolean;
   thinT?: number;
-  thinMode?: "one" | "rev" | "mid";
+  thinMode?: "one" | "rev" | "mid" | "two";
+  thinT2?: number;
+  thinR?: number;
   merge?: boolean;
 }
 

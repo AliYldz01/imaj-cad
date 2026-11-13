@@ -259,21 +259,58 @@ export function offsetSegs(segsIn: Seg[], d: number, closed: boolean): Seg[] {
 }
 
 /** İnce özellik bölgesi: konturdan kalınlık kadar halka / şerit */
-export function thinRegion(chains: { segs: Seg[]; closed: boolean }[], t: number, mode: "one" | "rev" | "mid"): Loop[] {
+/** keskin çizgi–çizgi köşelerini R yarıçaplı teğet yaylarla yuvarlar (ince özellik "köşeleri otomatik yuvarla") */
+export function filletSegs(segs: Seg[], R: number, closed: boolean): Seg[] {
+  if (!(R > 0) || segs.length < 2) return segs;
+  const out: Seg[] = segs.map((x) => ({ ...x })) as Seg[];
+  const res: Seg[] = [];
+  const n = out.length;
+  const cut = new Map<number, { a?: Vec2; b?: Vec2 }>();
+  const arcs = new Map<number, Seg>();
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    const s1 = out[i], s2 = out[(i + 1) % n];
+    if (s1.t !== "l" || s2.t !== "l") continue;
+    const P0 = s1.b, u1 = norm2(sub2(s1.a, P0)), u2 = norm2(sub2(s2.b, P0));
+    const cs = u1[0] * u2[0] + u1[1] * u2[1];
+    if (cs < -0.999 || cs > 0.999) continue;
+    const th = Math.acos(Math.max(-1, Math.min(1, cs))) / 2;
+    const dd = R / Math.tan(th);
+    const L1 = d2(s1.a, s1.b) - (cut.get(i)?.a ? d2(s1.a, cut.get(i)!.a!) : 0), L2 = d2(s2.a, s2.b);
+    if (dd >= L1 - 1e-6 || dd >= L2 - 1e-6) continue;
+    const T1 = add2(P0, mul2(u1, dd)), T2 = add2(P0, mul2(u2, dd));
+    const w = norm2(add2(u1, u2)), C = add2(P0, mul2(w, R / Math.sin(th)));
+    const M = sub2(C, mul2(w, R));
+    cut.set(i, { ...(cut.get(i) ?? {}), b: T1 });
+    cut.set((i + 1) % n, { ...(cut.get((i + 1) % n) ?? {}), a: T2 });
+    arcs.set(i, { t: "a", a: T1, b: T2, m: M } as Seg);
+  }
+  for (let i = 0; i < n; i++) {
+    const s0 = out[i] as any, c = cut.get(i);
+    if (c?.a) s0.a = c.a;
+    if (c?.b) s0.b = c.b;
+    res.push(s0);
+    const a = arcs.get(i);
+    if (a) res.push(a);
+  }
+  return res;
+}
+
+export function thinRegion(chains: { segs: Seg[]; closed: boolean }[], t: number, mode: "one" | "rev" | "mid" | "two", t2 = t, R = 0): Loop[] {
   const loops: Loop[] = [];
-  for (const ch of chains) {
+  for (const ch0 of chains) {
+    const ch = R > 0 ? { ...ch0, segs: filletSegs(ch0.segs, R, ch0.closed) } : ch0;
     if (ch.closed) {
       // kapalı kontur: "tek taraf" dışa doğru
       const poly: Vec2[] = [];
       ch.segs.forEach((s) => poly.push(...segPoints(s).slice(0, -1)));
       const sgn = polyArea(poly) > 0 ? -1 : 1;
       const outerD = sgn * (mode === "rev" ? 0 : mode === "mid" ? t / 2 : t);
-      const innerD = sgn * (mode === "one" ? 0 : mode === "mid" ? -t / 2 : -t);
+      const innerD = sgn * (mode === "one" ? 0 : mode === "mid" ? -t / 2 : mode === "two" ? -t2 : -t);
       const o = outerD === 0 ? toLinesArcs(ch.segs) : offsetSegs(ch.segs, outerD, true);
       const i = innerD === 0 ? toLinesArcs(ch.segs) : offsetSegs(ch.segs, innerD, true);
       loops.push({ segs: o, depth: 0 }, { segs: i, depth: 1 });
     } else {
-      const [l, r] = mode === "mid" ? [t / 2, -t / 2] : mode === "one" ? [t, 0] : [0, -t];
+      const [l, r] = mode === "mid" ? [t / 2, -t / 2] : mode === "one" ? [t, 0] : mode === "two" ? [t, -t2] : [0, -t];
       const left = l === 0 ? toLinesArcs(ch.segs) : offsetSegs(ch.segs, l, false);
       const right = r === 0 ? toLinesArcs(ch.segs) : offsetSegs(ch.segs, r, false);
       const back = [...right].reverse().map(revSeg);
