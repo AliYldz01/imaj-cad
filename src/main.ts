@@ -817,7 +817,7 @@ async function rebuild() {
     applyLook();
     memberBodies = res.members;
     const errs = new Map(errors);
-    res.errors.forEach((e) => errs.set(e.featureId, e.message));
+    res.errors.forEach((e) => errs.set(e.featureId.split("~")[0], e.message));
     if (mode.k === "part") {
       // SolidWorks "eksik referans": yeni ortaya çıkan referans hatası için yeniden seç penceresi
       for (const [fid, msg] of errs) if (builtOk.has(fid) && /bulunamad|seçin/i.test(msg) && !firstBuild) offerReselect(fid, msg);
@@ -1183,6 +1183,7 @@ function pickWant() {
     if (t === "tosheet") return { edge: true };
     if (t === "closecorner") return { face: true };
     if (t === "draft" && (mode.draft as any).mode === "parting") return { edge: true };
+    if (t === "lpattern" && (mode.draft as any)._pick === "upTo") return { edge: true, face: true };
     if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
@@ -2259,7 +2260,16 @@ function renderFeaturePM(kind: string) {
         checkField("Ters çevir", d.rev, (v) => ((d.rev = v), upd())),
         numField("Aralık", d.spacing, (v) => ((d.spacing = v), upd()), { min: 0.001, unit: "mm", key: `${d.id}.spacing` }),
         numField("Adet", d.count, (v) => ((d.count = v), upd()), { min: 1, int: true, key: `${d.id}.count` }),
+        checkField("Referansa kadar", d.upTo !== undefined && d.upTo !== null || d._pick === "upTo", (v) => ((d.upTo = v ? d.upTo ?? null : undefined), (d._pick = v ? "upTo" : undefined), renderFeaturePM(kind), upd())),
       );
+      if (d.upTo !== undefined || d._pick === "upTo") {
+        g1.append(
+          h("div", "pm-picks", d.upTo ? `Referans: ${d.upTo.map((x: number) => fmtNum(x, 1)).join(", ")}` : "Referans köşeye / yüze dokunun"),
+          numField("Referanstan öteleme", d.upOff ?? 0, (v) => ((d.upOff = v), upd()), { unit: "mm" }),
+          segField([{ v: "count", t: "Adet sabit (aralık hesaplanır)" }, { v: "spacing", t: "Aralık sabit (adet hesaplanır)" }], d.upMode ?? "count", (v) => ((d.upMode = v), upd())),
+        );
+        hint("Çoğaltmanın varacağı köşeye ya da yüze dokunun");
+      }
       body.appendChild(g1);
       const g2 = group("Yön 2", checkField("İkinci yönü kullan", d.dir2, (v) => ((d.dir2 = v), renderFeaturePM(kind), upd())));
       if (d.dir2)
@@ -2271,6 +2281,7 @@ function renderFeaturePM(kind: string) {
         );
       body.appendChild(g2);
       body.appendChild(featChecks("Çoğaltılacak özellikler"));
+      body.appendChild(checkField("Eskizi değiştir (örneklerde eskiz yeniden çözülür)", !!d.vary, (v) => ((d.vary = v || undefined), upd())));
       body.appendChild(group("Örnekleri atla", (() => {
         const inp = h("input") as HTMLInputElement;
         inp.value = (d.skip ?? []).join("; ");
@@ -2295,6 +2306,7 @@ function renderFeaturePM(kind: string) {
         ),
       );
       body.appendChild(featChecks("Çoğaltılacak özellikler"));
+      body.appendChild(checkField("Eskizi değiştir (örneklerde eskiz yeniden çözülür)", !!d.vary, (v) => ((d.vary = v || undefined), upd())));
       body.appendChild(group("Örnekleri atla", (() => {
         const inp = h("input") as HTMLInputElement;
         inp.value = (d.skip ?? []).join("; ");
@@ -2320,12 +2332,27 @@ function renderFeaturePM(kind: string) {
       const circ = (d.circ ?? 0) > 0;
       const gp = group(
         "Profil ve yol",
-        segField([{ v: "sketch", t: "Eskiz profili" }, { v: "circ", t: "Dairesel profil" }], circ ? "circ" : "sketch", (v) => {
+        segField([{ v: "sketch", t: "Eskiz profili" }, { v: "circ", t: "Dairesel profil" }, { v: "tool", t: "Katı gövde (takım)" }], d.tool ? "tool" : circ ? "circ" : "sketch", (v) => {
           d.circ = v === "circ" ? d.circ || 20 : undefined;
+          d.tool = v === "tool" ? d.tool ?? { d: 10, len: 20 } : undefined;
+          if (v === "tool") (d.helix = undefined), (d.cut = true);
           renderFeaturePM(kind);
           upd();
         }),
       );
+      if (d.tool) {
+        const T = d.tool;
+        gp.append(
+          numField("Takım çapı", T.d, (v) => ((T.d = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Takım boyu (yoldan)", T.len, (v) => ((T.len = v), upd()), { min: 0.01, unit: "mm" }),
+          segField([{ v: "flat", t: "Düz uç (parmak freze)" }, { v: "ball", t: "Küresel uç" }], T.ball ? "ball" : "flat", (v) => ((T.ball = v === "ball" || undefined), upd())),
+          checkField("Takım yönünü çevir", !!T.flip, (v) => ((T.flip = v || undefined), upd())),
+          selectField("Yol (açık veya kapalı zincir)", opts, d.path, (v) => ((d.path = v), upd())),
+          h("p", "pm-hint", "Takımın ucu yol üzerindedir, ekseni yol eskizinin düzlemine diktir; taradığı hacim gövdeden kesilir."),
+        );
+        body.appendChild(gp);
+        break;
+      }
       if (circ) {
         gp.appendChild(numField("Çap", d.circ!, (v) => ((d.circ = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.circ` }));
         gp.appendChild(numField("İç çap (0 = dolu çubuk)", d.circIn ?? 0, (v) => ((d.circIn = v || undefined), upd()), { min: 0, unit: "mm" }));
@@ -4525,6 +4552,8 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else if (d.type === "fillet" && d.kind === "full" && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     d.faces = [{ c: f.c, n: f.n }];
+  } else if (d.type === "lpattern" && d._pick === "upTo" && hit.point) {
+    d.upTo = snapPoint(hit.point);
   } else if (d.type === "draft" && d.mode === "parting" && hit.kind === "edge" && m) {
     const e = m.edges[hit.index];
     d.edges = d.edges ?? [];

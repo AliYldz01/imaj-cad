@@ -6,6 +6,7 @@ import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
 import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } from "../weld/profiles";
 import type { MemberItem, Sketch3DFeature, CornerKind } from "./types";
 import { toWorld, toLocal } from "./math";
+import { solve } from "../sketch/solver";
 
 /** Konturun örnek noktaları (içerme testi için) */
 export function loopSamples(l: Loop): Vec2[] {
@@ -128,15 +129,74 @@ export function planeFrame(pf: Extract<Feature, { type: "plane" }>, feats: Featu
   return null;
 }
 
+/** Doğrusal çoğaltma "eskizi değiştir": tek ekstrüzyonun eskizini her örnek için ötele (sabit / orijine bağlı noktalar hariç),
+ *  yeniden çöz ve eskiz + ekstrüzyon kopyası olarak çoğaltma özelliğinin yerine ekle (kimlik "çoğaltma~i_j") */
+function expandVary(feats: Feature[], errors: Map<string, string>): Feature[] {
+  if (!feats.some((f) => f.type === "lpattern" && f.vary && !f.off)) return feats;
+  const out: Feature[] = [];
+  for (const f of feats) {
+    out.push(f);
+    if (f.type !== "lpattern" || !f.vary || f.off) continue;
+    try {
+      const seed = feats.find((x) => x.id === f.feats[0]);
+      if (f.feats.length !== 1 || !seed || seed.type !== "extrude") throw new Error("Eskizi değiştir yalnız tek bir ekstrüzyon / kesme ile çalışır");
+      const sk = feats.find((x) => x.id === seed.sketch) as SketchFeature | undefined;
+      if (!sk) throw new Error("Eskiz bulunamadı");
+      const pl = kplane(sk.plane, feats, sk.id);
+      if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
+      const fr = pl.frame, yv: Vec3 = [fr.n[1] * fr.x[2] - fr.n[2] * fr.x[1], fr.n[2] * fr.x[0] - fr.n[0] * fr.x[2], fr.n[0] * fr.x[1] - fr.n[1] * fr.x[0]];
+      const ax = (a: "x" | "y" | "z", rev: boolean): Vec3 => AXES[a].map((c) => (rev ? -c : c)) as Vec3;
+      const dirs = [{ v: ax(f.axis, f.rev), count: f.count, spacing: f.spacing }];
+      if (f.dir2) dirs.push({ v: ax(f.axis2, f.rev2), count: f.count2, spacing: f.spacing2 });
+      const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      for (const d of dirs) if (Math.abs(dot(d.v, fr.n)) > 1e-6) throw new Error("Eskizi değiştir: çoğaltma yönü eskiz düzleminde olmalı");
+      const fixed = new Set<string>(sk.data.rels.filter((r) => r.t === "fix").map((r) => r.refs[0]));
+      const d2 = dirs[1] ?? { v: [0, 0, 0] as Vec3, count: 1, spacing: 0 };
+      for (let i = 0; i < Math.max(1, dirs[0].count); i++)
+        for (let j = 0; j < Math.max(1, d2.count); j++) {
+          if (!i && !j) continue;
+          if (f.skip?.includes(`${i + 1},${j + 1}`) || (!j && f.skip?.includes(`${i + 1}`))) continue;
+          const w: Vec3 = [0, 1, 2].map((k) => dirs[0].v[k] * i * dirs[0].spacing + d2.v[k] * j * d2.spacing) as Vec3;
+          const dx = dot(w, fr.x), dy = dot(w, yv);
+          const data = JSON.parse(JSON.stringify(sk.data));
+          const P0 = (id: string): [number, number] => (id === "O" ? [0, 0] : [sk.data.pts[id]?.x ?? 0, sk.data.pts[id]?.y ?? 0]);
+          for (const [id, p] of Object.entries(data.pts) as [string, { x: number; y: number }][]) if (!fixed.has(id)) (p.x += dx), (p.y += dy);
+          // sabit geometriden (orijin / sabit nokta) ölçülen konum ölçüleri örnek ötelemesi kadar artar (SolidWorks: çoğaltma yönündeki ölçü sürülür)
+          const isFix = (id: string) => id === "O" || fixed.has(id);
+          for (const dm of data.dims as any[]) {
+            if (dm.t !== "dist" || dm.ref || dm.refs.length !== 2 || !sk.data.pts[dm.refs.find((r: string) => r !== "O") ?? ""]) continue;
+            const [a, b2] = dm.refs as string[];
+            if (isFix(a) === isFix(b2)) continue;
+            const [fx, mv] = isFix(a) ? [a, b2] : [b2, a];
+            const A = P0(fx), B = P0(mv), B2: [number, number] = [B[0] + dx, B[1] + dy];
+            if (dm.sub === "h") dm.v = Math.abs(B2[0] - A[0]);
+            else if (dm.sub === "v") dm.v = Math.abs(B2[1] - A[1]);
+            else dm.v = Math.hypot(B2[0] - A[0], B2[1] - A[1]);
+          }
+          // sürülen (referans) olmayan ölçüler korunur; sabit geometriye bağlı olanlar çözücüyle uyum sağlar
+          const r = solve(data);
+          if (!r.ok) throw new Error(`Eskizi değiştir: ${i + 1},${j + 1}. örnekte eskiz çözülemedi`);
+          const sid = `${f.id}~s${i}_${j}`;
+          out.push({ ...(sk as any), id: sid, name: `${sk.name} (${i + 1},${j + 1})`, data } as SketchFeature);
+          out.push({ ...(seed as any), id: `${f.id}~${i}_${j}`, name: `${seed.name} (${i + 1},${j + 1})`, sketch: sid });
+        }
+    } catch (e) {
+      errors.set(f.id, (e as Error).message);
+    }
+  }
+  return out;
+}
+
 function kplane(ref: PlaneRef, feats: Feature[], sketchId?: string): KPlane | null {
   const frame = resolveFrame(ref, feats);
   if (!frame) return null;
   return ref.k === "face" && ref.face ? { frame, face: ref.face, sketchId } : { frame, sketchId };
 }
 
-export function compile(feats: Feature[], profiles: Record<string, { name: string; loops: Loop[] }> = {}): { kfeats: KFeature[]; errors: Map<string, string> } {
+export function compile(feats0: Feature[], profiles: Record<string, { name: string; loops: Loop[] }> = {}): { kfeats: KFeature[]; errors: Map<string, string> } {
   const kfeats: KFeature[] = [];
   const errors = new Map<string, string>();
+  const feats = expandVary(feats0, errors);
   const sketchOf = (id: string) => feats.find((f) => f.id === id && f.type === "sketch") as SketchFeature | undefined;
   const profileOf = (id: string) => {
     const sk = sketchOf(id);
@@ -259,7 +319,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           break;
         }
         case "sweep": {
-          const { pl, loops } = f.circ && f.circ > 0 ? { pl: null, loops: [] } : profileOf(f.sketch);
+          const { pl, loops } = (f.circ && f.circ > 0) || f.tool ? { pl: null, loops: [] } : profileOf(f.sketch);
           const ps = sketchOf(f.path);
           if (!ps) throw new Error("Yol eskizini seçin");
           const ppl = kplane(ps.plane, feats, ps.id);
@@ -279,6 +339,10 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             const gp = gs && extractPath(gs.data);
             if (!gs || !gpl || !gp || gp.error) throw new Error("Kılavuz eğri eskizi okunamadı");
             guide = { pl: gpl, segs: gp.segs, closed: gp.closed };
+          }
+          if (f.tool) {
+            kfeats.push({ id: f.id, type: "sweep", cut: true, pl: null, loops: [], path: { pl: ppl, segs: path.segs, closed: path.closed }, tool: f.tool });
+            break;
           }
           kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient, twist: f.twist, guide });
           break;
@@ -653,7 +717,8 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           break;
         case "lpattern": {
           const v = (a: "x" | "y" | "z", rev: boolean): Vec3 => AXES[a].map((c) => (rev ? -c : c)) as Vec3;
-          const dirs = [{ v: v(f.axis, f.rev), count: f.count, spacing: f.spacing }];
+          if (f.vary) break; // eskizi değiştir: örnekler expandVary ile ayrı ekstrüzyonlar olarak eklendi
+          const dirs: { v: Vec3; count: number; spacing: number; upTo?: Vec3; upOff?: number; upMode?: "count" | "spacing" }[] = [{ v: v(f.axis, f.rev), count: f.count, spacing: f.spacing, ...(f.upTo ? { upTo: f.upTo, upOff: f.upOff ?? 0, upMode: f.upMode ?? "count" } : {}) }];
           if (f.dir2) dirs.push({ v: v(f.axis2, f.rev2), count: f.count2, spacing: f.spacing2 });
           kfeats.push({ id: f.id, type: "lpattern", feats: f.feats, dirs, skip: f.skip });
           break;
@@ -676,6 +741,8 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
       errors.set(f.id, (e as Error).message);
     }
   }
+  // eskizi değiştir örneklerinin hataları çoğaltma özelliğine yazılır
+  for (const [k, m] of [...errors]) if (k.includes("~")) (errors.delete(k), errors.has(k.split("~")[0]) || errors.set(k.split("~")[0], m));
   return { kfeats, errors };
 }
 

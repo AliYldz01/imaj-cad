@@ -234,6 +234,8 @@ export interface SweepFeature extends FeatBase {
   cut: boolean;
   /** dairesel profil çapı (>0 ise profil eskizi gerekmez — boru/çubuk) */
   circ?: number;
+  /** katı gövdeyle süpürme (SolidWorks): silindirik takım (Ø d, boy len, düz / küresel uç) ucu yol üzerinde, ekseni yol düzlemine dik; daima keser */
+  tool?: { d: number; len: number; ball?: boolean; flip?: boolean };
   /** dairesel profilde iç çap (boru) */
   circIn?: number;
   /** profil yönelimi: yolu izle (varsayılan) / normali sabit tut */
@@ -368,6 +370,12 @@ export interface LPatternFeature extends FeatBase {
   rev2: boolean;
   count2: number;
   spacing2: number;
+  /** yön 1 referansa kadar: referans noktası (köşe / yüz noktası), öteleme, sabit tutulan (adet → aralık hesaplanır / aralık → adet hesaplanır) */
+  upTo?: Vec3 | null;
+  upOff?: number;
+  upMode?: "count" | "spacing";
+  /** eskizi değiştir (SolidWorks Vary sketch): her örnekte eskiz ötelenip yeniden çözülür, sabit geometriye bağlı ölçüler uyum sağlar */
+  vary?: boolean;
 }
 export interface CPatternFeature extends FeatBase {
   type: "cpattern";
@@ -729,7 +737,7 @@ export type KFeature =
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
-  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean } }
+  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean }; tool?: { d: number; len: number; ball?: boolean; flip?: boolean } }
   | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }
@@ -739,7 +747,7 @@ export type KFeature =
   | { id: string; type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }
   | { id: string; type: "surftrim"; surf: string; tool?: string; tpl?: KPlane; side: 1 | -1 }
   | { id: string; type: "knit"; surfs: string[]; solid: boolean }
-  | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[]; skip?: string[] }
+  | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number; upTo?: Vec3; upOff?: number; upMode?: "count" | "spacing" }[]; skip?: string[] }
   | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number; skip?: string[] }
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame; only?: boolean }
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }

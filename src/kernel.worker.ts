@@ -6,7 +6,7 @@ import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
   setOC, getOC, cast, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
-  importSTEP, makePolygon, makeSolid, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeBSplineApproximation, makeHelix, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
+  importSTEP, makePolygon, makeSolid, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeBSplineApproximation, makeHelix, makeSphere, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
@@ -378,7 +378,78 @@ function pathWire(segs: Seg[], closed: boolean, frame: Frame) {
   return (d.sketchOnPlane(makePlane(frame)) as any).wire;
 }
 
+/** Katı gövdeyle süpürme: silindirik takımın yol boyunca taradığı hacim (parçalardan: doğru → prizma, yay → döndürme, köşelerde silindir; küresel uçta boru + küreler) */
+function toolSweep(f: Extract<KFeature, { type: "sweep" }>): Shape {
+  const T = f.tool!;
+  const R = T.d / 2, L = T.len;
+  if (!(R > 0) || !(L > 0)) throw new Error("Takım çapı ve boyu sıfırdan büyük olmalı");
+  if (T.ball && L < R) throw new Error("Küresel uçta takım boyu yarıçaptan küçük olamaz");
+  const fr = resolvePlane(f.path.pl);
+  const n = T.flip ? vmul(fr.n, -1) : fr.n;
+  const W = (p: Vec2) => toWorld(fr, p);
+  const z0 = T.ball ? R : 0;
+  const oc = getOC() as any;
+  const pieces: Shape[] = [];
+  const verts: Vec3[] = [];
+  const prism = (A: Vec3, B: Vec3) => {
+    const d = vnorm(vsub(B, A)), w = vnorm(vcross(n, d));
+    const lift = (p: Vec3, s: number) => vadd(vadd(p, vmul(w, s * R)), vmul(n, z0));
+    const face = makePolygon([lift(A, 1), lift(B, 1), lift(B, -1), lift(A, -1)] as any) as any;
+    pieces.push(basicFaceExtrusion(face as any, new Vector(vmul(n, L - z0) as any)) as any);
+    if (T.ball) pieces.push(makeCylinder(R, vlen(vsub(B, A)), vadd(A, vmul(n, R)) as any, d as any) as any);
+  };
+  const revol = (C: Vec3, P: Vec3, ang: number) => {
+    // P: yay başlangıcı; radyal düzlemde profil (dikdörtgen [+ küresel uçta daire]) ekseni C, n etrafında döner
+    const u = vnorm(vsub(P, C));
+    const lift = (s: number, z: number) => vadd(vadd(P, vmul(u, s * R)), vmul(n, z));
+    const face = makePolygon([lift(-1, z0), lift(1, z0), lift(1, L), lift(-1, L)] as any) as any;
+    const ax = new oc.gp_Ax1(new oc.gp_Pnt(...C), new oc.gp_Dir(...n));
+    const rv = (fc: any) => cast(new oc.BRepPrimAPI_MakeRevol(fc.wrapped, ax, ang, false).Shape()) as Shape;
+    pieces.push(rv(face));
+    if (T.ball) {
+      const t = vnorm(vcross(n, u));
+      const disc = makeFace(assembleWire([makeCircle(R, vadd(P, vmul(n, R)) as any, t as any)]) as any);
+      pieces.push(rv(disc));
+    }
+  };
+  for (const sg of f.path.segs) {
+    const A = W(sg.a), B = W(sg.b);
+    verts.push(A, B);
+    if (sg.t === "l") prism(A, B);
+    else if (sg.t === "a") {
+      const a = sg.a, b = sg.b, m = sg.m;
+      const D = 2 * (a[0] * (m[1] - b[1]) + m[0] * (b[1] - a[1]) + b[0] * (a[1] - m[1]));
+      if (Math.abs(D) < 1e-12) { prism(A, B); continue; }
+      const sq = (p: Vec2) => p[0] * p[0] + p[1] * p[1];
+      const c: Vec2 = [(sq(a) * (m[1] - b[1]) + sq(m) * (b[1] - a[1]) + sq(b) * (a[1] - m[1])) / D, (sq(a) * (b[0] - m[0]) + sq(m) * (a[0] - b[0]) + sq(b) * (m[0] - a[0])) / D];
+      const an = (p: Vec2) => Math.atan2(p[1] - c[1], p[0] - c[0]);
+      const ccw = (m[0] - a[0]) * (b[1] - a[1]) - (m[1] - a[1]) * (b[0] - a[0]) > 0;
+      let sw = an(b) - an(a);
+      if (ccw && sw <= 0) sw += 2 * Math.PI;
+      if (!ccw && sw >= 0) sw -= 2 * Math.PI;
+      // dönüş yönü: eskiz düzlemi normali ile n aynıysa işaret korunur
+      revol(W(c), A, sw * (vdot(n, fr.n) > 0 ? 1 : -1));
+    } else {
+      // eğri: çokgen yaklaşımı
+      const pts = segPoints(sg, 24).map(W);
+      for (let i = 0; i < pts.length - 1; i++) prism(pts[i], pts[i + 1]), verts.push(pts[i + 1]);
+    }
+  }
+  // uçlar ve köşeler: takımın kendisi
+  const seen: Vec3[] = [];
+  for (const V of verts) {
+    if (seen.some((q) => vlen(vsub(q, V)) < 1e-6)) continue;
+    seen.push(V);
+    pieces.push(makeCylinder(R, L - z0, vadd(V, vmul(n, z0)) as any, n as any) as any);
+    if (T.ball) pieces.push((makeSphere(R) as any).translate(vadd(V, vmul(n, R))) as any);
+  }
+  let out: Shape = pieces[0];
+  for (let i = 1; i < pieces.length; i++) out = out.fuse(pieces[i]);
+  return out;
+}
+
 function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
+  if (f.tool) return toolSweep(f);
   const sframe = resolvePlane(f.path.pl);
   let spine: any;
   if (f.helix) {
@@ -3515,7 +3586,16 @@ async function buildFeature(f: KFeature) {
     case "lpattern": {
       const items = f.feats.map((id) => tools.get(id)).filter(Boolean) as { solid: Shape; cut: boolean; merge: boolean }[];
       if (!items.length) throw new Error("Çoğaltılacak özellik seçin");
-      const [d1, d2] = [f.dirs[0], f.dirs[1] ?? { v: [0, 0, 0] as Vec3, count: 1, spacing: 0 }];
+      let [d1, d2] = [f.dirs[0], f.dirs[1] ?? { v: [0, 0, 0] as Vec3, count: 1, spacing: 0 }];
+      if (d1.upTo) {
+        // referansa kadar: tohum özelliğin merkezinden referansa (yön boyunca) uzaklık − öteleme
+        const bb = items[0].solid.boundingBox.bounds as [Vec3, Vec3];
+        const c = vmul(vadd(bb[0], bb[1]), 0.5);
+        const L = vdot(vsub(d1.upTo, c), vnorm(d1.v)) - (d1.upOff ?? 0);
+        if (!(L > 1e-6)) throw new Error("Referans, çoğaltma yönünde tohum özelliğin önünde olmalı");
+        if ((d1.upMode ?? "count") === "count") d1 = { ...d1, spacing: L / Math.max(1, d1.count - 1) };
+        else d1 = { ...d1, count: Math.floor(L / Math.max(1e-6, d1.spacing) + 1e-9) + 1 };
+      }
       for (const it of items)
         for (let i = 0; i < Math.max(1, d1.count); i++)
           for (let j = 0; j < Math.max(1, d2.count); j++) {

@@ -634,3 +634,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.64 | Eskiz: blok düzenleme / dağıtma, eğri üzerinde metin, spline tutamakları, eşit eğrilik; metin konumu düzeltmesi | ✅ |
 
 | v0.65 | Parça: yüz radyüsü, yüz–yüz pah, köşe pahı (3 mesafe), kabukta yüz başına kalınlık, ayırma çizgisi / basamaklı koniklik, koniklik analizi | ✅ |
+
+| v0.66 | Parça: çoğaltmada referansa kadar ve eskizi değiştir, katı gövdeyle (takım) süpürme | ✅ |

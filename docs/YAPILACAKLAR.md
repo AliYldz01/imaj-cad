@@ -28,8 +28,8 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.65 3.2 Pah: yüz seçimi (öteleme yüzü), yüz–yüz, köşe pahı (üç mesafe, çok köşe)
 - ✅ v0.65 3.3 Kabukta yüz başına kalınlık (düz yüzler, içe kabuk)
 - ✅ v0.65 3.4 Koniklik: ayırma çizgisi (yüz başına menteşe → basamaklı da), koniklik analizi (renkli)
-- ⬜ 3.5 Çoğaltma: referansa kadar, eskizi değiştir
-- ⬜ 3.6 Katı gövdeyle süpürme
+- ✅ v0.66 3.5 Çoğaltma: referansa kadar (adet / aralık sabit, öteleme), eskizi değiştir (sabit geometriye bağlı ölçüler uyar)
+- ✅ v0.66 3.6 Katı gövdeyle süpürme (silindirik takım: düz / küresel uç, doğru / yay / eğri yol)
 - ⬜ 3.7 Loft: bağlayıcılar, komşu yüze teğet
 - ⬜ 3.8 Delik sihirbazı: yuva delik, havşa seçenekleri
 - ⬜ 3.9 Referans noktası türleri
