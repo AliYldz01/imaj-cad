@@ -622,3 +622,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.58 | Montaj: telefonda parmakla sürükleme, Girişim paneli, düzlem satırları kapalı, telefonda alçak panel, dikiş noktası seçilmez, kütlede parça malzemesi | ✅ |
 
 | v0.59 | Montaj: bileşen yapılandırmaları, yol / kam / yuva eşleşmeleri, fiziksel dinamik, hareket videosu kaydı | ✅ |
+
+| v0.60 | Orta tuşla döndürme: imleç altındaki köşe / yüz noktası etrafında, orta tıkla seçilen kenar / eksen etrafında (SolidWorks) | ✅ |

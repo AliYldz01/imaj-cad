@@ -1,6 +1,6 @@
 // 3D görüntüleme: sahne, kamera (Y yukarı, SolidWorks gibi), düzlemler, model, seçim ve giriş yönlendirme.
 import * as THREE from "three";
-import { NavControls } from "./nav";
+import { NavControls, type Pivot } from "./nav";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -58,6 +58,9 @@ export class Viewer {
   private renderHooks = new Set<() => void>();
   handler: InputHandler | null = null;
   bbox: THREE.Box3 | null = null;
+  private triad!: THREE.Object3D;
+  /** döndürme merkezi işareti (SolidWorks: macenta) */
+  private pivotMark = new THREE.Group();
   showPlanes = true;
 
   constructor(readonly container: HTMLElement) {
@@ -76,10 +79,13 @@ export class Viewer {
     const sun = new THREE.DirectionalLight(0xffffff, 1.7);
     sun.position.set(0.4, 0.6, 1);
     this.camera.add(sun);
-    this.scene.add(this.camera, this.model, this.hl, this.planesGroup, this.overlay, this.makeTriad());
+    this.triad = this.makeTriad();
+    this.scene.add(this.camera, this.model, this.hl, this.planesGroup, this.overlay, this.triad, this.pivotMark);
 
     this.controls = new NavControls(this.camera, this.renderer.domElement);
     this.controls.addEventListener("change", () => this.requestRender());
+    this.controls.pivotAt = (x, y, ent) => this.navPivot(x, y, ent);
+    this.controls.addEventListener("pivot", () => this.showPivot(this.controls.pivot));
     this.renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 
     this.setupInput();
@@ -623,6 +629,94 @@ export class Viewer {
     this.bbox = box;
     this.fit();
     this.bbox = old;
+  }
+
+  // ---------- döndürme merkezi (SolidWorks orta tuş) ----------
+  /** görünür model ağları (parça + montaj); düzlemler, eskiz, vurgu ve eksen üçlüsü hariç */
+  private navMeshes(): THREE.Mesh[] {
+    const out: THREE.Mesh[] = [];
+    const skip = new Set<THREE.Object3D>([this.planesGroup, this.overlay, this.hl, this.triad, this.pivotMark, this.camera]);
+    const walk = (o: THREE.Object3D) => {
+      if (!o.visible || skip.has(o)) return;
+      if ((o as THREE.Mesh).isMesh && !o.userData.ifc) out.push(o as THREE.Mesh);
+      o.children.forEach(walk);
+    };
+    this.scene.children.forEach(walk);
+    return out;
+  }
+  /** döndürme merkezi: imleç altındaki model noktası (yakın köşeye yakalanır); boşlukta model tümüyle görünüyorsa model merkezi,
+   * değilse hedef (null). entity: orta tıkla seçilen varlık → köşe = nokta, kenar / silindir = eksen, düz yüz = normal ekseni */
+  navPivot(x: number, y: number, entity: boolean): Pivot | null {
+    const meshes = this.navMeshes();
+    if (!meshes.length) return null;
+    const hit = this.ray(x, y).intersectObjects(meshes, false)[0];
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const scr = (p: Vec3) => {
+      const q = this.toScreen(p);
+      return Math.hypot(q[0] + r.left - x, q[1] + r.top - y);
+    };
+    const md = this.mesh && this.modelMesh?.visible !== false && this.model.visible ? this.mesh : null;
+    // yakın köşe (8 px)
+    if (md) {
+      let best: Vec3 | null = null, bd = 8;
+      for (const e of md.edges) for (const P of [e.s, e.e]) {
+        const d = scr(P);
+        if (d < bd) (bd = d), (best = P);
+      }
+      if (best && (!hit || this.visibleAt(best, hit))) return { p: new THREE.Vector3(...best) };
+    }
+    if (entity && md) {
+      const pk = this.pick(x, y, { face: true, edge: true });
+      if (pk?.kind === "edge") {
+        const e = md.edges[pk.index];
+        if (e.c && e.ax) return { p: new THREE.Vector3(...e.c), axis: new THREE.Vector3(...e.ax) };
+        if (e.d) return { p: new THREE.Vector3(...pk.point), axis: new THREE.Vector3(...e.d) };
+      }
+      if (pk?.kind === "face") {
+        const f = md.faces[pk.index];
+        if (f.ax && f.ac) return { p: new THREE.Vector3(...f.ac), axis: new THREE.Vector3(...f.ax) };
+        if (f.n) return { p: new THREE.Vector3(...pk.point), axis: new THREE.Vector3(...f.n) };
+      }
+    }
+    if (hit) return { p: hit.point.clone() };
+    // boşluk: model tümüyle görünüyorsa model merkezi (SolidWorks), değilse ekran merkezindeki hedef
+    const box = new THREE.Box3();
+    meshes.forEach((m) => box.expandByObject(m));
+    if (box.isEmpty()) return null;
+    const cs = [0, 1].flatMap((i) => [0, 1].flatMap((j) => [0, 1].map((k) => new THREE.Vector3(i ? box.max.x : box.min.x, j ? box.max.y : box.min.y, k ? box.max.z : box.min.z))));
+    const all = cs.every((c) => {
+      const v = c.clone().project(this.viewCam());
+      return Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
+    });
+    return all ? { p: box.getCenter(new THREE.Vector3()) } : null;
+  }
+  /** köşe, ışının çarptığı yüzeyin önünde ya da üzerinde mi (arkada kalan köşeye yakalanmasın) */
+  private visibleAt(P: Vec3, hit: THREE.Intersection) {
+    const cam = this.viewCam();
+    const dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    const v = new THREE.Vector3(...P);
+    return v.clone().sub(hit.point).dot(dir) <= 1e-3 * hit.distance + 0.5;
+  }
+  /** döndürme merkezi işareti: macenta nokta (+ eksen çizgisi) */
+  showPivot(pv: Pivot | null) {
+    for (const c of [...this.pivotMark.children]) this.pivotMark.remove(c);
+    if (pv) {
+      const g = new THREE.BufferGeometry().setFromPoints([pv.p]);
+      const pt = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xd6336c, size: 11, sizeAttenuation: false, depthTest: false }));
+      pt.renderOrder = 20;
+      this.pivotMark.add(pt);
+      if (pv.axis) {
+        const L = (this.bbox?.getSize(new THREE.Vector3()).length() ?? 200) * 0.75 + 20;
+        const a = pv.axis.clone().normalize().multiplyScalar(L);
+        const lg = new THREE.BufferGeometry().setFromPoints([pv.p.clone().sub(a), pv.p.clone().add(a)]);
+        const ln = new THREE.Line(lg, new THREE.LineDashedMaterial({ color: 0xd6336c, dashSize: 6, gapSize: 4, depthTest: false }));
+        ln.computeLineDistances();
+        ln.renderOrder = 20;
+        this.pivotMark.add(ln);
+      }
+    }
+    this.requestRender();
   }
 
   // ---------- Işın ve izdüşüm ----------

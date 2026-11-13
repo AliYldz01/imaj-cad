@@ -6,8 +6,17 @@
 import * as THREE from "three";
 import { prefs } from "./input/prefs";
 
+/** döndürme merkezi: nokta ya da eksen (kenar / silindir / düz yüz normali) */
+export interface Pivot { p: THREE.Vector3; axis?: THREE.Vector3 }
+
 export class NavControls extends EventTarget {
   target = new THREE.Vector3();
+  /** SolidWorks: orta tuşla döndürmede merkez — imleç altındaki model noktası (yoksa model merkezi / ekran merkezi);
+   * entity = orta tuşla tek tıklanan varlık (köşe = nokta, kenar / silindir = eksen, düz yüz = normal ekseni) */
+  pivotAt: ((x: number, y: number, entity: boolean) => Pivot | null) | null = null;
+  /** etkin döndürme merkezi (sürükleme sırasında) ve orta tıkla seçilmiş varlık */
+  pivot: Pivot | null = null;
+  sticky: Pivot | null = null;
   oneFingerRotate = true;
   private pointers = new Map<number, { x: number; y: number; type: string; button: number }>();
   private pinch: { d: number; mx: number; my: number; a: number } | null = null;
@@ -35,6 +44,7 @@ export class NavControls extends EventTarget {
   })();
   private lastMid = 0;
   private midMoved = false;
+  private downAt = { x: 0, y: 0 };
 
   /** dışarıdan parmak ekle (çizim iptal edilip gezinmeye geçerken) */
   inject(e: { pointerId: number; clientX: number; clientY: number }) {
@@ -51,9 +61,12 @@ export class NavControls extends EventTarget {
     if (e.pointerType === "mouse") {
       e.preventDefault();
       const now = performance.now();
-      if (now - this.lastMid < 350) this.dispatchEvent(new Event("fit"));
+      if (now - this.lastMid < 350) (this.sticky = null), this.dispatchEvent(new Event("fit"));
       this.lastMid = now;
       this.midMoved = false;
+      this.downAt = { x: e.clientX, y: e.clientY };
+      this.pivot = this.sticky ?? (e.ctrlKey || e.shiftKey || e.altKey ? null : this.pivotAt?.(e.clientX, e.clientY, false) ?? null);
+      this.dispatchEvent(new Event("pivot"));
     }
     try { this.el.setPointerCapture(e.pointerId); } catch {}
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
@@ -95,16 +108,24 @@ export class NavControls extends EventTarget {
       }
       return;
     }
-    if (Math.abs(dx) + Math.abs(dy) > 0) this.midMoved = true;
+    if (Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 3) this.midMoved = true;
     if (e.ctrlKey) this.pan(dx, dy);
     else if (e.shiftKey) {
       const r = this.el.getBoundingClientRect();
       this.zoomAt(Math.exp(-dy * 0.01), r.left + r.width / 2, r.top + r.height / 2);
     } else if (e.altKey) this.roll(dx * 0.4);
-    else this.rotate(dx, dy);
+    else this.rotate(dx, dy, this.pivot);
   }
 
   private up(e: PointerEvent) {
+    const p = this.pointers.get(e.pointerId);
+    if (p && p.type === "mouse") {
+      // tek orta tık (sürüklemeden): varlığı döndürme merkezi seç; sürüklemeden sonra seçim kalkar
+      if (!this.midMoved) this.sticky = this.pivotAt?.(e.clientX, e.clientY, true) ?? null;
+      else if (this.sticky) this.sticky = null;
+      this.pivot = this.sticky;
+      this.dispatchEvent(new Event("pivot"));
+    }
     this.pointers.delete(e.pointerId);
     this.pinch = this.touchCount() === 2 ? this.pinchState() : null;
   }
@@ -132,19 +153,30 @@ export class NavControls extends EventTarget {
     this.rotate(-(yaw * Math.PI) / 180 / 0.008, -(pitch * Math.PI) / 180 / 0.008);
   }
 
-  rotate(dx: number, dy: number) {
+  rotate(dx: number, dy: number, pv: Pivot | null = null) {
     const cam = this.camera;
     const offset = cam.position.clone().sub(this.target);
     const up = cam.up.clone().normalize();
     const fwd = offset.clone().normalize().negate();
     const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
-    const q = new THREE.Quaternion()
-      .setFromAxisAngle(up, -dx * 0.008)
-      .multiply(new THREE.Quaternion().setFromAxisAngle(right, -dy * 0.008));
-    offset.applyQuaternion(q);
+    let q: THREE.Quaternion;
+    if (pv?.axis) {
+      // eksen etrafında (SolidWorks: kenar / eksen etrafında döndür): ekran yönündeki sürükleme bileşeni açıyı verir
+      const A = pv.axis.clone().normalize();
+      let ang = -0.008 * (dx * A.dot(up) + dy * A.dot(right));
+      if (Math.abs(A.dot(fwd)) > 0.9) ang = -0.008 * dx * Math.sign(A.dot(fwd));
+      q = new THREE.Quaternion().setFromAxisAngle(A, ang);
+    } else
+      q = new THREE.Quaternion()
+        .setFromAxisAngle(up, -dx * 0.008)
+        .multiply(new THREE.Quaternion().setFromAxisAngle(right, -dy * 0.008));
+    // merkez etrafında katı dönüş: kamera ve hedef birlikte döner, merkez ekranda yerinde kalır
+    const P = pv?.p ?? this.target;
+    cam.position.sub(P).applyQuaternion(q).add(P);
+    this.target.sub(P).applyQuaternion(q).add(P);
     cam.up.applyQuaternion(q);
-    cam.position.copy(this.target).add(offset);
     cam.lookAt(this.target);
+    cam.updateMatrixWorld();
     this.changed();
   }
 
