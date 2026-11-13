@@ -40,7 +40,7 @@ export interface SSpline extends EntBase { t: "spline"; pts: string[] }
 /** Parabol (ikinci derece Bezier): başlangıç, bitiş, kontrol noktası */
 export interface SParabola extends EntBase { t: "parabola"; s: string; e: string; k: string; /** konik: rho (0,5 = parabol, <0,5 elips, >0,5 hiperbol) */ rho?: number }
 /** Eskiz metni */
-export interface SText extends EntBase { t: "text"; p: string; text: string; size: number; angle: number }
+export interface SText extends EntBase { t: "text"; p: string; text: string; size: number; angle: number; font?: string }
 export type SEnt = SPointEnt | SLine | SCircle | SArc | SEllipse | SSpline | SParabola | SText;
 
 export type RelType =
@@ -699,7 +699,7 @@ export type Loop =
   | { circle: { c: Vec2; r: number }; depth: number }
   | { ellipse: { c: Vec2; rx: number; ry: number; rot: number }; depth: number }
   | { segs: Seg[]; depth: number };
-export interface TextItem { text: string; x: number; y: number; size: number; angle: number }
+export interface TextItem { text: string; x: number; y: number; size: number; angle: number; /** yazı tipi: sans (varsayılan) / bold / serif / mono */ font?: string }
 
 /** Eskiz düzlemi: yüz üzerindeyse çekirdek yüzü bulup çerçeveyi günceller */
 export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }

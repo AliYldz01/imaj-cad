@@ -67,7 +67,7 @@ function collect(sk: SketchData) {
       }
     } else if (e.t === "text") {
       const p = P(e.p);
-      if (e.text.trim()) texts.push({ text: e.text, x: p[0], y: p[1], size: e.size, angle: e.angle });
+      if (e.text.trim()) texts.push({ text: e.text, x: p[0], y: p[1], size: e.size, angle: e.angle, font: (e as any).font });
     }
   }
   return { edges, closedLoops, texts };

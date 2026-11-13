@@ -204,7 +204,7 @@ export class SketchEditor implements InputHandler {
   private lastClick = { t: 0, p: [0, 0] as Vec2 };
   private offRender: () => void;
   opts = {
-    sides: 6, filletR: 5, chamferD: 3, showRels: true,
+    sides: 6, filletR: 5, chamferD: 3, showRels: true, chainDim: false, comb: false, combScale: 1, ...(() => { try { const o = JSON.parse(localStorage.getItem("imajcad.skset") || "{}"); return { gridStep: +o.gridStep || 0, angSnap: +o.angSnap || 0 }; } catch { return { gridStep: 0, angSnap: 0 }; } })(), slotDims: "none" as "none" | "cc" | "total",
     gridSnap: (() => {
       try {
         return localStorage.getItem("imajcad.gridSnap") === "1";
@@ -385,6 +385,7 @@ export class SketchEditor implements InputHandler {
 
   // ---------------- Araçlar ----------------
   setTool(t: SkTool) {
+    this.chainSt = null;
     document.querySelector(".dim-prompt.quick")?.remove();
     this.finishChain();
     this.tool = t;
@@ -701,7 +702,7 @@ export class SketchEditor implements InputHandler {
   }
 
   private snapGrid(v: number) {
-    const step = niceStep(this.wpp() * 2.5);
+    const step = this.opts.gridStep > 0 ? this.opts.gridStep : niceStep(this.wpp() * 2.5);
     return Math.round(v / step) * step;
   }
 
@@ -913,7 +914,15 @@ export class SketchEditor implements InputHandler {
       const g = close.find((x) => x.rel) && gDist(close.find((x) => x.rel)!, p) < tol * 0.7 ? close.find((x) => x.rel)! : close[0];
       return pack(proj(g, p), [g]);
     }
-    // 8) serbest (ızgara yakalama isteğe bağlı)
+    // 8) serbest: açı yakalama (başlangıç noktasına göre, ör. 15°) ve ızgara yakalama isteğe bağlı
+    if (this.opts.angSnap > 0 && from) {
+      const v = sub2(p, from), L = Math.hypot(v[0], v[1]);
+      if (L > 1e-9) {
+        const st = (this.opts.angSnap * Math.PI) / 180, a0 = Math.round(Math.atan2(v[1], v[0]) / st) * st;
+        const L2 = this.opts.gridSnap ? Math.max(this.snapGrid(L), 1e-6) : L;
+        return { p: [from[0] + Math.cos(a0) * L2, from[1] + Math.sin(a0) * L2] };
+      }
+    }
     return { p: this.opts.gridSnap ? [this.snapGrid(p[0]), this.snapGrid(p[1])] : p };
   }
 
@@ -2291,6 +2300,14 @@ export class SketchEditor implements InputHandler {
           addRel(sk, "tangent", [L2.id, a1.id]);
           addRel(sk, "tangent", [L2.id, a2.id]);
           addRel(sk, "equal", [a1.id, a2.id]);
+          // SolidWorks: kanal ölçüleri (merkezden merkeze ya da toplam boy) + genişlik
+          const sd = this.opts.slotDims;
+          if (sd !== "none") {
+            const L = d2(a, b), lp = add2(mul2(add2(a, b), 0.5), mul2(n, w * 2.5));
+            if (sd === "cc") sk.dims.push({ id: nid(sk, "d"), t: "dist", refs: [c1, c2], v: L, sub: "a", lp });
+            else sk.dims.push({ id: nid(sk, "d"), t: "cc", refs: [a1.id, a2.id], v: L + 2 * w, cond: "max", lp });
+            sk.dims.push({ id: nid(sk, "d"), t: "dia", refs: [a1.id], v: 2 * w, lp: add2(a, mul2(n, -w * 2.5)) });
+          }
         });
         this.st = {};
         return this.render();
@@ -3473,6 +3490,8 @@ export class SketchEditor implements InputHandler {
     return id;
   }
 
+  /** zincir ölçü durumu: son ölçünün ikinci noktası, yönü ve ölçü çizgisi konumu */
+  chainSt: { last: string; sub: "h" | "v"; lp: Vec2 } | null = null;
   private dimClick(p: Vec2, e: { clientX: number; clientY: number }) {
     const st = this.st;
     st.refs = st.refs ?? [];
@@ -3492,13 +3511,21 @@ export class SketchEditor implements InputHandler {
       const ml = this.modelLineAt(p);
       if (ml) h = { kind: "ent", id: ml, q: p };
     }
+    // zincir ölçü (SolidWorks): önceki yatay / dikey ölçünün son noktasından bu noktaya aynı hizada
+    let forced: any = null;
+    const ch = this.chainSt;
+    if (h && h.kind === "pt" && this.opts.chainDim && ch && !st.refs.length && h.id !== ch.last && this.data.pts[ch.last]) {
+      const A = P(this.data, ch.last), B = P(this.data, h.id);
+      forced = { t: "dist", refs: [ch.last, h.id], sub: ch.sub, lp: ch.sub === "h" ? [(A[0] + B[0]) / 2, ch.lp[1]] : [ch.lp[0], (A[1] + B[1]) / 2] };
+      h = null;
+    }
     if (h) {
       if (st.refs.length >= 2 || st.refs.includes(h.id)) st.refs = [];
       st.refs.push(h.id);
       this.render();
       return;
     }
-    if (!st.refs.length) return;
+    if (!forced && !st.refs.length) return;
     if (st.refs.length === 1 && st.vown?.[st.refs[0]]) {
       // çizgi ortasına / çeyreğe tıklanıp tek bırakıldı: SolidWorks gibi çizginin/dairenin kendisini ölç
       const vid = st.refs[0];
@@ -3506,7 +3533,7 @@ export class SketchEditor implements InputHandler {
       this.op(() => deleteIds(this.data, [...this.data.ents.filter((e) => e.t === "point" && (e as any).p === vid).map((e) => e.id), vid]));
     }
     st.vown = undefined;
-    const spec = this.dimSpec(st.refs, p);
+    const spec = forced ?? this.dimSpec(st.refs, p);
     st.refs = [];
     this.render();
     if (!spec) return this.host.toast("Bu seçim için ölçü yok");
@@ -3535,6 +3562,7 @@ export class SketchEditor implements InputHandler {
         return d;
       };
       const ok = this.op(() => this.data.dims.push(make()), "");
+      if (ok && spec.t === "dist" && (spec.sub === "h" || spec.sub === "v")) this.chainSt = { last: spec.refs[1], sub: spec.sub, lp: spec.lp };
       if (ok) return this.host.changed();
       // SolidWorks gibi: aşırı tanımlıyorsa referans ölçü olarak eklemeyi öner
       if (confirm(this.redundantHit ? "Gereksiz ölçü: bu ölçü eskizi aşırı tanımlar (değeri zaten belirli). Sürülen (referans) ölçü olarak eklensin mi?" : "Bu ölçü eskizi aşırı tanımlar. Referans (sürülen) ölçü olarak eklensin mi?")) {
@@ -3793,6 +3821,32 @@ export class SketchEditor implements InputHandler {
     return out;
   }
 
+  /** eğrilik tarağı: örnek noktalarda eğrilik (üç nokta çemberi), normal yönde ölçekli dişler ve uçlarını birleştiren zarf */
+  combOf(pts: Vec2[]): Vec2[][] {
+    if (pts.length < 3) return [];
+    const ks: number[] = [], ns: Vec2[] = [];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+      const A = d2(b, c), B = d2(a, c), C = d2(a, b), cr = crs2(sub2(b, a), sub2(c, a));
+      ks.push(A * B * C > 1e-12 ? (2 * cr) / (A * B * C) : 0);
+      const t = norm2(sub2(c, a));
+      ns.push([-t[1], t[0]]);
+    }
+    const kmax = Math.max(...ks.map(Math.abs), 1e-9);
+    const scale = (this.opts.combScale * this.wpp() * 60) / kmax;
+    const teeth: Vec2[][] = [], env: Vec2[] = [];
+    ks.forEach((k, i) => {
+      const p = pts[i + 1], q: Vec2 = add2(p, mul2(ns[i], -k * scale));
+      teeth.push([p, q]);
+      env.push(q);
+    });
+    return [...teeth, env];
+  }
+  /** spline eğrilik tarağı açık / kapalı */
+  toggleComb() {
+    this.opts.comb = !this.opts.comb;
+    this.render();
+  }
   private addLines(poly: Vec2[], color: number, width = 2, dashed = false) {
     if (poly.length < 2) return;
     this.group.add(this.host.viewer.fatLines(this.segs(poly), color, width, dashed));
@@ -3826,6 +3880,8 @@ export class SketchEditor implements InputHandler {
       if (e.t === "point") continue;
       const col = this.entColor(e);
       this.addLines(this.entPolyline(e), col, this.sel.has(e.id) || this.hov?.id === e.id ? 3 : 2, !!e.cons);
+      // eğrilik tarağı (SolidWorks): seçili spline / konik için normal yönde eğrilikle orantılı dişler + zarf
+      if ((e.t === "spline" || e.t === "parabola" || e.t === "ellipse") && this.sel.has(e.id) && this.opts.comb) for (const seg of this.combOf(this.entPolyline(e))) this.addLines(seg, 0xd6336c, 1);
     }
     // noktalar
     const ptCols = new Map<number, number[]>();
@@ -4420,6 +4476,7 @@ export class SketchEditor implements InputHandler {
       };
       mk("Yayda yay uzunluğunu ölç", "arcLen");
       mk("Dairede merkez yerine en yakın kenar", "edgeDim");
+      mk("Zincir ölçü (sıradaki noktalar öncekinden ölçülür)", "chainDim" as any);
     }
     if (this.tool === "eqcurve") {
       const sel = document.createElement("select");
@@ -4485,6 +4542,13 @@ export class SketchEditor implements InputHandler {
       box.appendChild(this.numField("Yükseklik (mm)", this.opts.textSize, (v) => (this.opts.textSize = v)));
       box.appendChild(this.numField("Açı (°)", this.opts.textAngle, (v) => (this.opts.textAngle = v), { any: true }));
     }
+    if (this.tool === "slot" || this.tool === "cslot") {
+      const sl = document.createElement("select");
+      sl.innerHTML = `<option value="none">Ölçü ekleme</option><option value="cc">Ölçü: merkezden merkeze + genişlik</option><option value="total">Ölçü: toplam boy + genişlik</option>`;
+      sl.value = this.opts.slotDims;
+      sl.addEventListener("change", () => (this.opts.slotDims = sl.value as any));
+      box.appendChild(sl);
+    }
     if (this.tool === "convert") {
       const l = h("label", "pm-check");
       const c = document.createElement("input");
@@ -4533,10 +4597,21 @@ export class SketchEditor implements InputHandler {
           box.appendChild(this.numField("Küçük yarıçap", e.rb, (v) => this.op(() => (e.rb = v))));
         }
         if (e?.t === "parabola") box.appendChild(this.numField("Rho (0,5 = parabol)", e.rho ?? 0.5, (v) => this.op(() => (e.rho = Math.max(0.05, Math.min(0.95, v))))));
+        if (e && (e.t === "spline" || e.t === "parabola" || e.t === "ellipse")) {
+          const cb = h("button", "btn" + (this.opts.comb ? " primary" : ""), this.opts.comb ? "Eğrilik tarağını gizle" : "Eğrilik tarağı");
+          cb.addEventListener("click", () => (this.toggleComb(), this.renderPanel()));
+          box.appendChild(cb);
+          if (this.opts.comb) box.appendChild(this.numField("Tarak ölçeği", this.opts.combScale, (v) => ((this.opts.combScale = Math.max(0.05, v)), this.render()), { min: 0.05 } as any));
+        }
         if (e?.t === "text") {
           box.appendChild(this.textField("Metin", e.text, (v) => this.op(() => (e.text = v))));
           box.appendChild(this.numField("Yükseklik", e.size, (v) => this.op(() => (e.size = v))));
           box.appendChild(this.numField("Açı (°)", e.angle, (v) => this.op(() => (e.angle = v)), { any: true }));
+          const fs = document.createElement("select");
+          fs.innerHTML = `<option value="">Yazı tipi: Sans</option><option value="bold">Sans kalın</option><option value="serif">Serif</option><option value="mono">Eş aralıklı (mono)</option>`;
+          fs.value = e.font ?? "";
+          fs.addEventListener("change", () => this.op(() => (e.font = fs.value || undefined)));
+          box.appendChild(fs);
         }
         const dd = sk.dims.find((x) => x.id === ids[0]);
         if (dd) {
@@ -4632,6 +4707,18 @@ export class SketchEditor implements InputHandler {
     });
     gd.append(gc, document.createTextNode(" Izgaraya yakala"));
     box.appendChild(gd);
+    // eskiz ayarları: ızgara aralığı (0 = otomatik) ve açı yakalama (0 = kapalı)
+    const keep = () => {
+      try {
+        localStorage.setItem("imajcad.skset", JSON.stringify({ gridStep: this.opts.gridStep, angSnap: this.opts.angSnap }));
+      } catch {}
+    };
+    box.appendChild(this.numField("Izgara aralığı (0 = otomatik)", this.opts.gridStep, (v) => ((this.opts.gridStep = Math.max(0, v)), keep()), { min: 0 } as any));
+    const as = document.createElement("select");
+    as.innerHTML = `<option value="0">Açı yakalama: kapalı</option><option value="5">Açı yakalama: 5°</option><option value="15">Açı yakalama: 15°</option><option value="30">Açı yakalama: 30°</option><option value="45">Açı yakalama: 45°</option>`;
+    as.value = String(this.opts.angSnap);
+    as.addEventListener("change", () => ((this.opts.angSnap = +as.value), keep()));
+    box.appendChild(as);
     if (["line", "centerline", "rect", "crect", "circle"].includes(this.tool)) {
       const nb = h("button", "btn", "Sayıyla gir (123)");
       nb.addEventListener("click", () => this.numericEntry());

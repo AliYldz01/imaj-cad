@@ -1211,6 +1211,17 @@ function partClick(e: PointerEvent) {
     if (!hit) return;
     const ref = planeRefFromHit(hit);
     if (!ref) return toast("Eskiz yalnızca düzlemsel bir yüze veya düzleme çizilebilir", true);
+    const rp = (mode as any).replanFor as string | undefined, dv = (mode as any).deriveFrom as string | undefined;
+    if (rp) {
+      cancelPick();
+      return commitDoc(() => ((getFeat(rp) as SketchFeature).plane = ref)), toast("Eskiz düzlemi değiştirildi");
+    }
+    if (dv) {
+      cancelPick();
+      const src = getFeat(dv) as SketchFeature;
+      const nf: SketchFeature = { ...JSON.parse(JSON.stringify(src)), id: uid(), name: nextName("sketch") + " (türetilmiş)", plane: ref } as any;
+      return commitDoc(() => insertFeature(nf)), toast("Türetilmiş eskiz eklendi");
+    }
     return startSketch(ref, mode.tool);
   }
   if (mode.k === "pm" && mode.draft.type === "member" && (mode.draft as any)._pick === "align") return memberAlignPick(e.clientX, e.clientY);
@@ -5021,6 +5032,20 @@ function renderTreeActions() {
     add(consumerOf(f.id) ? "Ekstrüzyon (paylaşılan)" : "Ekstrüzyon", () => newFeature("extrude"));
     add("Ekst. Kesme", () => newFeature("cutExtrude"));
     add("Döndürme", () => newFeature("revolve"));
+    // SolidWorks: Eskiz Düzlemini Düzenle / Türetilmiş Eskiz
+    add("Eskiz düzlemini değiştir", () => {
+      mode = { k: "pickSketchPlane", replanFor: f.id } as any;
+      hint("Eskizin yeni düzlemini seçin (düzlem ya da düz yüz) · Esc: vazgeç");
+      updatePlanes();
+      renderCommands();
+    });
+    add("Türetilmiş eskiz", () => {
+      const sk = f as SketchFeature;
+      mode = { k: "pickSketchPlane", deriveFrom: sk.id } as any;
+      hint("Türetilmiş eskiz için düzlem seçin (geometri kopyalanır)");
+      updatePlanes();
+      renderCommands();
+    });
   } else {
     add("Düzenle", () => editFeature(f.id), "btn primary");
     if (f.type === "extrude" || f.type === "revolve" || f.type === "sweep") add("Eskizi düzenle", () => editFeature(f.sketch));

@@ -138,7 +138,8 @@ function loopDrawing(l: Loop) {
 }
 
 function textDrawing(t: TextItem) {
-  let d: any = drawText(t.text, { startX: t.x, startY: t.y, fontSize: t.size });
+  const fam = t.font && FONT_FILES[t.font] ? t.font : "default";
+  let d: any = drawText(t.text, { startX: t.x, startY: t.y, fontSize: t.size, fontFamily: fam });
   if (t.angle) d = d.rotate(t.angle, [t.x, t.y]);
   return d;
 }
@@ -3450,8 +3451,16 @@ async function buildFeature(f: KFeature) {
 }
 
 let fontUrl = "";
+/** ek yazı tipleri (DejaVu, aynı lisans): eskiz metninde seçilebilir */
+const FONT_FILES: Record<string, string> = { bold: "DejaVuSans-Bold.ttf", serif: "DejaVuSerif.ttf", mono: "DejaVuSansMono.ttf" };
 function ensureFont() {
-  if (!fontReady) fontReady = loadFont(fontUrl).then(() => undefined);
+  if (!fontReady)
+    fontReady = loadFont(fontUrl).then(async () => {
+      for (const [fam, file] of Object.entries(FONT_FILES))
+        try {
+          await loadFont(fontUrl.replace(/DejaVuSans\.ttf$/, file), fam);
+        } catch {}
+    });
   return fontReady;
 }
 
