@@ -216,8 +216,10 @@ export interface FilletFeature extends FeatBase {
   edges: EdgeRef[];
   faces?: FaceRef[];
   /** sabit / değişken (başlangıç r, bitiş r2) / tam yuvarlak (seçili orta yüz) */
-  kind?: "const" | "var" | "full" | "face";
+  kind?: "const" | "var" | "full" | "face" | "conic";
   r2?: number;
+  /** konik radyüs: rho (0,05–0,95; 0,5 parabol, ≈0,414 daire) — düz kenar + düz komşu yüzler */
+  rho?: number;
   /** çoklu yarıçap: kenar başına yarıçap (edges ile aynı sırada) */
   radii?: number[];
   /** yüz radyüsü: ikinci yüz grubu (faces ile ortak kenarlar radyüslenir) */
@@ -229,7 +231,7 @@ export interface ChamferFeature extends FeatBase {
   edges: EdgeRef[];
   faces?: FaceRef[];
   /** eşit mesafe / iki mesafe / mesafe-açı / köşe (köşe noktasından üç kenarda d, d2, d3) */
-  kind?: "equal" | "dd" | "da" | "vtx";
+  kind?: "equal" | "dd" | "da" | "vtx" | "offset";
   d2?: number;
   d3?: number;
   angle?: number;
@@ -282,6 +284,10 @@ export interface LoftFeature extends FeatBase {
   /** başlangıç / bitişte komşu yüzlere teğet (profil model yüzündeyse; köşelerden geçen model kenarlarının uzantısı) — teğet uzunluğu */
   faceStart?: number;
   faceEnd?: number;
+  /** kapalı loft: son profil ilk profile bağlanır (en az 3 profil) */
+  closed?: boolean;
+  /** ince loft: uçları açık sabit kalınlıklı cidar */
+  thinT?: number;
 }
 
 export type HoleType = "simple" | "cbore" | "csink" | "tap";
@@ -439,7 +445,9 @@ export interface PlaneFeature extends FeatBase {
   offset: number;
   flip: boolean;
   /** SolidWorks düzlem türleri: öteleme (varsayılan), açılı, orta, 3 noktadan, kenara dik, noktadan paralel, ekrana paralel */
-  mode?: "offset" | "angle" | "mid" | "3pt" | "normal" | "parallelPt" | "screen";
+  mode?: "offset" | "angle" | "mid" | "3pt" | "normal" | "parallelPt" | "screen" | "tangent";
+  /** teğet: silindir (eksen noktası, eksen yönü, yarıçap); dokunulan nokta pts[0], açı (eksen etrafında) */
+  cyl?: { c: Vec3; ax: Vec3; r: number } | null;
   /** açılı: dönme ekseni (kenar) */
   edge?: { m: Vec3; d: Vec3 } | null;
   angle?: number;
@@ -796,15 +804,15 @@ export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 export type KFeature =
   | { id: string; type: "extrude"; fromFace?: FaceRef | null; fromVtx?: Vec3 | null; vtx?: Vec3 | null; bodyRef?: FaceRef | null; dirVec?: Vec3 | null; flipCut?: boolean; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
   | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
-  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full" | "face"; r2?: number; radii?: number[]; faces2?: FaceRef[] }
-  | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da" | "vtx"; d2?: number; d3?: number; angle?: number; flip?: boolean; faces2?: FaceRef[]; verts?: Vec3[] }
+  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full" | "face" | "conic"; rho?: number; r2?: number; radii?: number[]; faces2?: FaceRef[] }
+  | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da" | "vtx" | "offset"; d2?: number; d3?: number; angle?: number; flip?: boolean; faces2?: FaceRef[]; verts?: Vec3[] }
   | { id: string; type: "rib"; pl: KPlane; chain: Seg[]; normal: boolean; flip: boolean; t: number; side: "mid" | "one" | "rev" }
   | { id: string; type: "dome"; face: FaceRef; h: number }
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean }; tool?: { d: number; len: number; ball?: boolean; flip?: boolean }; path3?: { segs: { k: "l" | "a" | "p"; pts: Vec3[] }[]; closed: boolean } }
-  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number; conn?: { k: number; rev?: boolean }[]; faceStart?: number; faceEnd?: number }
+  | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number; conn?: { k: number; rev?: boolean }[]; faceStart?: number; faceEnd?: number; closed?: boolean; thinT?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number; slot?: number; slotAng?: number; nearCs?: { d: number; angle: number }; farCs?: { d: number; angle: number } }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }
   | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean; multi?: { ref: FaceRef; t: number }[] }

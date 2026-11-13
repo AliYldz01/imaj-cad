@@ -1426,6 +1426,7 @@ function pickWant() {
     if (t === "fillet" || t === "chamfer") return { edge: true, face: true };
     if (t === "trim" || t === "endcap" || t === "gusset" || t === "weld") return { face: true };
     if (t === "sketch3d") return { face: true, edge: true, plane: true };
+    if (t === "plane" && (mode.draft as any)._pick === "cyl") return { face: true };
     if (t === "plane" && (mode.draft as any)._pick) return { edge: true };
     if (["combine", "movebody", "delbody", "indent", "fpattern", "thread", "flex"].includes(t)) return { face: true };
     if (t === "splitbody") return (mode.draft as any)._pick === "plane" ? { face: true, plane: true } : { face: true };
@@ -2459,6 +2460,7 @@ function renderFeaturePM(kind: string) {
               { v: "var", t: "Değişken boyutlu (başlangıç → bitiş)" },
               { v: "full", t: "Tam yuvarlak (orta yüz)" },
               { v: "face", t: "Yüz radyüsü (yüz grubu 1 ↔ 2)" },
+              { v: "conic", t: "Konik (rho) — düz kenar, düz yüzler" },
             ],
             d.kind ?? "const",
             (v) => ((d.kind = v), (d.faces2 = v === "face" ? [] : undefined), (d._fg = 1), renderFeaturePM(kind), refreshHighlight()),
@@ -2473,6 +2475,7 @@ function renderFeaturePM(kind: string) {
               { v: "dd", t: "Mesafe – mesafe" },
               { v: "da", t: "Mesafe – açı" },
               { v: "vtx", t: "Köşe pahı (üç kenar)" },
+              { v: "offset", t: "Öteleme yüzü (yüzlere dik mesafe)" },
             ],
             d.kind ?? "equal",
             (v) => ((d.kind = v), (d.verts = v === "vtx" ? d.verts ?? [] : undefined), renderFeaturePM(kind), refreshHighlight()),
@@ -2489,6 +2492,7 @@ function renderFeaturePM(kind: string) {
           numField(isF ? (d.kind === "var" ? "Başlangıç yarıçapı" : "Yarıçap") : "Mesafe", isF ? d.r : d.d, (v) => (isF ? (d.r = v) : (d.d = v)), { min: 0.001, unit: "mm", key: `${d.id}.${isF ? "r" : "d"}` }),
         ),
       );
+      if (isF && d.kind === "conic") body.appendChild(numField("Rho (0,05–0,95; 0,5 parabol)", d.rho ?? 0.5, (v) => ((d.rho = Math.min(0.95, Math.max(0.05, v))), schedulePreview()), { min: 0.05 } as any));
       if (isF && d.kind === "var") body.appendChild(numField("Bitiş yarıçapı", d.r2 ?? d.r, (v) => (d.r2 = v), { min: 0.001, unit: "mm", key: `${d.id}.r2` }));
       if (isF && (d.kind ?? "const") === "const" && d.edges.length > 1) {
         const multi = !!d.radii;
@@ -2515,7 +2519,7 @@ function renderFeaturePM(kind: string) {
       if (!isF && (d.kind ?? "equal") !== "vtx") body.appendChild(checkField("Yüz – yüz pah (iki yüz grubu)", false, () => ((d.faces2 = []), (d.faces = []), (d.edges = []), (d._fg = 1), renderFeaturePM(kind), refreshHighlight())));
       if (!isF && d.kind === "dd") body.appendChild(numField("İkinci mesafe", d.d2 ?? d.d, (v) => (d.d2 = v), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
       if (!isF && d.kind === "da") body.appendChild(numField("Açı", d.angle ?? 45, (v) => (d.angle = v), { min: 0.1, unit: "°", key: `${d.id}.angle` }));
-      if (!isF && d.kind && d.kind !== "equal") body.appendChild(checkField("Yönü ters çevir", !!d.flip, (v) => (d.flip = v)));
+      if (!isF && d.kind && d.kind !== "equal" && d.kind !== "offset") body.appendChild(checkField("Yönü ters çevir", !!d.flip, (v) => (d.flip = v)));
       const nf = (d.faces ?? []).length;
       const picks = h("div", "pm-picks", d.edges.length || nf ? `${d.edges.length} kenar, ${nf} yüz seçili` : "Kenarlara veya yüzlere dokunun");
       const g = group("Kenarlar ve yüzler", picks, h("p", "pm-hint", "Bir yüz seçmek o yüzün tüm kenarlarını seçer."));
@@ -2798,6 +2802,9 @@ function renderFeaturePM(kind: string) {
                 ...(d.faceEnd ? [numField("Bitiş teğet uzunluğu", d.faceEnd, (v) => ((d.faceEnd = v), upd()), { min: 0.1 })] : []),
               ]
             : []),
+          checkField("Kapalı loft (son profil ilkine bağlanır)", !!d.closed, (v) => ((d.closed = v || undefined), upd())),
+          checkField("İnce özellik (uçlar açık cidar)", !!d.thinT, (v) => ((d.thinT = v ? 2 : undefined), renderFeaturePM(kind), upd())),
+          ...(d.thinT ? [numField("İnce kalınlık", d.thinT, (v) => ((d.thinT = v > 0 ? v : undefined), upd()), { min: 0.01, unit: "mm" })] : []),
           checkField("Sac geçiş parçası (loft büküm)", !!d.sheetT, (v) => ((d.sheetT = v ? lastSheetBase(doc.features)?.t ?? 2 : undefined), (d.ruled = v ? true : d.ruled), renderFeaturePM(kind), upd())),
           ...(d.sheetT
             ? [
@@ -4019,13 +4026,14 @@ function renderFeaturePM(kind: string) {
               { v: "normal", t: "Kenara dik (noktada)" },
               { v: "parallelPt", t: "Noktadan paralel" },
               { v: "screen", t: "Ekrana paralel (noktadan)" },
+              { v: "tangent", t: "Teğet (silindire)" },
             ],
             md,
             (v) => {
               d.mode = v as any;
               d.pts = [];
               d.edge = null;
-              (d as any)._pick = v === "angle" || v === "normal" ? "edge" : v === "3pt" || v === "parallelPt" || v === "screen" ? "pt" : undefined;
+              (d as any)._pick = v === "angle" || v === "normal" ? "edge" : v === "3pt" || v === "parallelPt" || v === "screen" ? "pt" : v === "tangent" ? "cyl" : undefined;
               if (v === "screen") {
                 const c = viewer.camera, t = viewer.controls.target;
                 const n = c.position.clone().sub(t).normalize();
@@ -4052,6 +4060,11 @@ function renderFeaturePM(kind: string) {
       if (md === "angle" || md === "normal") pickRow("Kenar / eksen", "edge", d.edge ? "seçili" : "");
       if (md === "3pt") pickRow(`Noktalar (${(d.pts ?? []).length}/3)`, "pt", (d.pts ?? []).length === 3 ? "tamam" : "");
       if (md === "parallelPt" || md === "screen") pickRow("Nokta (köşe)", "pt", d.pts?.length ? "seçili" : "");
+      if (md === "tangent") {
+        pickRow("Silindir yüzü (teğet noktasına dokunun)", "cyl", d.cyl ? `R${fmtNum(d.cyl.r, 2)}` : "");
+        g.appendChild(numField("Eksen etrafında açı", d.angle ?? 0, (v) => ((d.angle = v), updatePlanePreview()), { unit: "°", any: true } as any));
+        g.appendChild(numField("Öteleme", d.offset ?? 0, (v) => ((d.offset = v), updatePlanePreview()), { unit: "mm", any: true } as any));
+      }
       if (md === "normal") g.appendChild(h("p", "pm-hint", "Düzlem, kenarın dokunduğunuz ucuna yakın köşesinde kenara dik oluşur."));
       if (md === "offset" || md === "screen") g.appendChild(numField("Mesafe", d.offset, (v) => ((d.offset = v), updatePlanePreview()), { unit: "mm", key: `${d.id}.offset` }));
       if (md === "angle") g.appendChild(numField("Açı", d.angle ?? 45, (v) => ((d.angle = v), updatePlanePreview()), { unit: "°", key: `${d.id}.angle` }));
@@ -5136,6 +5149,14 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const i = d.edges.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
     if (i >= 0) d.edges.splice(i, 1);
     else d.edges.push({ m: e.m, d: e.d });
+  } else if (d.type === "plane" && (d as any)._pick === "cyl" && m && hit.kind === "face") {
+    const fc = m.faces[hit.index];
+    if (!fc.r || !fc.ax || !fc.ac) return toast("Silindirik bir yüze dokunun", true);
+    d.cyl = { c: fc.ac, ax: fc.ax, r: fc.r };
+    d.pts = [hit.point];
+    (d as any)._pick = undefined;
+    renderFeaturePM("plane");
+    updatePlanePreview();
   } else if (d.type === "plane" && (d as any)._pick && m && hit.kind === "edge") {
     const ed = m.edges[hit.index];
     const near = dist3(ed.s, hit.point) <= dist3(ed.e, hit.point) ? ed.s : ed.e;

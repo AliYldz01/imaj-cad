@@ -697,6 +697,17 @@ function loftTool(f: Extract<KFeature, { type: "loft" }>) {
     if (f.tanStart) list.splice(1, 0, aux(0, 1, f.tanStart));
     return list[0].loftWith(list.slice(1), { ruled: false });
   }
+  if (f.closed) {
+    if (sks.length < 3) throw new Error("Kapalı loft için en az üç profil gerekir");
+    // ilk kesit sona tekrar eklenir; olmazsa iki loft birleştirilir
+    try {
+      const r = sks[0].loftWith([...sks.slice(1), sk(0)], { ruled: f.ruled });
+      if (Math.abs(measureShapeVolumeProperties(r).volume) > 1e-6) return r;
+    } catch {}
+    const a = sks[0].loftWith(sks.slice(1), { ruled: f.ruled });
+    const b = sk(sks.length - 1).loftWith([sk(0)], { ruled: true });
+    return a.fuse(b);
+  }
   return sks[0].loftWith(sks.slice(1), { ruled: f.ruled });
 }
 
@@ -1157,6 +1168,47 @@ function vertexChamfer(f: Extract<KFeature, { type: "chamfer" }>) {
 /** Kenara komşu yüzler */
 function facesOfEdge(body: Shape, edgeHash: number) {
   return (body.faces as any[]).filter((f) => (f.edges as any[]).some((e) => e.hashCode === edgeHash));
+}
+
+/** düz kenarın iki düz komşu yüzü: kenar noktası, yönü, yüzlere doğru içe yönler ve dış normaller */
+function edgeDihedral(b: Shape, e: any) {
+  if (String(e.geomType) !== "LINE") throw new Error("Bu seçenek yalnız düz kenarlarda kullanılır");
+  const fs = facesOfEdge(b, e.hashCode);
+  if (fs.length !== 2 || fs.some((f: any) => String(f.geomType) !== "PLANE")) throw new Error("Kenarın iki komşu yüzü düz olmalı");
+  const A = tup(e.pointAt(0)), B = tup(e.pointAt(1)), M = tup(e.pointAt(0.5));
+  const d = vnorm(vsub(B, A));
+  const side = fs.map((f: any) => {
+    const nv = f.normalAt(); const n = vnorm([nv.x, nv.y, nv.z] as Vec3);
+    let t = vnorm(vcross(n, d));
+    const c = f.center; const toC = vsub([c.x, c.y, c.z] as Vec3, M);
+    if (vdot(t, toC) < 0) t = vmul(t, -1);
+    return { n, t };
+  });
+  const convex = vdot(side[0].n, side[1].t) < 0;
+  return { A, B, d, L: vlen(vsub(B, A)), side, convex };
+}
+
+function conicFillet(f: Extract<KFeature, { type: "fillet" }>, set: Set<number>) {
+  const rho = Math.min(0.95, Math.max(0.05, f.rho ?? 0.5)), w = rho / (1 - rho), r = f.r;
+  onOwner(set, "edges", (b0) => {
+    let b = b0;
+    const list = (b0.edges as any[]).filter((e) => set.has(e.hashCode)).map((e) => edgeDihedral(b0, e));
+    for (const g of list) {
+      if (!g.convex) throw new Error("Konik radyüs yalnız dışbükey kenarda kullanılır");
+      const P = g.A, T1 = vadd(P, vmul(g.side[0].t, r)), T2 = vadd(P, vmul(g.side[1].t, r));
+      // konik eğri (rasyonel ikinci derece Bézier) 32 parçalı çokgenle
+      const cp: Vec3[] = [];
+      const N = 32;
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, a = (1 - t) * (1 - t), m = 2 * w * t * (1 - t), c = t * t, den = a + m + c;
+        cp.push(vmul(vadd(vadd(vmul(T1, a), vmul(P, m)), vmul(T2, c)), 1 / den));
+      }
+      const face = makePolygon([P, ...cp] as any) as any;
+      const tool = basicFaceExtrusion(face, new Vector(vmul(g.d, g.L)));
+      b = b.cut(tool);
+    }
+    return b;
+  });
 }
 
 function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number } {
@@ -3512,14 +3564,15 @@ async function buildFeature(f: KFeature) {
     case "loft": {
       if ((f.type === "extrude" && f.texts?.length) || false) await ensureFont();
       let solid = f.type === "extrude" ? extrudeTool(f) : f.type === "revolve" ? revolveTool(f) : f.type === "sweep" ? sweepTool(f) : loftTool(f);
-      if (f.type === "loft" && f.sheetT && f.sheetT > 0) {
+      if (f.type === "loft" && f.closed && f.thinT) throw new Error("Kapalı loftta ince özellik kullanılamaz");
+      if (f.type === "loft" && ((f.sheetT && f.sheetT > 0) || (f.thinT && f.thinT > 0))) {
         // sac geçiş parçası: profil düzlemlerindeki uç yüzleri açık, sabit kalınlıklı cidar
         const frames = f.profiles.map((p) => resolvePlane(p.pl));
         const onEnd = (fc: any) => {
           const c = fc.center, n = fc.normalAt();
           return frames.some((fr) => Math.abs(vdot(vsub([c.x, c.y, c.z], fr.o), fr.n)) < 1e-3 && Math.abs(Math.abs(n.x * fr.n[0] + n.y * fr.n[1] + n.z * fr.n[2]) - 1) < 1e-4);
         };
-        solid = solid.shell(f.sheetT, (ff: any) => ff.when(({ element }: any) => onEnd(element)));
+        solid = solid.shell((f.sheetT || f.thinT)!, (ff: any) => ff.when(({ element }: any) => onEnd(element)));
       }
       const merge = (f as any).merge !== false;
       tools.set(f.id, { solid, cut: f.cut, merge });
@@ -3612,6 +3665,11 @@ async function buildFeature(f: KFeature) {
       }
       if (f.type === "chamfer" && f.kind === "vtx") return vertexChamfer(f);
       const set = matchEdges(f.edges);
+      if (f.type === "fillet" && f.kind === "conic") {
+        if (!set.size) throw new Error("Seçili kenarlar modelde bulunamadı");
+        if (!(f.r > 0)) throw new Error("Değer sıfırdan büyük olmalı");
+        return conicFillet(f, set);
+      }
       if (f.faces2?.length) {
         // yüz radyüsü / yüz–yüz pah: iki yüz grubunun ortak kenarları
         const ce = commonEdges(matchFaces(f.faces ?? []), matchFaces(f.faces2));
@@ -3677,6 +3735,12 @@ async function buildFeature(f: KFeature) {
           b.chamfer((e: any) => {
             if (!set.has(e.hashCode)) return null;
             if (kind === "equal") return f.d;
+            if (kind === "offset") {
+              // öteleme yüzü: yüzlere dik d ötelenen düzlemlerin kesişiminden → yüz boyunca d / tan(θ/2)
+              const g = edgeDihedral(b, e);
+              const th = Math.acos(Math.max(-1, Math.min(1, vdot(g.side[0].t, g.side[1].t))));
+              return f.d / Math.tan(th / 2);
+            }
             const faces = facesOfEdge(b, e.hashCode);
             const ref = faces[f.flip ? 1 : 0] ?? faces[0];
             const sel = (ff: any) => ff.when(({ element }: any) => element.hashCode === ref.hashCode);

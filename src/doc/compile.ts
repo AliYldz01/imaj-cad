@@ -122,6 +122,20 @@ export function planeFrame(pf: Extract<Feature, { type: "plane" }>, feats: Featu
     if (!base || !pts.length) return null;
     return flipF({ o: pts[0], n: base.n, x: base.x });
   }
+  if (mode === "tangent") {
+    // silindire teğet: dokunulan noktadan eksene dik doğrultu, eksen etrafında açı kadar döndürülür
+    const cy = pf.cyl;
+    if (!cy || !pts.length) return null;
+    const ax = V.norm(cy.ax);
+    const w = V.sub(pts[0], cy.c);
+    let rd = V.sub(w, V.mul(ax, V.dot(w, ax)));
+    if (Math.hypot(...rd) < 1e-9) return null;
+    rd = V.norm(rd);
+    const a = ((pf.angle ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+    const n = V.norm(V.add(V.add(V.mul(rd, c), V.mul(V.cross(ax, rd), s)), V.mul(ax, V.dot(ax, rd) * (1 - c))));
+    const foot = V.add(cy.c, V.mul(ax, V.dot(w, ax)));
+    return flipF({ o: V.add(foot, V.mul(n, cy.r + (pf.offset || 0))), n, x: ax });
+  }
   if (mode === "screen") {
     if (!pts.length || !pf.nv) return null;
     const n = V.norm(pf.nv);
@@ -410,7 +424,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
               return pts;
             });
           }
-          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd, conn: f.conn, faceStart: f.faceStart, faceEnd: f.faceEnd });
+          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd, conn: f.conn, faceStart: f.faceStart, faceEnd: f.faceEnd, closed: f.closed, thinT: f.thinT });
           break;
         }
         case "rib": {
@@ -726,7 +740,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           break;
         }
         case "fillet":
-          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, r2: f.r2, radii: f.radii, faces2: f.faces2 });
+          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, rho: f.rho, r2: f.r2, radii: f.radii, faces2: f.faces2 });
           break;
         case "chamfer":
           kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, d3: f.d3, angle: f.angle, flip: f.flip, faces2: f.faces2, verts: f.verts });

@@ -106,7 +106,7 @@ Eksen, açı, iki yön, orta düzlem, ince özellik, seçili konturlar. İmaj: �
 - İmaj durumu: profil + yol ✅, burulma / kılavuz ✅ v0.44, takım gövdesi ✅ v0.66
 
 ### 2.4 Loft
-Profiller (sıra), **başlangıç/bitiş kısıtı** (yok, yön vektörü, profile normal, komşu yüzlere teğet/eğrilik), kılavuz eğriler (etki türü), merkez çizgisi, **bağlayıcılar** (eşleme), kapalı loft, düzgün yüzleri birleştir, ince özellik. İmaj: profiller + kılavuz + merkez + ruled ✅ · teğetlik ✅ v0.41 / v0.67, bağlayıcı ✅ v0.67, kapalı / ince ⬜
+Profiller (sıra), **başlangıç/bitiş kısıtı** (yok, yön vektörü, profile normal, komşu yüzlere teğet/eğrilik), kılavuz eğriler (etki türü), merkez çizgisi, **bağlayıcılar** (eşleme), kapalı loft, düzgün yüzleri birleştir, ince özellik. İmaj: profiller + kılavuz + merkez + ruled ✅ · teğetlik ✅ v0.41 / v0.67, bağlayıcı ✅ v0.67, kapalı / ince ✅ v0.80
 
 ### 2.5 Radyüs (fillet)
 - **Türler:** sabit boyut · **değişken boyut** (kontrol noktaları, düz/yumuşak geçiş) · **yüz radyüsü** (tutma çizgisi, sabit genişlik, yardım noktası) · **tam yuvarlak** (üç yüz takımı)
@@ -114,13 +114,13 @@ Profiller (sıra), **başlangıç/bitiş kısıtı** (yok, yön vektörü, profi
 - **Simetrik / asimetrik**; profil: dairesel, **konik rho / konik yarıçap, eğrilik sürekli**
 - Seçenekler: **teğet yayılımı**, yüzlerden seç, kenarı/yüzeyi koru, özellikleri koru, tam önizleme
 - FilletXpert (ekle/değiştir/köşe yönetimi)
-- İmaj: sabit ✅, asimetrik/r2 🟡, yüz radyüsü 🟡, çoklu yarıçap ✅ v0.14, yüz radyüsü ✅ v0.65; değişken / tam yuvarlak / setback / konik ⬜
+- İmaj: sabit ✅, asimetrik/r2 🟡, yüz radyüsü 🟡, çoklu yarıçap ✅ v0.14, yüz radyüsü ✅ v0.65; değişken / tam yuvarlak ✅ (kind var / full), konik 🟡 v0.80 (düz kenar, 32 parçalı yaklaşım), setback ⬜ (OCC radyüs motorunda yok)
 
 ### 2.6 Pah
-Açı–mesafe, mesafe–mesafe (eşit/farklı), köşe (vertex), **öteleme yüzü**, yüz–yüz; teğet yayılımı, özellikleri koru. İmaj: ✅ (yüz–yüz ✅ v0.65, köşe ✅ v0.65, öteleme yüzü ⬜)
+Açı–mesafe, mesafe–mesafe (eşit/farklı), köşe (vertex), **öteleme yüzü**, yüz–yüz; teğet yayılımı, özellikleri koru. İmaj: ✅ (yüz–yüz ✅ v0.65, köşe ✅ v0.65, öteleme yüzü ✅ v0.80)
 
 ### 2.7 Delik sihirbazı
-Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, boru dişi, **eski stil**, **yuva (slot) delik**; standartlar (ISO, DIN, ANSI…), bitiş koşulu, yakın/uzak taraf havşa, **kozmetik diş**, delik serisi (montajda). Konum sekmesi: yüze noktalarla. İmaj: temel türler ✅, yuva delik ✅ v0.67, yakın / uzak havşa ✅ v0.67, delik serisi ⬜
+Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, boru dişi, **eski stil**, **yuva (slot) delik**; standartlar (ISO, DIN, ANSI…), bitiş koşulu, yakın/uzak taraf havşa, **kozmetik diş**, delik serisi (montajda). Konum sekmesi: yüze noktalarla. İmaj: temel türler ✅, yuva delik ✅ v0.67, yakın / uzak havşa ✅ v0.67, delik serisi ✅ v0.38 (montaj deliği birden çok parçada)
 
 ### 2.8 Diğer özellikler
 | Özellik | Seçenekler | Durum |
@@ -140,7 +140,7 @@ Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, bo
 - İmaj: türler ✅, örnek atla ✅ v0.14, eskizi değiştir / referansa kadar ✅ v0.66
 
 ### 2.10 Referans geometri
-- **Düzlem:** 3 referanslı sihirbaz — çakışık, paralel, dik, **açılı** (adet), öteleme (adet), **orta düzlem**, **teğet** (silindire), **ekrana paralel**, 3 noktadan, çizgi+nokta, eğriye dik (eğri üzerinde nokta). İmaj: öteleme, açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel ✅ (v0.13); teğet ⬜ (açılı / orta / 3 nokta / ekrana paralel ✅ v0.13)
+- **Düzlem:** 3 referanslı sihirbaz — çakışık, paralel, dik, **açılı** (adet), öteleme (adet), **orta düzlem**, **teğet** (silindire), **ekrana paralel**, 3 noktadan, çizgi+nokta, eğriye dik (eğri üzerinde nokta). İmaj: öteleme, açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel ✅ (v0.13); teğet ✅ v0.80 (açılı / orta / 3 nokta / ekrana paralel ✅ v0.13)
 - Eksen: çizgi/kenar, iki düzlem, iki nokta, silindir yüzü, nokta+yüz. İmaj 🟡
 - Nokta (yay merkezi, yüz merkezi, kesişim, projeksiyon, eğri boyunca), Koordinat sistemi, Kütle merkezi. İmaj 🟡
 
