@@ -31,6 +31,7 @@ import { type Act, type Dir, DIRS8, comboOf, keyMap, keyOf, dirOf, gestCfg, open
 import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { parseSpokenNumbers, voiceSupported, listenOnce } from "./input/voice";
+import { Photos, Caliper, decodeCaliper } from "./ui/field";
 import { AsmUI } from "./asm/asmui";
 import { loadLib } from "./asm/assembly";
 import { loadBlocks } from "./sketch/editor";
@@ -1428,6 +1429,7 @@ function pickWant() {
 
 function partClick(e: PointerEvent) {
   let hit = viewer.pick(e.clientX, e.clientY, pickWant());
+  if (photos?.pending && mode.k === "part") return void photos.place3d(hit?.point ?? null);
   // aynı yere tekrar tıklama (Alt ile veya seçili yüze): arkadaki yüze geç
   if (mode.k === "part" && hit?.kind === "face" && (e.altKey || (lastPick && Math.hypot(e.clientX - lastPick.x, e.clientY - lastPick.y) < (e.pointerType === "mouse" ? 4 : 14) && psel.faces.has(hit.index) && psel.faces.size === 1))) {
     return selectOtherAt(e.clientX, e.clientY);
@@ -6211,6 +6213,8 @@ function commands(): Cmd[] {
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => showMassProps() },
       { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
       { id: "analysis", label: "Mukavemet", icon: "measure", run: () => void openAnalysis() },
+      { id: "photos", label: "Fotoğraflar", icon: "measure", run: () => photos.gallery() },
+      { id: "caliper", label: "Kumpas", icon: "measure", run: () => caliper.dialog() },
       { id: "whatswrong", label: "Ne Yanlış?", icon: "measure", run: () => openWhatsWrong() },
       { id: "geomcheck", label: "Kontrol", icon: "measure", run: () => void openWhatsWrong(true) },
       { id: "draftana", label: "Koniklik Analizi", icon: "draftf", run: () => toggleDraftAnalysis(), active: () => !!draftAna },
@@ -7082,6 +7086,7 @@ window.addEventListener("keydown", (e) => {
 function escAction() {
   {
     closePopups();
+    if (photos?.cancel()) return;
     if (mode.k === "sketch") {
       if (mode.editor.isDrawing()) mode.editor.finishChain();
       else if (mode.editor.tool !== "select") mode.editor.setTool("select");
@@ -7502,6 +7507,7 @@ function renderActBar() {
       toast("Seçim filtresi: " + (selFilter === "all" ? "tümü" : selFilter === "face" ? "yalnız yüz" : "yalnız kenar"));
     }, "small" + (selFilter !== "all" ? " on" : ""));
     b("✚", "Şekil sihirbazı", () => openWizard(), "small");
+    b("📷", "Fotoğraf ekle", () => photos.pick(), "small");
   }
   b("Ctrl", "Ctrl basılı (çoklu seçim / yakalamayı kapat)", () => {
     viewer.mods.ctrl = !viewer.mods.ctrl;
@@ -7560,18 +7566,41 @@ async function voiceInput(text?: string): Promise<number[]> {
     }
   }
   if (!nums.length) return toast(`Sayı anlaşılamadı: "${heard}"`), [];
+  if (!fillNumbers(nums)) return toast("Önce bir ölçü alanına dokunun"), [];
+  toast(`🎤 ${heard} → ${nums.join(" × ")}`);
+  return nums;
+}
+/** sayıları etkin ölçü alanlarına yazar (ses / kumpas); ölçü kutusu varsa onaylar */
+function fillNumbers(nums: number[]): boolean {
   const { ins, ok } = voiceTargets();
-  if (!ins.length) return toast("Önce bir ölçü alanına dokunun"), [];
+  if (!ins.length) return false;
   nums.slice(0, ins.length).forEach((v, i) => {
     const inp = ins[i];
     inp.value = String(+v.toFixed(6));
     inp.dispatchEvent(new Event("input", { bubbles: true }));
     inp.dispatchEvent(new Event("change", { bubbles: true }));
   });
-  toast(`🎤 ${heard} → ${nums.join(" × ")}`);
   if (ok) ok.click();
-  return nums;
+  return true;
 }
+// ---------- saha: fotoğraf notları + kumpas ----------
+const fieldCtx = {
+  viewer: viewer as any,
+  view: $("#view"),
+  toast,
+  hint,
+  photos: () => doc.photos,
+  commit: (fn: (l: any[]) => void) => commitDoc(() => fn((doc.photos ??= []))),
+  download: (b: Blob, n: string) => void download(b, n),
+  partMode: () => mode.k === "part" && !asmUI?.on,
+  fill: (v: number, src: string) => {
+    const r = fillNumbers([v]);
+    if (r) toast(`📏 ${src}: ${v.toFixed(2)} mm`);
+    return r;
+  },
+};
+const photos = new Photos(fieldCtx);
+const caliper = new Caliper(fieldCtx);
 // ölçü kutularına mikrofon düğmesi
 new MutationObserver(() => {
   if (!voiceSupported()) return;
@@ -8550,6 +8579,9 @@ function showCmd(title: string) {
 }
 (window as any).__app = {
   voiceInput,
+  get photos() { return photos; },
+  get caliper() { return caliper; },
+  decodeCaliper: (a: number[]) => decodeCaliper(new Uint8Array(a)),
   parseSpoken: (t: string) => parseSpokenNumbers(t),
   sketchDof: (d: any) => solveSketch(JSON.parse(JSON.stringify(d)), undefined, false).dof,
   showCmd,

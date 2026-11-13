@@ -652,3 +652,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.73 | Montaj: desen güdümlü bileşen çoğaltma, bileşen bastırma (7. grup tamam) | ✅ |
 
 | v0.74 | Telefon / kalemsiz: panelde derinlik oku, aday çubuğu, sihirbaz tam tanımlı, fotoğraftan kenar izleme, sesle ölçü | ✅ |
+
+| v0.75 | Saha: modele fotoğraf notları, Bluetooth / klavye kumpası ile ölçü girişi | ✅ |

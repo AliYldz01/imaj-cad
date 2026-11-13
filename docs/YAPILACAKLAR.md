@@ -67,8 +67,8 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.74 8.5 Sesle ölçü girişi
 
 ## 9. Saha
-- ⬜ 9.1 Modele fotoğraf ekleme
-- ⬜ 9.2 Bluetooth kumpas (cihaz modeli gerekir)
+- ✅ v0.75 9.1 Modele fotoğraf ekleme (modele dokunarak bağla, not, galeri, işaretler)
+- ✅ v0.75 9.2 Kumpas: Bluetooth (Sylvac / Nordic UART / HM-10 köprü, metin ya da µm) + klavye (HID) kumpası; gerçek cihazla deneme kullanıcıda
 
 ## 10. İleri
 - ⬜ 10.1 Sonlu eleman analizi

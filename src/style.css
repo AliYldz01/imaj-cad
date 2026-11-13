@@ -508,3 +508,12 @@ dialog.whatswrong { max-width: 560px; width: 92vw; }
 .dim-prompt button.mic { min-width: 36px; background: #2b3b55; color: #fff; border: 0; border-radius: 6px; }
 body.listening .actbar button[title="Sesle ölçü gir"], body.listening .dim-prompt button.mic { background: #c0392b; animation: micpulse 0.8s infinite alternate; }
 @keyframes micpulse { from { opacity: 1 } to { opacity: 0.55 } }
+.photo-pins { position: absolute; inset: 0; pointer-events: none; }
+.photo-pin { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; background: #fff; border: 2px solid #1f6feb; border-radius: 50% 50% 50% 0; width: 34px; height: 34px; font-size: 16px; padding: 0; box-shadow: 0 2px 6px #0005; }
+dialog.photo-dlg img { max-width: min(80vw, 640px); max-height: 55vh; display: block; margin: 0 auto 8px; border-radius: 6px; }
+dialog.photo-dlg textarea { width: 100%; min-height: 60px; box-sizing: border-box; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; max-height: 60vh; overflow: auto; min-width: min(80vw, 480px); }
+.photo-th { display: flex; flex-direction: column; gap: 4px; padding: 4px; background: #f3f5f8; border: 1px solid #ccd; border-radius: 6px; }
+.photo-th img { width: 100%; height: 90px; object-fit: cover; border-radius: 4px; }
+.cal-badge { position: fixed; right: 10px; bottom: 70px; z-index: 30; background: #1f6feb; color: #fff; border: 0; border-radius: 16px; padding: 6px 12px; font-weight: 600; }
+dialog.cal-dlg .cal-last { font-size: 28px; font-weight: 700; text-align: center; margin: 8px 0; }

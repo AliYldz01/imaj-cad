@@ -740,6 +740,8 @@ export interface PartDoc {
   /** belge özellikleri: ölçü ondalığı, resim standardı (ISO ilk açı / ANSI üçüncü açı), yazar, açıklama, özel özellikler */
   props?: { dec?: number; std?: "ISO" | "ANSI"; author?: string; desc?: string; custom?: { k: string; v: string }[] };
   /** kesim listesi kalem özellikleri (SolidWorks Kesim Listesi Özellikleri): anahtar = kalem imzası */
+  /** saha fotoğrafları (modele bağlı notlar) */
+  photos?: { id: string; src: string; note?: string; p?: Vec3; t: number }[];
   cutProps?: Record<string, { desc?: string; material?: string; props?: { k: string; v: string }[] }>;
   material?: string;
   /** geri sarma çubuğu: bu indeksten sonraki özellikler hesaplanmaz */
