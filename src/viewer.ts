@@ -652,7 +652,7 @@ export class Viewer {
     const out: THREE.Mesh[] = [];
     const skip = new Set<THREE.Object3D>([this.planesGroup, this.overlay, this.hl, this.triad, this.pivotMark, this.camera]);
     const walk = (o: THREE.Object3D) => {
-      if (!o.visible || skip.has(o)) return;
+      if (!o.visible || skip.has(o) || o.userData.nonav) return;
       if ((o as THREE.Mesh).isMesh && !o.userData.ifc) out.push(o as THREE.Mesh);
       o.children.forEach(walk);
     };
@@ -671,7 +671,28 @@ export class Viewer {
       return Math.hypot(q[0] + r.left - x, q[1] + r.top - y);
     };
     const md = this.mesh && this.modelMesh?.visible !== false && this.model.visible ? this.mesh : null;
-    // yakın köşe (8 px)
+    // model kutusu ve tümüyle ekranda mı
+    const box = new THREE.Box3();
+    meshes.forEach((m) => box.expandByObject(m));
+    const allVisible = () => {
+      if (box.isEmpty()) return false;
+      const cs = [0, 1].flatMap((i) => [0, 1].flatMap((j) => [0, 1].map((k) => new THREE.Vector3(i ? box.max.x : box.min.x, j ? box.max.y : box.min.y, k ? box.max.z : box.min.z))));
+      return cs.every((c) => {
+        const v = c.clone().project(this.viewCam());
+        return Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
+      });
+    };
+    if (!entity) {
+      // SolidWorks: orta tuşla serbest döndürmede merkez imlece bağlı DEĞİL —
+      // model tümüyle görünüyorsa model merkezi; yakınlaştırılmışsa ekranın ortasındaki geometri
+      // (imleç altındaki noktaya göre döndürmek görüntüyü bir anda kenara savuruyordu)
+      if (allVisible()) return { p: box.getCenter(new THREE.Vector3()) };
+      const c = this.ray(r.left + r.width / 2, r.top + r.height / 2).intersectObjects(meshes, false)[0];
+      if (c) return { p: c.point.clone() };
+      if (hit) return { p: hit.point.clone() };
+      return null;
+    }
+    // yakın köşe (8 px) — yalnız orta TIKLA varlık seçerken
     if (md) {
       let best: Vec3 | null = null, bd = 8;
       for (const e of md.edges) for (const P of [e.s, e.e]) {
@@ -693,17 +714,8 @@ export class Viewer {
         if (f.n) return { p: new THREE.Vector3(...pk.point), axis: new THREE.Vector3(...f.n) };
       }
     }
-    if (hit) return { p: hit.point.clone() };
-    // boşluk: model tümüyle görünüyorsa model merkezi (SolidWorks), değilse ekran merkezindeki hedef
-    const box = new THREE.Box3();
-    meshes.forEach((m) => box.expandByObject(m));
-    if (box.isEmpty()) return null;
-    const cs = [0, 1].flatMap((i) => [0, 1].flatMap((j) => [0, 1].map((k) => new THREE.Vector3(i ? box.max.x : box.min.x, j ? box.max.y : box.min.y, k ? box.max.z : box.min.z))));
-    const all = cs.every((c) => {
-      const v = c.clone().project(this.viewCam());
-      return Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
-    });
-    return all ? { p: box.getCenter(new THREE.Vector3()) } : null;
+    // orta tık boşluğa ya da tanınmayan yere: varlık seçimi yok
+    return null;
   }
   /** köşe, ışının çarptığı yüzeyin önünde ya da üzerinde mi (arkada kalan köşeye yakalanmasın) */
   private visibleAt(P: Vec3, hit: THREE.Intersection) {

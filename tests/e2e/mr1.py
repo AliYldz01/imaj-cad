@@ -1,4 +1,4 @@
-# SolidWorks orta tuşla döndürme merkezi: imleç altındaki köşe / yüz noktası yerinde kalır, boşlukta model merkezi,
+# SolidWorks orta tuşla döndürme: model tümüyle görünürken model merkezi (imleçten bağımsız), yakında ekran ortasındaki geometri; yatayda yuvarlanma yok;
 # orta tık + sürükle = varlık (kenar ekseni) etrafında, işaret, çift orta tık sığdır, Ctrl+orta kaydır
 import cmdpatch, time, json, math
 from h import *
@@ -26,34 +26,52 @@ with sync_playwright() as p:
         time.sleep(0.4)
         return mark
     d = lambda a, b: math.hypot(a[0]-b[0], a[1]-b[1])
-    # 1) köşe: imleç köşenin yakınında → köşe ekranda yerinde kalır
+    C = [0, 10, 0]   # model kutusunun merkezi
+    up0 = lambda: ev("(()=>{const c=window.__app.viewer.camera;const v=new window.__app.THREE.Vector3().setFromMatrixColumn(c.matrixWorld,1);return v.toArray()})()")
+    # 1) model tümüyle görünüyor: köşeye basıp sürükle → döndürme merkezi model merkezi (imleç değil), görüntü kaymaz
     V = [50, 20, 25]
-    s0 = scr(V)
+    c0 = scr(C); s0 = scr(V)
     mark = mdrag(s0[0]+3, s0[1]+2, 80, 40)
-    s1 = scr(V)
-    chk("köşe etrafında döndü: köşe ekranda sabit", d(s0, s1) < 1.5, (s0, s1))
+    c1 = scr(C)
+    chk("köşeden başlayınca da model merkezi ekranda sabit (sıçrama yok)", d(c0, c1) < 1.5, (c0, c1))
     chk("döndürürken macenta işaret", mark >= 1)
     chk("bırakınca işaret kalkar", ev("window.__app.viewer.pivotMark.children.length")==0)
     q0 = ev("window.__app.viewer.camera.quaternion.toArray()")
-    # 2) yüz noktası: üst yüzde bir nokta (köşelerden uzak)
+    # 2) yüz noktasından ve boşluktan başlayınca da aynı merkez
     pg.keyboard.press("f"); time.sleep(0.3)
-    F = [10, 20, 5]
-    f0 = scr(F)
+    F = [10, 20, 5]; f0 = scr(F); c0 = scr(C)
     mdrag(f0[0], f0[1], -70, 30)
-    f1 = scr(F)
-    chk("yüz noktası etrafında döndü: nokta sabit", d(f0, f1) < 1.5, (f0, f1))
-    # 3) boşluk, model tümüyle görünüyor → model merkezi sabit
+    chk("yüzden başlayınca model merkezi sabit", d(c0, scr(C)) < 1.5, (c0, scr(C)))
     pg.keyboard.press("f"); time.sleep(0.3)
-    C = [0, 10, 0]
     c0 = scr(C)
     mdrag(R["x"]+40, R["y"]+R["height"]-40, 60, -30)
-    c1 = scr(C)
-    chk("boşlukta: model merkezi sabit", d(c0, c1) < 1.5, (c0, c1))
-    # 4) orta tık kenara (sürüklemeden) → sonra sürükle: kenar ekseni etrafında, kenarın iki ucu sabit
+    chk("boşlukta: model merkezi sabit", d(c0, scr(C)) < 1.5, (c0, scr(C)))
+    # 3) yatay sürükleme ekranın dikey ekseni etrafında: ekranın "yukarı"sı değişmez (ekranda dönme / yuvarlanma yok)
     pg.keyboard.press("f"); time.sleep(0.3)
+    u0 = up0(); mdrag(R["x"]+R["width"]*0.3, R["y"]+R["height"]*0.5, 240, 0); u1 = up0()
+    chk("yatay sürükleme: ekran yukarısı aynı (yuvarlanma yok)", sum((a-b)**2 for a,b in zip(u0,u1))**0.5 < 1e-6, (u0, u1))
+    cx, cy = R["x"]+R["width"]/2, R["y"]+R["height"]/2
+    # 4) yakınlaştırılmışken: imleç köşedeyken bile ekranın ortasındaki geometri etrafında döner
+    pg.keyboard.press("f"); time.sleep(0.3)
+    ev("window.__app.viewer.camera.zoom*=5; window.__app.viewer.camera.updateProjectionMatrix(); window.__app.viewer.requestRender()"); time.sleep(0.3)
+    mid = ev("([x,y])=>{const v=window.__app.viewer;const h=v.ray(x,y).intersectObjects(v.scene.children,true).find(h=>h.object.isMesh&&h.object.visible);return h&&h.point.toArray()}", [cx, cy])
+    if mid:
+        m0 = scr(mid); mdrag(R["x"]+60, R["y"]+80, 90, 50)
+        chk("yakınken ekran ortasındaki nokta yerinde (kenara savrulmaz)", d(m0, scr(mid)) < 2.5, (m0, scr(mid)))
+    # 5) peş peşe hızlı döndürme vuruşları sığdırma yapmaz (görüntü sıçramaz)
+    z0 = ev("window.__app.viewer.camera.zoom")
+    for _ in range(3):
+        pg.mouse.move(cx, cy); pg.mouse.down(button="middle"); pg.mouse.move(cx+40, cy, steps=3); pg.mouse.up(button="middle"); time.sleep(0.05)
+    time.sleep(0.3)
+    chk("hızlı ardışık sürüklemeler yakınlaştırmayı bozmaz", abs(ev("window.__app.viewer.camera.zoom") - z0) < 1e-6, (z0, ev("window.__app.viewer.camera.zoom")))
+    # 6) uzun basıp kıpırdamadan bırakmak eksen kilitlemez
+    pg.mouse.move(cx, cy); pg.mouse.down(button="middle"); time.sleep(0.6); pg.mouse.up(button="middle"); time.sleep(0.2)
+    chk("uzun basış varlık seçmez", ev("window.__app.viewer.controls.sticky")==None)
+    # 7) orta tık kenara (sürüklemeden) → sonra sürükle: kenar ekseni etrafında, kenarın iki ucu sabit
+    ev("window.__app.viewer.viewStd('iso')"); time.sleep(0.6); pg.keyboard.press("f"); time.sleep(0.3)
     edge = ev("""(()=>{const m=window.__app.viewer.mesh; const e=m.edges.find(e=>e.d&&Math.abs(Math.abs(e.d[0])-1)<1e-6&&e.m[1]>19&&e.m[2]>24); return e&&{m:e.m,s:e.s,e:e.e}})()""")
     em = scr(edge["m"]); pg.mouse.move(em[0], em[1]); pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.4)
-    sticky = ev("(()=>{const s=window.__app.viewer.controls.sticky; return s&&{axis:!!s.axis}})()")
+    sticky = ev("(()=>{const s=window.__app.viewer.controls.sticky; return s&&{axis:!!s.axis, a:s.axis&&s.axis.toArray(), p:s.p.toArray()}})()")
     chk("orta tık kenarı seçti (eksen)", sticky and sticky["axis"], sticky)
     chk("seçili eksen işareti görünür", ev("window.__app.viewer.pivotMark.children.length")>=2)
     a0, b0 = scr(edge["s"]), scr(edge["e"])
@@ -75,5 +93,22 @@ with sync_playwright() as p:
     for _ in range(2): pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.08)
     time.sleep(0.3)
     chk("çift orta tık sığdırır", ev("window.__app.viewer.camera.zoom") < z0 * 0.6, (z0, ev("window.__app.viewer.camera.zoom")))
+    # 8) montajda: iki bileşen, bir bileşenin köşesinden basıp sürükle → montajın merkezi sabit, yuvarlanma yok
+    pg.evaluate("localStorage.removeItem('imajcad.asm')")
+    A = lambda js: pg.evaluate(f"(()=>{{const a=window.__app.asm; {js}}})()")
+    pg.click("#tabs button[data-tab='asm']"); pg.click("#cmds button:has-text('Montajı Aç')"); time.sleep(0.5)
+    A("a.doc={kind:'asm',name:'T',comps:[],mates:[]}; return 0")
+    for nm in ("A", "B"):
+        A(f"a.addComp({{name:'{nm}', features:{json.dumps(box)}}})"); time.sleep(1.5); wait_ready(pg)
+    A("a.doc.comps[1].p=[300,0,0]; a.draw(); return 0"); time.sleep(0.5)
+    pg.keyboard.press("f"); time.sleep(0.4)
+    ctr = ev("(()=>{const b=new window.__app.THREE.Box3();window.__app.viewer.scene.traverse(o=>{if(o.isMesh&&o.visible&&o.userData&&o.userData.comp)b.expandByObject(o)});return b.isEmpty()?null:b.getCenter(new window.__app.THREE.Vector3()).toArray()})()")
+    cor = scr([350, 20, 25])
+    pv = ev("([x,y])=>{const p=window.__app.viewer.navPivot(x,y,false);return p&&p.p.toArray()}", [cor[0]-2, cor[1]+2])
+    ctr = pv
+    k0 = scr(ctr); u0 = up0()
+    mdrag(cor[0]-2, cor[1]+2, 120, 0)
+    chk("montaj: bileşen köşesinden başlayınca montaj merkezi sabit", d(k0, scr(ctr)) < 3, (k0, scr(ctr), ctr))
+    chk("montaj: yatay sürüklemede yuvarlanma yok", sum((a-b)**2 for a,b in zip(u0, up0()))**0.5 < 1e-6)
     chk("hata yok", not logs, logs)
     print("SONUC:", "TAMAM" if all(ok) else "HATA")

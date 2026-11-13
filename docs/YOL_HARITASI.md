@@ -672,3 +672,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.83 | Kurumsal Şerit arayüzü: İmaj logosu ve renkleri, sekmeler şeridin üstünde, başlıklı / sık şerit grupları, telefonda alt komut tepsisi | ✅ |
 
 | v0.84 | Eskizi düzenledikten sonra ölçü / sürükleme değişikliği modele ve kayda geçer; var olan eskiz Seç aracıyla açılır | ✅ |
+
+| v0.85 | Orta tuşla döndürme: ekran eksenleri (yuvarlanma yok), model merkezi / ekran ortası merkez (sıçrama yok), çift tık yalnız gerçek tıkta | ✅ |

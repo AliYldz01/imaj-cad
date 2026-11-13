@@ -670,6 +670,7 @@ export class AsmUI {
     if (!p || !g || !md) return v.requestRender();
     const COL = 0xf76707;
     const o = new THREE.Group();
+    o.userData.nonav = true; // döndürme merkezi hesabına girmez
     const e = p.ent;
     if (!e || e.kind === "plane" || e.kind === "cyl") {
       // yüzü bul (ışın) ve tümüyle boya

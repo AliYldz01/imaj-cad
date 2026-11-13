@@ -42,7 +42,9 @@ export class NavControls extends EventTarget {
       return false;
     }
   })();
-  private lastMid = 0;
+  /** son SÜRÜKLEMESİZ orta tık bırakma zamanı (çift tık = sığdır yalnız iki gerçek tıkla) */
+  private lastClick = 0;
+  private downTime = 0;
   private midMoved = false;
   private downAt = { x: 0, y: 0 };
 
@@ -60,9 +62,8 @@ export class NavControls extends EventTarget {
     if (e.pointerType === "mouse" && e.button !== 1) return;
     if (e.pointerType === "mouse") {
       e.preventDefault();
-      const now = performance.now();
-      if (now - this.lastMid < 350) (this.sticky = null), this.dispatchEvent(new Event("fit"));
-      this.lastMid = now;
+      // not: çift tık (sığdır) artık bırakmada değerlendirilir; peş peşe hızlı döndürme vuruşları görünümü sıçratmaz
+      this.downTime = performance.now();
       this.midMoved = false;
       this.downAt = { x: e.clientX, y: e.clientY };
       this.pivot = this.sticky ?? (e.ctrlKey || e.shiftKey || e.altKey ? null : this.pivotAt?.(e.clientX, e.clientY, false) ?? null);
@@ -120,9 +121,25 @@ export class NavControls extends EventTarget {
   private up(e: PointerEvent) {
     const p = this.pointers.get(e.pointerId);
     if (p && p.type === "mouse") {
-      // tek orta tık (sürüklemeden): varlığı döndürme merkezi seç; sürüklemeden sonra seçim kalkar
-      if (!this.midMoved) this.sticky = this.pivotAt?.(e.clientX, e.clientY, true) ?? null;
-      else if (this.sticky) this.sticky = null;
+      const now = performance.now();
+      if (this.midMoved) {
+        // sürükleme bitti: varlık seçimi kalkar (SolidWorks)
+        this.sticky = null;
+        this.lastClick = 0;
+      } else if (now - this.lastClick < 400) {
+        // iki gerçek tık → ekrana sığdır
+        this.sticky = null;
+        this.lastClick = 0;
+        this.dispatchEvent(new Event("fit"));
+      } else if (now - this.downTime < 300) {
+        // kısa, kıpırdamadan orta tık: varlığı döndürme merkezi seç (köşe / kenar / yüz)
+        this.sticky = this.pivotAt?.(e.clientX, e.clientY, true) ?? null;
+        this.lastClick = now;
+      } else {
+        // uzun basılıp sürüklemeden bırakıldı: seçim yapma (yanlışlıkla eksen kilitlenmesin)
+        this.sticky = null;
+        this.lastClick = 0;
+      }
       this.pivot = this.sticky;
       this.dispatchEvent(new Event("pivot"));
     }
@@ -156,9 +173,14 @@ export class NavControls extends EventTarget {
   rotate(dx: number, dy: number, pv: Pivot | null = null) {
     const cam = this.camera;
     const offset = cam.position.clone().sub(this.target);
-    const up = cam.up.clone().normalize();
     const fwd = offset.clone().normalize().negate();
-    const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
+    // ekran eksenleri (dik): cam.up bakış yönüne dik olmayabilir (ör. izometrikte dünya Y);
+    // onun etrafında döndürmek yatay sürüklemeyi "ekranda dönme"ye çeviriyordu. SolidWorks: yatay = ekran dikeyi, dikey = ekran yatayı
+    let right = new THREE.Vector3().crossVectors(fwd, cam.up);
+    if (right.lengthSq() < 1e-12) right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
+    right.normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    cam.up.copy(up);
     let q: THREE.Quaternion;
     if (pv?.axis) {
       // eksen etrafında (SolidWorks: kenar / eksen etrafında döndür): ekran yönündeki sürükleme bileşeni açıyı verir
