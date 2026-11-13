@@ -328,7 +328,7 @@ export class AsmUI {
   }
   /** montaj resmi: izometrik görünüş + balonlar + malzeme listesi */
   async drawing() {
-    const vis = this.doc.comps.filter((c) => !c.hidden);
+    const vis = this.doc.comps.filter((c) => !(c.hidden || c.sup));
     if (!vis.length) return this.ctx.toast("Montajda bileşen yok", true);
     this.ctx.setStatus("busy", "Montaj resmi hazırlanıyor…");
     const parts = vis.map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
@@ -359,7 +359,7 @@ export class AsmUI {
     const holes: Hole[] = [];
     for (const c of this.doc.comps) {
       const md = this.meshes.get(c.id);
-      if (!md || c.hidden) continue;
+      if (!md || c.hidden || c.sup) continue;
       const q = QQ(c);
       md.faces.forEach((f, fi) => {
         if (!f.r || !f.ax) return;
@@ -440,6 +440,7 @@ export class AsmUI {
     let r = solveAll(this.doc, o);
     // büyük yer değiştirmelerde (parça değişikliği) bir tur daha
     if (r.bad.length && !o.drag) r = solveAll(this.doc, o);
+    this.updatePatterns();
     this.bad = new Set([...r.bad, ...this.lost]);
     return r;
   }
@@ -473,7 +474,7 @@ export class AsmUI {
     const pick = this.mateDraft ? this.mateDraft.ents.filter(Boolean) as MateEnt[] : this.pre;
     this.doc.comps.forEach((c, i) => {
       const m = this.meshes.get(c.id);
-      if (!m || c.hidden) return;
+      if (!m || c.hidden || c.sup) return;
       const g = new THREE.Group();
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(m.vertices, 3));
@@ -591,7 +592,7 @@ export class AsmUI {
     v.camera.getWorldDirection(camDir);
     let best: { comp: string; ent: MateEnt; d: number } | null = null;
     for (const c of this.doc.comps) {
-      if (c.hidden || c.id === skip) continue;
+      if (c.hidden || c.sup || c.id === skip) continue;
       const md = this.meshes.get(c.id);
       const g = this.objs.get(c.id);
       if (!md || !g) continue;
@@ -830,7 +831,7 @@ export class AsmUI {
   }
   /** iki bileşen çakışıyor mu (gerçek geometri) */
   collidesWith(c: AsmComp, o: AsmComp): boolean {
-    if (o === c || o.hidden || c.hidden) return false;
+    if (o === c || o.hidden || o.sup || c.hidden || c.sup) return false;
     const a = this.bbox(c);
     if (!a) return false;
     a.expandByScalar(-0.05);
@@ -854,7 +855,7 @@ export class AsmUI {
       const b0 = before.get(id)!;
       const delta = V3(m.p).sub(V3(b0.p));
       for (const o of this.doc.comps) {
-        if (o.id === id || o.hidden || !this.collidesWith(m, o)) continue;
+        if (o.id === id || o.hidden || o.sup || !this.collidesWith(m, o)) continue;
         if (o.fixed || moved.has(o.id) || delta.length() < 1e-9) return this.restore(before), false;
         const lc = ((o as any)._lc as Vec3) ?? [0, 0, 0];
         const w = V3(lc).applyQuaternion(QQ(o)).add(V3(o.p)).add(delta);
@@ -1665,6 +1666,20 @@ export class AsmUI {
     this.save();
   }
   /** kütle özellikleri (ağlardan; yoğunluk varsayılan çelik) */
+  /** bileşen(ler)i bastır / etkinleştir: bastırılan çözülmez, ağ çizilmez; etkinleşince çözücü yeniden çalışır */
+  setSuppressed(ids: string[], on: boolean) {
+    for (const id of ids) {
+      const c = this.doc.comps.find((x) => x.id === id);
+      if (!c) continue;
+      if (on) c.sup = true;
+      else delete c.sup;
+    }
+    this.solve();
+    this.save();
+    this.draw();
+    this.renderTree();
+    this.ctx.toast(on ? `${ids.length} bileşen bastırıldı` : `${ids.length} bileşen etkinleştirildi`);
+  }
   massProps() {
     // B11: her bileşen kendi parçasının malzemesiyle (SolidWorks: parça malzemesi); tanımsızsa çelik
     const mat = (c: AsmComp) => MATERIALS[c.part.material ?? "steel"] ?? MATERIALS.steel;
@@ -1673,7 +1688,7 @@ export class AsmUI {
     const rows: string[] = [];
     const res: { name: string; vol: number; mass: number; mat: string }[] = [];
     for (const c of this.doc.comps) {
-      if (c.hidden) continue;
+      if (c.hidden || c.sup) continue;
       const m = this.meshes.get(c.id);
       if (!m) continue;
       let v = 0;
@@ -1707,6 +1722,112 @@ export class AsmUI {
     dlg.showModal();
   }
   /** bileşen çoğaltma: doğrusal / dairesel (SolidWorks Doğrusal/Dairesel Bileşen Çoğaltma) */
+  /** sürücü parçadaki çoğaltma özelliğinin örnek dönüşümleri (parça yerelinde, ilk örnek hariç) */
+  patternXforms(drv: AsmComp, featId: string): THREE.Matrix4[] {
+    const f: any = drv.part.features.find((x: any) => x.id === featId);
+    if (!f) return [];
+    const AX: Record<string, THREE.Vector3> = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+    const out: THREE.Matrix4[] = [];
+    if (f.type === "lpattern") {
+      const d1 = AX[f.axis].clone().multiplyScalar(f.rev ? -1 : 1), d2 = AX[f.axis2 ?? "z"].clone().multiplyScalar(f.rev2 ? -1 : 1);
+      const n2 = f.dir2 ? Math.max(1, f.count2) : 1;
+      for (let i = 0; i < Math.max(1, f.count); i++)
+        for (let j = 0; j < n2; j++) {
+          if (!i && !j) continue;
+          if (f.skip?.includes(`${i + 1},${j + 1}`) || (!j && f.skip?.includes(`${i + 1}`))) continue;
+          const t = d1.clone().multiplyScalar(i * f.spacing).addScaledVector(d2, j * (f.spacing2 ?? 0));
+          out.push(new THREE.Matrix4().makeTranslation(t.x, t.y, t.z));
+        }
+    } else if (f.type === "cpattern") {
+      let ax = AX[f.axis] ?? AX.y, org = new THREE.Vector3();
+      const ra: any = f.refAxis ? drv.part.features.find((x: any) => x.id === f.refAxis) : null;
+      if (ra?.type === "axis") (ax = new THREE.Vector3(...ra.d).normalize()), (org = new THREE.Vector3(...ra.p));
+      const step = f.equal ? (Math.abs(f.angle - 360) < 1e-6 ? 360 / f.count : f.angle / Math.max(1, f.count - 1)) : f.angle;
+      for (let k = 1; k < Math.max(1, f.count); k++) {
+        if (f.skip?.includes(`${k + 1}`)) continue;
+        const R = new THREE.Matrix4().makeRotationAxis(ax, (k * step * Math.PI) / 180);
+        out.push(new THREE.Matrix4().makeTranslation(org.x, org.y, org.z).multiply(R).multiply(new THREE.Matrix4().makeTranslation(-org.x, -org.y, -org.z)));
+      }
+    }
+    return out;
+  }
+  private compMatrix(c: AsmComp) {
+    return new THREE.Matrix4().compose(new THREE.Vector3(...c.p), new THREE.Quaternion(...c.q), new THREE.Vector3(1, 1, 1));
+  }
+  /** desen örneklerinin konumlarını tohum ve sürücüden yeniden hesapla (adet değiştiyse örnekler eklenir / silinir) */
+  updatePatterns() {
+    for (const pd of this.doc.pdp ?? []) {
+      const drv = this.doc.comps.find((c) => c.id === pd.drv);
+      if (!drv) continue;
+      const X = this.patternXforms(drv, pd.feat);
+      const D = this.compMatrix(drv), Di = D.clone().invert();
+      for (const sid of pd.seeds) {
+        const seed = this.doc.comps.find((c) => c.id === sid);
+        if (!seed) continue;
+        const S = this.compMatrix(seed);
+        let insts = this.doc.comps.filter((c) => c.pat?.id === pd.id && c.pat.seed === sid);
+        // adet değiştiyse eşitle
+        while (insts.length < X.length) {
+          const k = insts.length + 1;
+          const nc: AsmComp = { id: uid(), name: `${seed.part.name}<desen ${k}>`, part: JSON.parse(JSON.stringify(seed.part)), q: [...seed.q], p: [...seed.p], fixed: true, pat: { id: pd.id, seed: sid, k }, ...(seed.cfg ? { cfg: seed.cfg } : {}) };
+          this.doc.comps.push(nc);
+          insts.push(nc);
+        }
+        if (insts.length > X.length) {
+          const rm = new Set(insts.slice(X.length).map((c) => c.id));
+          this.doc.comps = this.doc.comps.filter((c) => !rm.has(c.id));
+          insts = insts.slice(0, X.length);
+        }
+        insts.sort((a, b) => a.pat!.k - b.pat!.k).forEach((ic, k) => {
+          const M = D.clone().multiply(X[k]).multiply(Di).multiply(S);
+          const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+          M.decompose(p, q, sc);
+          ic.p = [p.x, p.y, p.z];
+          ic.q = [q.x, q.y, q.z, q.w];
+          ic.pat!.k = k + 1;
+          // tohum bastırılmışsa örnekleri de bastırılır
+          if (seed.sup) ic.sup = true;
+          else delete ic.sup;
+        });
+      }
+    }
+  }
+  /** Desen güdümlü bileşen çoğaltma paneli: seçili bileşenler tohum, başka bileşenin parçasındaki doğrusal / dairesel çoğaltma sürücü */
+  openDrivenPattern() {
+    const seeds = this.selSet.size ? [...this.selSet] : this.sel ? [this.sel] : [];
+    const opts: { v: string; t: string }[] = [];
+    for (const c of this.doc.comps)
+      if (!seeds.includes(c.id) && !c.pat)
+        for (const f of c.part.features as any[]) if ((f.type === "lpattern" || f.type === "cpattern") && !f.off) opts.push({ v: `${c.id}|${f.id}`, t: `${c.name} › ${f.name}` });
+    const st = { drv: opts[0]?.v ?? "" };
+    const done = () => {
+      if (!seeds.length) return this.ctx.toast("Çoğaltılacak (tohum) bileşenleri seçin", true);
+      if (!st.drv) return this.ctx.toast("Sürücü çoğaltma özelliği yok", true);
+      const [drv, feat] = st.drv.split("|");
+      const pd = { id: uid(), seeds, drv, feat };
+      this.doc.pdp = [...(this.doc.pdp ?? []), pd];
+      this.updatePatterns();
+      this.ctx.hidePM();
+      this.save();
+      this.refresh().then(() => this.renderTree());
+      this.ctx.toast(`Desen güdümlü çoğaltma: ${this.doc.comps.filter((c) => c.pat?.id === pd.id).length} örnek`);
+    };
+    this.ctx.showPM("Desen güdümlü bileşen çoğaltma", done, () => this.ctx.hidePM());
+    const body = document.getElementById("pm-body")!;
+    body.innerHTML = "";
+    body.appendChild(group("Çoğaltılacak bileşenler", h("div", "pm-picks", seeds.length ? seeds.map((id) => this.doc.comps.find((c) => c.id === id)?.name).join(", ") : "Önce bileşenleri seçin (Ctrl ile çoklu)")));
+    body.appendChild(group("Sürücü özellik", opts.length ? selectField("Çoğaltma", opts, st.drv, (v) => (st.drv = v)) : h("p", "pm-hint", "Montajdaki parçalarda doğrusal ya da dairesel çoğaltma özelliği yok."), h("p", "pm-hint", "Örnekler sürücü çoğaltmanın her örneğine, tohumun sürücüye göre konumuyla yerleşir; sürücü parça ya da çoğaltma değişince güncellenir.")));
+  }
+  /** desen örneğini / deseni kaldır ya da örnekleri bağımsız bileşene dağıt */
+  removePattern(pid: string, dissolve = false) {
+    const pd = this.doc.pdp?.find((x) => x.id === pid);
+    if (!pd) return;
+    this.doc.pdp = this.doc.pdp!.filter((x) => x !== pd);
+    if (dissolve) this.doc.comps.forEach((c) => c.pat?.id === pid && (delete c.pat, (c.fixed = false)));
+    else this.doc.comps = this.doc.comps.filter((c) => c.pat?.id !== pid);
+    this.save();
+    this.refresh().then(() => this.renderTree());
+  }
   openPattern() {
     const st = { kind: "lin", ax: "x", n: 3, d: 50, ang: 360, n2: 1, d2: 50, ax2: "y" };
     const done = () => {
@@ -1753,7 +1874,7 @@ export class AsmUI {
   /** B7: Girişim Algılama paneli (SolidWorks): sonuç listesi, girişim hacmi kırmızı, seçilen çift vurgulu, çakışanları göster */
   ifc: { pairs: { a: string; b: string; vol: number; v?: number[]; t?: number[] }[]; cur: number | null; only: boolean } | null = null;
   async interference(panel = true) {
-    const vis = this.doc.comps.filter((c) => !c.hidden);
+    const vis = this.doc.comps.filter((c) => !(c.hidden || c.sup));
     const parts = vis.map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
     this.ctx.setStatus("busy", "Girişim hesaplanıyor…");
     const r = await this.ctx.kernel.asm("interfere", parts);
@@ -1798,7 +1919,7 @@ export class AsmUI {
     return pr;
   }
   async exportStep() {
-    const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+    const parts = this.doc.comps.filter((c) => !(c.hidden || c.sup)).map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
     this.ctx.setStatus("busy", "STEP hazırlanıyor…");
     const r = await this.ctx.kernel.asm("step", parts);
     this.meshes.clear();
@@ -1973,7 +2094,7 @@ export class AsmUI {
 
   // ---------- boşluk doğrulama ----------
   async clearance() {
-    const vis = this.doc.comps.filter((c) => !c.hidden);
+    const vis = this.doc.comps.filter((c) => !(c.hidden || c.sup));
     const sel = vis.filter((c) => this.selSet.has(c.id));
     const use = sel.length >= 2 ? sel : vis;
     const min = parseFloat((prompt("Boşluk doğrulama: en az boşluk (mm)", "1") ?? "").replace(",", "."));
@@ -2204,8 +2325,8 @@ export class AsmUI {
         ul.appendChild(li);
       }
       const f = dof.get(c.id) ?? 0;
-      const li = h("li", (sb ? "child " : "") + (this.sel === c.id || this.selSet.has(c.id) ? "sel " : "") + (c.hidden ? "off" : ""));
-      li.appendChild(h("span", "", `${c.fixed ? "(f) " : f > 0 ? "(-) " : ""}${c.name}${partConfigs(c.part).length > 1 ? ` (${c.cfg ?? c.part.config ?? ""})` : ""}`));
+      const li = h("li", (sb ? "child " : "") + (this.sel === c.id || this.selSet.has(c.id) ? "sel " : "") + (c.hidden || c.sup ? "off" : "") + (c.sup ? " sup" : ""));
+      li.appendChild(h("span", "", `${c.sup ? "⊘ " : ""}${c.fixed ? "(f) " : f > 0 ? "(-) " : ""}${c.name}${partConfigs(c.part).length > 1 ? ` (${c.cfg ?? c.part.config ?? ""})` : ""}`));
       li.title = c.fixed ? "Sabit" : f > 0 ? `${f} serbestlik derecesi kaldı` : "Tam tanımlı";
       li.addEventListener("click", (ev) => {
         if ((ev as MouseEvent).ctrlKey) this.selSet.has(c.id) ? this.selSet.delete(c.id) : this.selSet.add(c.id);
@@ -2291,6 +2412,11 @@ export class AsmUI {
     if (!c) return out;
     add(c.fixed ? "Serbest bırak" : "Sabitle", () => ((c.fixed = !c.fixed), this.solve(), this.save(), this.draw(), this.renderTree()));
     add(c.hidden ? "Göster" : "Gizle", () => ((c.hidden = !c.hidden), this.save(), this.draw(), this.renderTree()));
+    if (c.pat) {
+      add("Deseni sil", () => this.removePattern(c.pat!.id));
+      add("Deseni dağıt (bağımsız bileşenler)", () => this.removePattern(c.pat!.id, true));
+    }
+    add(c.sup ? "Bastırmayı kaldır" : "Bastır", () => this.setSuppressed(this.selSet.size > 1 ? [...this.selSet] : [c.id], !c.sup));
     add(c.transparent ? "Opak" : "Saydam", () => ((c.transparent = !c.transparent || undefined), this.save(), this.draw(), this.renderTree()));
     add("Taşı", () => this.openMove());
     add("Döndür", () => this.openMove(true));
@@ -2425,6 +2551,11 @@ export class AsmUI {
   removeComps(ids: string[]) {
     const del = new Set(ids);
     if (!del.size) return;
+    // desen: tohumu / sürücüsü silinen desen ve örnekleri kalkar; tek örnek silinirse deseninde atlanır (bağımsız kalmaz)
+    for (const pd of this.doc.pdp ?? [])
+      if (pd.seeds.some((x) => del.has(x)) || del.has(pd.drv)) this.doc.comps.forEach((c) => c.pat?.id === pd.id && del.add(c.id));
+    this.doc.pdp = (this.doc.pdp ?? []).filter((pd) => !(pd.seeds.some((x) => del.has(x)) || del.has(pd.drv)));
+    if ([...del].every((id) => this.doc.comps.find((c) => c.id === id)?.pat)) return this.ctx.toast("Desen örneği tek başına silinemez: deseni silin ya da dağıtın", true);
     this.doc.comps = this.doc.comps.filter((x) => !del.has(x.id));
     this.doc.mates = this.doc.mates.filter((m) => ![m.a, m.b, m.c, m.d].some((e) => e && del.has(e.comp)));
     for (const sb of this.doc.subs ?? []) sb.comps = sb.comps.filter((x) => !del.has(x));
@@ -2543,6 +2674,7 @@ export class AsmUI {
       { id: "rotate", label: "Bileşeni Döndür", icon: "revolve", run: () => this.openMove(true), active: () => this.dragMode === "rotate" },
       "sep",
       { id: "cpattern", label: "Bileşen Çoğalt", icon: "lpattern", run: () => this.openPattern() },
+      { id: "dpattern", label: "Desen Güdümlü", icon: "lpattern", run: () => this.openDrivenPattern() },
       { id: "cmirror", label: "Bileşen Aynala", icon: "mirror", run: () => this.openMirror() },
       { id: "asmCut", label: "Montaj Kesme / Delik", icon: "hole", run: () => this.openAsmCut() },
       { id: "collide", label: "Çarpışma Algıla", icon: "measure", run: () => ((this.collide = !this.collide), this.ctx.toast(this.collide ? "Sürüklerken çarpışma algılama açık" : "Çarpışma algılama kapalı")), active: () => this.collide },

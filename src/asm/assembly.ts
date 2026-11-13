@@ -12,6 +12,10 @@ export interface AsmComp {
   p: Vec3;
   fixed: boolean;
   hidden?: boolean;
+  /** desen örneği: { desen kimliği, tohum, örnek sırası } (konumu desenden hesaplanır) */
+  pat?: { id: string; seed: string; k: number };
+  /** bastırılmış (SolidWorks): çizilmez, çözücüye / malzeme listesine / girişime / kütleye / STEP'e girmez */
+  sup?: boolean;
   transparent?: boolean;
   /** başvurulan yapılandırma (yoksa parçanın etkin yapılandırması) */
   cfg?: string;
@@ -76,7 +80,9 @@ export interface AsmFeat {
   comps: string[];
   off?: boolean;
 }
-export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean; subs?: SubAsm[]; feats?: AsmFeat[] }
+/** desen güdümlü bileşen çoğaltma (SolidWorks): tohum bileşenler, sürücü bileşenin parçasındaki çoğaltma özelliğini izler */
+export interface DrivenPattern { id: string; seeds: string[]; drv: string; feat: string }
+export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean; subs?: SubAsm[]; feats?: AsmFeat[]; pdp?: DrivenPattern[] }
 /** montajın kendi ana düzlemleri / orijini için sanal bileşen kimliği */
 export const ASM_ID = "__asm";
 
@@ -285,6 +291,7 @@ export function bom(doc: AsmDoc) {
   const map = new Map<string, number>();
   // yapılandırması farklı örnekler ayrı satır (SolidWorks malzeme listesi)
   for (const c of doc.comps) {
+    if (c.sup) continue;
     const cf = c.cfg ?? c.part.config;
     const n = c.part.configs && c.part.configs.length > 1 && cf ? `${c.part.name} [${cf}]` : c.part.name;
     map.set(n, (map.get(n) ?? 0) + 1);

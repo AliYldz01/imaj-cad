@@ -56,8 +56,8 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.72 6.5 Seçim kırıntıları (belge › gövde › özellik › yüz/kenar), sağ görev bölmesi (kütüphane / dosyalar), şerit özelleştirme
 
 ## 7. Montaj
-- ⬜ 7.1 Desen güdümlü bileşen çoğaltma
-- ⬜ 7.2 Bileşen bastırma (durumu doğrula)
+- ✅ v0.73 7.1 Desen güdümlü bileşen çoğaltma (doğrusal / dairesel parça çoğaltmasını izler, adet / konum değişince güncellenir, sil / dağıt)
+- ✅ v0.73 7.2 Bileşen bastırma (çizim, çözücü, malzeme listesi, girişim, kütle, STEP dışı; desen örnekleri tohumu izler)
 
 ## 8. Telefon / kalemsiz
 - ⬜ 8.1 Model üzerinde derinlik oku

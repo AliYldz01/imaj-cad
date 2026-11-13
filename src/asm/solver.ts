@@ -16,7 +16,7 @@ function compMap(doc: AsmDoc) {
 /** etkin eşleşmeler: bastırılanlar ve rijit alt montajın iç eşleşmeleri hariç; rijit alt montajlar için örtük kilitler */
 function activeMates(doc: AsmDoc, cm: Map<string, AsmComp>): Mate[] {
   const rigid = new Set((doc.subs ?? []).filter((s) => s.rigid).map((s) => s.id));
-  const ok = (e?: MateEnt) => !e || cm.has(e.comp);
+  const ok = (e?: MateEnt) => !e || (cm.has(e.comp) && !cm.get(e.comp)!.sup);
   const out = doc.mates.filter((m) => !m.off && !(m.sub && rigid.has(m.sub)) && ok(m.a) && ok(m.b) && ok(m.c) && ok(m.d));
   for (const s of doc.subs ?? []) {
     if (!s.rigid) continue;
