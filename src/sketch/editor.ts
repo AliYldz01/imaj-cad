@@ -377,7 +377,9 @@ export class SketchEditor implements InputHandler {
     // SolidWorks gibi: yeni sürücü ölçü hiçbir serbestliği almıyorsa (değeri tutsa bile) gereksizdir → reddet
     const newDims = this.data.dims.filter((d) => !dimIds.has(d.id) && !d.ref);
     this.redundantHit = false;
-    if (!this.allowOver && r.ok && !r.conflicts.length && newDims.length && (r.redundant.some((x) => !prevRed.has(x)) || (prevDof !== undefined && r.dof >= prevDof && geo0 === Object.keys(this.data.pts).length + ":" + this.data.ents.length))) {
+    // yalnız ölçü ekleyen işlemlerde (geometri değişmeden) denetlenir; radyüs / pah gibi geometri değiştiren işlemlerin kendi ölçüleri gereksiz sayılmaz
+    const geoSame = geo0 === Object.keys(this.data.pts).length + ":" + this.data.ents.length;
+    if (!this.allowOver && r.ok && !r.conflicts.length && newDims.length && geoSame && (r.redundant.some((x) => !prevRed.has(x)) || (prevDof !== undefined && r.dof >= prevDof))) {
       this.undoStack.pop();
       Object.assign(this.data, JSON.parse(before));
       this.redundantHit = true;
@@ -2005,8 +2007,9 @@ export class SketchEditor implements InputHandler {
           addRel(sk, "parallel", [ls[1].id, ls[3].id]);
           const m = this.makePoint(ainf);
           const d1 = addLine(sk, ids[0], ids[2], true), d2l = addLine(sk, ids[1], ids[3], true);
+          // ikinci köşegen merkezden kendiliğinden geçer (paralelkenar): ikinci orta nokta ilişkisi gereksiz olurdu
           addRel(sk, "midpoint", [m, d1.id]);
-          addRel(sk, "midpoint", [m, d2l.id]);
+          void d2l;
         });
         this.st = {};
         return this.render();
@@ -2261,7 +2264,7 @@ export class SketchEditor implements InputHandler {
             addRel(sk, "vertical", [l4.id]);
             const d1 = addLine(sk, q1, q3, true), dd = addLine(sk, q2, q4, true);
             addRel(sk, "midpoint", [m, d1.id]);
-            addRel(sk, "midpoint", [m, dd.id]);
+            void dd;
           }
         });
         this.st = {};
@@ -2931,8 +2934,14 @@ export class SketchEditor implements InputHandler {
   }
   private filletAt(p: Vec2) {
     const sk = this.data;
-    const h = this.hitTest(p, this.tolPx, { ents: false });
-    if (!h || h.id === ORIGIN) return this.host.toast("İki çizginin/yayın birleştiği köşeye dokunun");
+    let h = this.hitTest(p, this.tolPx, { ents: false });
+    if (h?.id === ORIGIN) {
+      // köşe orijinde: orijine çakışık eskiz noktası
+      const q = Object.keys(sk.pts).find((k) => d2(P(sk, k), [0, 0]) < 1e-6 && sk.ents.some((e) => (e.t === "line" || e.t === "arc") && !e.cons && entPoints(e).includes(k)));
+      h = q ? { ...h, id: q } : h;
+    }
+    if (!h || (h.id === ORIGIN && !sk.ents.some((e) => (e.t === "line" || e.t === "arc") && !e.cons && entPoints(e).includes(ORIGIN))))
+      return this.host.toast("İki çizginin/yayın birleştiği köşeye dokunun");
     const cl = this.cornerCluster(h.id);
     const curves = sk.ents.filter((e) => (e.t === "line" || e.t === "arc") && !e.cons && entPoints(e).some((x) => cl.includes(x))) as (SLine | SArc)[];
     if (curves.length !== 2) return this.host.toast(curves.length < 2 ? "Köşede birleşen iki çizgi/yay bulunamadı" : "Köşede ikiden fazla çizgi/yay var; önce fazlasını kırpın");
@@ -2994,14 +3003,17 @@ export class SketchEditor implements InputHandler {
       a.r = r;
       addRel(sk, "tangent", [C1.e.id, a.id]);
       addRel(sk, "tangent", [C2.e.id, a.id]);
-      sk.dims.push({ id: nid(sk, "d"), t: "rad", refs: [a.id], v: r, lp: add2(Cc, mul2(norm2(sub2(Pp, Cc)), -r * 2)) as Vec2 });
+      sk.dims.push({ id: nid(sk, "d"), t: "rad", refs: [a.id], v: r, lp: add2(Cc, mul2(norm2(sub2(Pp, Cc)), r * 2.2)) as Vec2 });
     });
   }
 
   /** radyüs / pah sonrası eski köşe: ölçü ya da ilişki bağlıysa sanal sivri köşe (yapı noktası, iki eğrinin üzerinde) yap; değilse sil */
   private virtualSharp(pid: string, curves: string[]) {
     const sk = this.data;
-    const used = sk.dims.some((x) => x.refs.includes(pid)) || sk.rels.some((x) => x.refs.includes(pid) && !curves.some((c) => x.refs.includes(c)));
+    const used =
+      sk.dims.some((x) => x.refs.includes(pid)) ||
+      sk.rels.some((x) => x.refs.includes(pid) && !curves.some((c) => x.refs.includes(c))) ||
+      sk.ents.some((e) => !curves.includes(e.id) && entPoints(e).includes(pid));
     if (!used || pid === ORIGIN) {
       sk.rels = sk.rels.filter((x) => !x.refs.includes(pid));
       sk.dims = sk.dims.filter((x) => !x.refs.includes(pid));
@@ -3773,6 +3785,18 @@ export class SketchEditor implements InputHandler {
     this.render();
     if (!spec) return this.host.toast("Bu seçim için ölçü yok");
     const cur = measure(this.data, spec);
+    // aynı daire / yayın yarıçap–çap ölçüsü (ya da aynı öğelerin aynı türdeki ölçüsü) zaten varsa: onu düzenle (ör. eskiz radyüsünün R ölçüsü)
+    const same = this.data.dims.find((d) =>
+      !d.ref &&
+      (((spec.t === "rad" || spec.t === "dia") && (d.t === "rad" || d.t === "dia") && d.refs[0] === spec.refs[0]) ||
+        (d.t === spec.t && d.refs.length === spec.refs.length && d.refs.every((x, i) => x === spec.refs[i]) && (d.sub ?? "a") === ((spec as any).sub ?? "a"))),
+    );
+    if (same) {
+      this.sel.clear();
+      this.sel.add(same.id);
+      this.render();
+      return this.editDim(same, e.clientX, e.clientY);
+    }
     // SolidWorks: ölçü konur konmaz gereksizse sor — sürülen (referans) yap ya da vazgeç
     if (this.dimRedundant(spec, cur)) {
       void this.askRedundant("Bu ölçüyü eklemek eskizi aşırı tanımlar (değeri zaten diğer ölçü / ilişkilerle belirli).").then((a) => {

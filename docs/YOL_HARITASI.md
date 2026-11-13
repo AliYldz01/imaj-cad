@@ -666,3 +666,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.80 | Kapalı / ince loft, konik radyüs, öteleme yüzü pahı, teğet düzlem | ✅ |
 
 | v0.81 | Sac tırnak ve yuva, plastik dudak / yiv, mandal | ✅ |
+
+| v0.82 | Eskiz radyüsünde gereksiz ölçü hatası düzeltildi, R ölçüsü Akıllı Ölçü ile düzenlenir | ✅ |
