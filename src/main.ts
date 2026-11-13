@@ -117,6 +117,7 @@ const FEAT_NAMES: Record<string, string> = {
   edgeflange: "Kenar-Flanş",
   hem: "Kenet",
   sketchbend: "Çizgiden-Büküm",
+  flatcut: "Açınımda-Kes",
   sketch: "Eskiz",
   extrude: "Ekstrüzyon",
   cutExtrude: "Kesme-Ekstrüzyon",
@@ -1417,6 +1418,13 @@ function newFeature(kind: string) {
       if (!sp) return toast("Önce bir taban flanş oluşturun", true);
       if (!sk) return toast("Sacın düz yüzüne tek bir büküm çizgisi çizin", true);
       draft = { id, type: "sketchbend", name: "", sketch: sk.id, angle: 90, side: false, flip: false, pos: "center", useDef: true, r: sp.r };
+      break;
+    }
+    case "flatcut": {
+      const sp = sheetParamsBefore(doc.features.slice(0, insertAt()), null);
+      if (!sp) return toast("Önce bir taban flanş oluşturun", true);
+      if (!sk) return toast("Sacın düz yüzüne, açınım ölçüleriyle kapalı bir kesim konturu çizin", true);
+      draft = { id, type: "flatcut", name: "", sketch: sk.id } as any;
       break;
     }
     case "axis":
@@ -2907,6 +2915,8 @@ function renderFeaturePM(kind: string) {
             "Kenar boyunca",
             numField("Baştan kısalt", d.o1, (v) => ((d.o1 = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.o1` }),
             numField("Sondan kısalt", d.o2, (v) => ((d.o2 = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.o2` }),
+            numField("Profil: uçta baştan daralt", d.tp1 ?? 0, (v) => ((d.tp1 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm" }),
+            numField("Profil: uçta sondan daralt", d.tp2 ?? 0, (v) => ((d.tp2 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm" }),
             numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
             h("p", "pm-hint", "Birlikte seçilen komşu kenarların flanşları köşede gönyelenir."),
           ),
@@ -2983,6 +2993,10 @@ function renderFeaturePM(kind: string) {
       const gr = group("Büküm yarıçapı", checkField("Varsayılan yarıçapı kullan", d.useDef, (v) => ((d.useDef = v), renderFeaturePM(kind), upd())));
       if (!d.useDef) gr.appendChild(numField("Yarıçap", d.r, (v) => ((d.r = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.r` }));
       body.appendChild(gr);
+      break;
+    }
+    case "flatcut": {
+      body.appendChild(group("Kesim eskizi", sketchSel(), h("p", "pm-hint", "Aç / katla: eskiz sacın düz yüzünde, açınım düzleminde yorumlanır (flanşlar açılmış gibi çizin). Kontur bükümleri geçebilir; katlanınca bükümle birlikte kesilir.")));
       break;
     }
     case "dome": {
@@ -4462,6 +4476,7 @@ const FEAT_ICON: Record<string, string> = {
   edgeflange: "edgeflange",
   hem: "hem",
   sketchbend: "sketchbend",
+  flatcut: "cutExtrude",
   sketch: "sketch",
   extrude: "extrude",
   cutExtrude: "cutExtrude",
@@ -4793,6 +4808,7 @@ function commands(): Cmd[] {
       { id: "edgeflange", label: "Kenar Flanş", icon: "edgeflange", run: () => newFeature("edgeflange") },
       { id: "hem", label: "Kenet", icon: "hem", run: () => newFeature("hem") },
       { id: "sketchbend", label: "Çizgiden Büküm", icon: "sketchbend", run: () => newFeature("sketchbend") },
+      { id: "flatcut", label: "Aç/Katla Kes", icon: "cutExtrude", run: () => newFeature("flatcut") },
       { id: "sheetjog", label: "Kademe", icon: "sheetjog", run: () => newFeature("sheetjog") },
       { id: "miterflange", label: "Gönye Flanş", icon: "miterflange", run: () => newFeature("miterflange") },
       { id: "closecorner", label: "Köşe Kapat", icon: "closecorner", run: () => newFeature("closecorner") },

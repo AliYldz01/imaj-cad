@@ -93,11 +93,16 @@ export interface UnfoldOut {
   area: number;
   min: Vec2;
   max: Vec2;
+  /** açınım (to2) noktasından katlı parçaya: yüzey noktası, dış normal, dışa / içe kalınlık payı; rijit yüzde `m` aynı nesne */
+  fold: (q: Vec2, force?: object) => FoldPt | null;
+  /** büküm şeritleri (açınımda): o başlangıç çizgisi üzerinde nokta, d şeride dik birim yön, w genişlik, n dilim */
+  bands: { o: Vec2; d: Vec2; w: number; n: number }[];
 }
+export interface FoldPt { p: Vec3; n: Vec3; eo: number; ei: number; m: object; rigid: boolean }
 
 type Piece = { t: "l"; a: Vec2; b: Vec2 } | { t: "a"; a: Vec2; b: Vec2; m: Vec2 } | { t: "c"; c: Vec2; r: number };
 
-export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number, rin: number) => number)): UnfoldOut {
+export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number, rin: number) => number), fix?: { o: Vec3; n: Vec3 }): UnfoldOut {
   let k = typeof kIn === "number" ? kIn : 0.44;
   const faces = body.faces as Shape[];
   const types = faces.map((f) => String(f.geomType));
@@ -119,6 +124,19 @@ export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number,
     if (ar > best) [best, i0] = [ar, i];
   });
   if (i0 < 0) throw new Error("Gövdede düz yüz yok");
+  if (fix) {
+    // sabit yüz ipucu: eskiz düzlemindeki en büyük düz yüz
+    let b2 = 0;
+    faces.forEach((f, i) => {
+      if (types[i] !== "PLANE") return;
+      const c = tup(f.center);
+      let n: Vec3;
+      try { n = normalAt(f, c); } catch { return; }
+      if (Math.abs(vdot(n, fix.n)) < 0.999 || Math.abs(vdot(vsub(fix.o, c), n)) > 1e-3) return;
+      const ar = measureArea(f);
+      if (ar > b2) [b2, i0] = [ar, i];
+    });
+  }
   const F0 = faces[i0];
   const c0 = tup(F0.center);
   const n0 = normalAt(F0, c0);
@@ -433,7 +451,86 @@ export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number,
       outline.push(ccw ? { k: "a", c: c.c, r: c.r, a0: n360(as), a1: n360(ae) } : { k: "a", c: c.c, r: c.r, a0: n360(ae), a1: n360(as) });
     }
   }
-  return { frame, loops, outline, bends, area, min, max };
+  // katlama eşlemesi: her eşlenmiş yüzün açınımdaki çokgenleri (çift-tek kuralıyla içerme)
+  const fpolys: { m: FMap; polys: Vec2[][] }[] = [];
+  for (const [i, m] of maps) {
+    const segs: Vec2[][] = faceEdges[i].map((e) => {
+      const n = String(e.geomType) === "LINE" ? 1 : 24;
+      return Array.from({ length: n + 1 }, (_, q) => to2(mapP(m, tup(e.pointAt(q / n)))));
+    });
+    const polys2: Vec2[][] = [];
+    const left = segs.slice();
+    const eq = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-3;
+    while (left.length) {
+      const cur = left.shift()!.slice();
+      for (let guard = 0; guard < 500 && left.length && !eq(cur[0], cur[cur.length - 1]); guard++) {
+        const end = cur[cur.length - 1];
+        const j = left.findIndex((s) => eq(s[0], end) || eq(s[s.length - 1], end));
+        if (j < 0) break;
+        const s = left.splice(j, 1)[0];
+        cur.push(...(eq(s[0], end) ? s : s.slice().reverse()).slice(1));
+      }
+      polys2.push(cur);
+    }
+    fpolys.push({ m, polys: polys2 });
+  }
+  const inPolys = (q: Vec2, polys2: Vec2[][]) => {
+    let c = false;
+    for (const P of polys2)
+      for (let a = 0, b = P.length - 1; a < P.length; b = a++)
+        if (P[a][1] > q[1] !== P[b][1] > q[1] && q[0] < ((P[b][0] - P[a][0]) * (q[1] - P[a][1])) / (P[b][1] - P[a][1]) + P[a][0]) c = !c;
+    return c;
+  };
+  const segDist = (q: Vec2, polys2: Vec2[][]) => {
+    let d = Infinity;
+    for (const P of polys2)
+      for (let a = 0; a + 1 < P.length; a++) {
+        const ex = P[a + 1][0] - P[a][0], ey = P[a + 1][1] - P[a][1], L2 = ex * ex + ey * ey || 1e-12;
+        const s = Math.max(0, Math.min(1, ((q[0] - P[a][0]) * ex + (q[1] - P[a][1]) * ey) / L2));
+        d = Math.min(d, Math.hypot(q[0] - P[a][0] - s * ex, q[1] - P[a][1] - s * ey));
+      }
+    return d;
+  };
+  const fold = (q: Vec2, force?: object): FoldPt | null => {
+    let hit = force ? fpolys.find((fp) => fp.m === force) : fpolys.find((fp) => inPolys(q, fp.polys));
+    if (!hit) {
+      let bd = 0.02;
+      for (const fp of fpolys) { const d = segDist(q, fp.polys); if (d < bd) [bd, hit] = [d, fp]; }
+    }
+    if (!hit) return null;
+    const m = hit.m;
+    const y = vadd(vadd(c0, vmul(x0, q[0])), vmul(y0, q[1]));
+    if (m.k === "p") {
+      const r = vsub(y, m.o2);
+      const p = vadd(m.o1, vadd(vadd(vmul(m.A[0], vdot(r, m.B[0])), vmul(m.A[1], vdot(r, m.B[1]))), vmul(m.A[2], vdot(r, m.B[2]))));
+      const n = vadd(vadd(vmul(m.A[0], vdot(n0, m.B[0])), vmul(m.A[1], vdot(n0, m.B[1]))), vmul(m.A[2], vdot(n0, m.B[2])));
+      return { p, n: vnorm(n), eo: 0.2, ei: t + 0.2, m, rigid: true };
+    }
+    const z = vdot(vsub(y, m.p1f), m.af), phi = vdot(vsub(y, m.p1f), m.t1f) / Math.max(m.rhoN, 1e-9);
+    const Lz = vadd(m.L, vmul(m.a, vdot(vsub(m.p1, m.L), m.a) + z));
+    const w2 = vcross(m.a, m.rad1);
+    const rad = vadd(vmul(m.rad1, Math.cos(m.s * phi)), vmul(w2, Math.sin(m.s * phi)));
+    const p = vadd(Lz, vmul(rad, m.rhoN));
+    const kt = m.rhoN - m.rin; // nötr eksenin iç yüzden uzaklığı
+    const toAxis = Math.max(0.01, m.rhoN - 0.01);
+    // yüzey dış normali: iç yüzse eksene doğru
+    return m.inner
+      ? { p, n: vmul(rad, -1), eo: Math.min(kt + 0.2, toAxis), ei: t - kt + 0.2, m, rigid: false }
+      : { p, n: rad, eo: t - kt + 0.2, ei: Math.min(kt + 0.2, toAxis), m, rigid: false };
+  };
+  const bands: UnfoldOut["bands"] = [];
+  const seen2 = new Set<CylMap>();
+  for (const [j, m] of maps) {
+    if (m.k !== "c" || seen2.has(m)) continue;
+    seen2.add(m);
+    let amax = 0;
+    for (const [jj, mj] of maps) if (mj === m) for (const e of faceEdges[jj]) for (const q of [0, 0.25, 0.5, 0.75, 1]) amax = Math.max(amax, cylPhi(m, tup(e.pointAt(q))));
+    void j;
+    const o3 = m.p1f, d3 = m.t1f;
+    const o = to2(o3), d2 = [vdot(d3, x0), vdot(d3, y0)] as Vec2;
+    bands.push({ o, d: d2, w: amax * m.rhoN, n: Math.max(4, Math.ceil((amax * 180) / Math.PI / 8)) });
+  }
+  return { frame, loops, outline, bends, area, min, max, fold, bands };
 }
 
 function circ2(a: Vec2, b: Vec2, c: Vec2): { c: Vec2; r: number } | null {

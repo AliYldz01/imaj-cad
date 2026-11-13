@@ -602,3 +602,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Perspektif / ortografik görünüm (seçim ve yakalama perspektifte de doğru) | ✅ |
 
 | v0.49 | Basit mukavemet analizi (kiriş: σ, sehim, güvenlik katsayısı) | ✅ |
+
+| v0.50 | Flanş profili (yamuk), aç/katla ile kesme (bükümü geçen kontur dahil) | ✅ |

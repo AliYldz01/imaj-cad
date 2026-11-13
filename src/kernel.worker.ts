@@ -13,6 +13,7 @@ import type {
   Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData, CornerKind,
 } from "./doc/types";
 import { thinRegion, segPoints, revSeg } from "./sketch/profile";
+import { sampleLoop } from "./weld/profiles";
 import { sheetOpenRegion, tableK } from "./sheet/sheet";
 import { unfold, cylinderParams } from "./sheet/unfold";
 
@@ -2749,6 +2750,20 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
     if (Lf > 1e-6) pen = pen.lineTo([Ai1[0] + T[0] * Lf, Ai1[1] + T[1] * Lf]).lineTo([Ao1[0] + T[0] * Lf, Ao1[1] + T[1] * Lf]).lineTo(Ao1);
     else pen = pen.lineTo(Ao1);
     let flange: Shape = pen.threePointsArcTo([shift, -t], P(r + t, th / 2)).close().sketchOnPlane(pl).extrude(sign * (z1 - z0));
+    // flanş profili: düz bölümde uca doğru daralan yamuk (baştan tp1, sondan tp2)
+    const tp1 = Math.max(0, f.tp1 ?? 0), tp2 = Math.max(0, f.tp2 ?? 0);
+    if ((tp1 > 1e-6 || tp2 > 1e-6) && Lf > 1e-6) {
+      const W = z1 - z0;
+      if (tp1 + tp2 >= W - 1e-3) throw new Error("Flanş ucundaki daraltma genişlikten büyük");
+      const yD = vnorm(vcross(pn, g.s));
+      const Dw = vnorm(vadd(vmul(g.s, T[0]), vmul(yD, T[1])));
+      const Fs = vadd(vadd(vadd(O, vmul(g.e, z0)), vmul(g.s, Ai1[0])), vmul(yD, Ai1[1]));
+      const nrm = vnorm(vcross(g.e, Dw));
+      const H = Lf + 5, k = H / Lf;
+      const tri = (pts: Vec2[]) => (draw(pts[0]).lineTo(pts[1]).lineTo(pts[2]).lineTo(pts[3]).close() as any).sketchOnPlane(new Plane(vsub(Fs, vmul(nrm, big)), g.e, nrm)).extrude(2 * big);
+      if (tp1 > 1e-6) flange = flange.cut(tri([[0, 0], [tp1 * k, H], [-5, H], [-5, 0]]));
+      if (tp2 > 1e-6) flange = flange.cut(tri([[W, 0], [W - tp2 * k, H], [W + 5, H], [W + 5, 0]]));
+    }
     // birlikte seçilen komşu kenarlar: dışbükey köşede gönye
     infos.forEach((h, jdx) => {
       if (jdx === idx || h.bi !== g.bi || vdot(g.nF, h.nF) < 0.999) return;
@@ -2788,6 +2803,110 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
   const out: Shape[] = [];
   bodies.forEach((b, i) => out.push(...(res.has(i) ? solidsOf(res.get(i)) : [b])));
   bodies = out;
+}
+
+/** Aç / katla ile kesme: eskiz açınım düzleminde (sabit yüz) yorumlanır, katlı parçaya eşlenip kesilir */
+function flatCut(f: Extract<KFeature, { type: "flatcut" }>) {
+  if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
+  const frame = resolvePlane(f.pl);
+  const hs = f.pl.face ? matchFaces([f.pl.face]) : new Set<number>();
+  let bi = bodies.findIndex((b) => (b.faces as any[]).some((x) => hs.has(x.hashCode)));
+  if (bi < 0) bi = 0;
+  let body = bodies[bi];
+  const U = unfold(body, f.t, f.k, { o: frame.o, n: frame.n });
+  const F = U.frame, y0 = vcross(F.n, F.x);
+  const to2 = (p: Vec3): Vec2 => [vdot(vsub(p, F.o), F.x), vdot(vsub(p, F.o), y0)];
+  const T = f.t + 0.2;
+  const tools: Shape[] = [];
+  for (const l of f.loops) {
+    if (l.depth % 2) continue;
+    let pts2: Vec2[] = "ellipse" in l
+      ? Array.from({ length: 48 }, (_, i) => { const e = l.ellipse, a = (i / 48) * 2 * Math.PI, c = Math.cos(e.rot), s = Math.sin(e.rot), x = e.rx * Math.cos(a), y = e.ry * Math.sin(a); return [e.c[0] + x * c - y * s, e.c[1] + x * s + y * c] as Vec2; })
+      : sampleLoop(l);
+    if (pts2.length < 3) continue;
+    let poly = pts2.map((p) => to2(toWorld(frame, p)));
+    const fp = poly.map((q) => U.fold(q));
+    if (fp.some((x) => !x)) throw new Error("Kesim eskizi açınımın dışına taşıyor");
+    if (fp.every((x) => x!.rigid && x!.m === fp[0]!.m)) {
+      // tek düz bölge: tam (yay korunarak) düzlemsel kesme
+      const at = (q: Vec2) => U.fold(q, fp[0]!.m)!;
+      const q0 = to2(toWorld(frame, [0, 0])), qx = to2(toWorld(frame, [1, 0])), qy = to2(toWorld(frame, [0, 1]));
+      const P0 = at(q0).p, xD = vnorm(vsub(at(qx).p, P0)), yD = vnorm(vsub(at(qy).p, P0));
+      const n = vnorm(vcross(xD, yD));
+      const pl = new Plane(vsub(P0, vmul(n, T)), xD, n);
+      tools.push(profile([{ ...l, depth: 0 } as Loop]).sketchOnPlane(pl).extrude(2 * T) as Shape);
+      continue;
+    }
+    // bükümü kesen kontur: şeritlerde dilimlenmiş üçgen ağından katı
+    const area = poly.reduce((s, p, i) => { const q = poly[(i + 1) % poly.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0);
+    if (area < 0) poly = poly.reverse();
+    let pieces: Vec2[][] = [poly];
+    const clip = (P: Vec2[], d: Vec2, c: number, keep: 1 | -1): Vec2[] => {
+      const out: Vec2[] = [];
+      const val = (p: Vec2) => keep * (p[0] * d[0] + p[1] * d[1] - c);
+      for (let i = 0; i < P.length; i++) {
+        const a = P[i], b = P[(i + 1) % P.length], va = val(a), vb = val(b);
+        if (va >= 0) out.push(a);
+        if ((va >= 0) !== (vb >= 0)) { const s = va / (va - vb); out.push([a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s]); }
+      }
+      return out;
+    };
+    for (const bd of U.bands) {
+      const c0 = bd.o[0] * bd.d[0] + bd.o[1] * bd.d[1];
+      for (let i = 0; i <= bd.n; i++) {
+        const c = c0 + (bd.w * i) / bd.n;
+        pieces = pieces.flatMap((P) => [clip(P, bd.d, c, 1), clip(P, bd.d, c, -1)]).filter((P) => P.length >= 3 && Math.abs(P.reduce((s, p, k) => { const q = P[(k + 1) % P.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0)) > 1e-8);
+      }
+    }
+    // köşe birleştirme + kulak kırpma üçgenleme
+    const key = (p: Vec2) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
+    const vid = new Map<string, number>(), V: Vec2[] = [];
+    const id = (p: Vec2) => { const k = key(p); let i = vid.get(k); if (i === undefined) { i = V.length; V.push(p); vid.set(k, i); } return i; };
+    const tris: [number, number, number][] = [];
+    for (const P0 of pieces) {
+      const idx: number[] = [];
+      for (const p of P0) { const i = id(p); if (idx[idx.length - 1] !== i) idx.push(i); }
+      if (idx.length > 1 && idx[0] === idx[idx.length - 1]) idx.pop();
+      const cr = (a: Vec2, b: Vec2, c: Vec2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      let guard = 0;
+      while (idx.length > 3 && guard++ < 5000) {
+        let cut = false;
+        for (let i = 0; i < idx.length; i++) {
+          const a = idx[(i + idx.length - 1) % idx.length], b = idx[i], c = idx[(i + 1) % idx.length];
+          if (cr(V[a], V[b], V[c]) <= 1e-12) continue;
+          if (idx.some((o) => o !== a && o !== b && o !== c && cr(V[a], V[b], V[o]) > 0 && cr(V[b], V[c], V[o]) > 0 && cr(V[c], V[a], V[o]) > 0)) continue;
+          tris.push([a, b, c]);
+          idx.splice(i, 1);
+          cut = true;
+          break;
+        }
+        if (!cut) { idx.splice(0, 1); }
+      }
+      if (idx.length === 3 && cr(V[idx[0]], V[idx[1]], V[idx[2]]) > 1e-12) tris.push([idx[0], idx[1], idx[2]]);
+    }
+    // sınır kenarları: tek üçgende geçen kenarlar; ortak kenarda yarım köşeler (T birleşimi) için kenarı noktalardan böl
+    const M = V.map((q) => U.fold(q));
+    if (M.some((x) => !x)) throw new Error("Kesim eskizi açınımın dışına taşıyor");
+    const top = M.map((x) => vadd(x!.p, vmul(x!.n, x!.eo))), bot = M.map((x) => vsub(x!.p, vmul(x!.n, x!.ei)));
+    const ec = new Map<string, number>();
+    for (const [a, b, c] of tris) for (const [u, v] of [[a, b], [b, c], [c, a]]) { const k = u < v ? `${u}_${v}` : `${v}_${u}`; ec.set(k, (ec.get(k) ?? 0) + 1); }
+    const faces: Shape[] = [];
+    const tri = (a: Vec3, b: Vec3, c: Vec3) => { try { faces.push(makePolygon([a, b, c]) as any); } catch { /* yozlaşmış */ } };
+    for (const [a, b, c] of tris) { tri(top[a], top[b], top[c]); tri(bot[a], bot[c], bot[b]); }
+    for (const [a, b, c] of tris)
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        if (ec.get(u < v ? `${u}_${v}` : `${v}_${u}`) !== 1) continue;
+        tri(top[u], bot[u], bot[v]);
+        tri(top[u], bot[v], top[v]);
+      }
+    let solid = makeSolid(faces as any) as any as Shape;
+    if (volOf(solid) < 0) throw new Error("Kesim aracı oluşturulamadı");
+    tools.push(solid);
+  }
+  if (!tools.length) throw new Error("Eskizde kapalı kontur yok");
+  for (const tl of tools) body = body.cut(tl);
+  if (volOf(body) < 1e-9) throw new Error("Kesim tüm sacı kaldırdı");
+  bodies[bi] = body;
 }
 
 function sketchBend(f: Extract<KFeature, { type: "sketchbend" }>) {
@@ -2920,6 +3039,9 @@ async function buildFeature(f: KFeature) {
       return;
     case "sketchbend":
       sketchBend(f);
+      return;
+    case "flatcut":
+      flatCut(f);
       return;
     case "extrude":
     case "revolve":

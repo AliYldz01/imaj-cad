@@ -433,6 +433,9 @@ export type FlangeLen = "outer" | "inner" | "tangent";
 export interface EdgeFlangeFeature extends FeatBase {
   type: "edgeflange";
   edges: EdgeRef[];
+  /** flanş profili: uçta baştan / sondan daraltma (yamuk flanş), mm */
+  tp1?: number;
+  tp2?: number;
   /** flanş uzunluğu */
   L: number;
   /** büküm açısı (derece) */
@@ -461,6 +464,12 @@ export interface HemFeature extends FeatBase {
   flip: boolean;
 }
 /** Çizgiden büküm: yüz üzerindeki eskiz çizgisinden levhayı büker */
+/** Aç / katla ile kesme: eskiz açınım düzleminde (sacın sabit düz yüzünde) çizilir, katlı parçaya eşlenir */
+export interface FlatCutFeature extends FeatBase {
+  type: "flatcut";
+  sketch: string;
+}
+
 export interface SketchBendFeature extends FeatBase {
   type: "sketchbend";
   sketch: string;
@@ -610,6 +619,7 @@ export type Feature =
   | EdgeFlangeFeature
   | HemFeature
   | SketchBendFeature
+  | FlatCutFeature
   | SketchFeature
   | ExtrudeFeature
   | RevolveFeature
@@ -699,7 +709,7 @@ export type KFeature =
   | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number; skip?: string[] }
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame; only?: boolean }
   | { id: string; type: "sheetbase"; pl: KPlane; loops: Loop[]; open: boolean; t: number; rev: boolean; d: number; mid: boolean; merge?: boolean }
-  | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number }
+  | { id: string; type: "edgeflange"; edges: EdgeRef[]; L: number; angle: number; pos: FlangePos; lenRef: FlangeLen; flip: boolean; r: number; t: number; o1: number; o2: number; gap: number; relief: number; tp1?: number; tp2?: number }
   | { id: string; type: "sheetjog"; pl: KPlane; line: [Vec2, Vec2]; H: number; side: boolean; flip: boolean; r: number; t: number }
   | { id: string; type: "miterflange"; skFrame: Frame; chain: Seg[]; edges: EdgeRef[]; t: number; r: number; gap: number; rev: boolean }
   | { id: string; type: "closecorner"; faces: FaceRef[]; overlap: boolean; gap: number; t: number; r: number }
@@ -721,6 +731,7 @@ export type KFeature =
   | { id: string; type: "trim"; targets: string[]; bounds: string[]; coped?: boolean; faces?: FaceRef[] }
   | { id: string; type: "endcap"; faces: FaceRef[]; t: number; inset: number }
   | { id: string; type: "gusset"; f1: FaceRef; f2: FaceRef; d1: number; d2: number; t: number; chamfer: number; offset: number }
+  | { id: string; type: "flatcut"; pl: KPlane; loops: Loop[]; t: number; k: number }
   | { id: string; type: "sketchbend"; pl: KPlane; line: [Vec2, Vec2]; angle: number; side: boolean; flip: boolean; pos: "center" | "inside" | "outside"; r: number; t: number; k: number };
 
 /** Yapı elemanı segmenti (3B): çizgi veya yay; n = eskiz düzlemi normali */

@@ -354,7 +354,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
             if (!(f.L > 0)) throw new Error("Flanş uzunluğu sıfırdan büyük olmalı");
             if (!(f.angle > 0 && f.angle <= 180)) throw new Error("Büküm açısı 0–180° arasında olmalı");
             const r = f.useDef ? sp.r : f.r;
-            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: f.angle, pos: f.pos, lenRef: f.lenRef, flip: f.flip, r, t: sp.t, o1: f.o1, o2: f.o2, gap: f.gap, relief: sp.relief });
+            kfeats.push({ id: f.id, type: "edgeflange", edges: f.edges, L: f.L, angle: f.angle, pos: f.pos, lenRef: f.lenRef, flip: f.flip, r, t: sp.t, o1: f.o1, o2: f.o2, gap: f.gap, relief: sp.relief, tp1: f.tp1, tp2: f.tp2 });
           } else {
             if (!(f.L > 0)) throw new Error("Kenet uzunluğu sıfırdan büyük olmalı");
             const r = f.kind === "open" ? Math.max(0.05, f.gap / 2) : 0.05;
@@ -534,6 +534,15 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           kfeats.push({ id: f.id, type: "sketchbend", pl, line: [pointPos(sk.data, ln.p1), pointPos(sk.data, ln.p2)], angle: f.angle, side: f.side, flip: f.flip, pos: f.pos, r: f.useDef ? sp.r : f.r, t: sp.t, k: sp.k });
           break;
         }
+        case "flatcut": {
+          const sp = sheetParamsBefore(feats, f.id);
+          if (!sp) throw new Error("Önce bir taban flanş oluşturun");
+          const sk = sketchOf(f.sketch);
+          if (!sk || sk.plane.k !== "face") throw new Error("Kesim eskizi sacın düz yüzüne çizilmeli");
+          const { pl, loops } = profileOf(f.sketch);
+          kfeats.push({ id: f.id, type: "flatcut", pl, loops, t: sp.t, k: sp.k });
+          break;
+        }
         case "dome":
           if (!f.face) throw new Error("Kubbe yapılacak düz yüzü seçin");
           kfeats.push({ id: f.id, type: "dome", face: f.face, h: f.h });
@@ -696,7 +705,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
     (f) =>
       ((f.type === "extrude" || f.type === "revolve" || f.type === "sweep") && (f.sketch === sketchId || (f.type === "sweep" && f.path === sketchId))) ||
       (f.type === "loft" && (f.sketches.includes(sketchId) || f.center === sketchId)) ||
-      ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend") && f.sketch === sketchId) ||
+      ((f.type === "rib" || f.type === "wrap" || f.type === "sheetbase" || f.type === "sketchbend" || f.type === "flatcut") && f.sketch === sketchId) ||
       (f.type === "member" && ([...f.segs, ...(f.groups ?? []).flatMap((g) => g.segs)].some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
       ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId),
   );
