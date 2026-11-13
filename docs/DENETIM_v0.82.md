@@ -4,6 +4,15 @@ Bu raporda uygulamanın tüm komutları ve fonksiyonları gerçek tarayıcıda (
 
 Her bölümün sonunda **"Denendi – sorun yok"** tablosu var; hiçbir özelliğin atlanmadığını oradan görebilirsiniz.
 
+## 0. Sonradan bulunan (kullanıcı bildirdi) — denetimde kaçırılmıştı
+
+#### E-35 — Ekstrüzyondan sonra eskiz düzenlenince değişiklik modele ve kayda geçmiyordu ✅ v0.84
+- **Önem:** Kritik · **Tür:** Hata (veri kaybı)
+- **SolidWorks:** Eskizi düzenle → ölçüyü değiştir → çık: özellik yeni eskizle yeniden kurulur, değişiklik kaydedilir.
+- **Bizde (v0.83):** Değiştir kutusu (`editDim`) canlı önizleme ve geri alma için düzenleyicinin verisini `this.data = JSON.parse(snap)` ile **yeni bir nesneyle değiştiriyordu**; belge özelliği (`f.data`) eski nesnede kaldığı için ✓ / "Kaydet ve çık" sonrası model eski ölçüyle kuruluyor, kayıt da eski veriyi tutuyordu (ölçü 80 → 100 yapıldı, ✓ sonrası model ve kayıt 80). Ayrıca var olan eskiz **Çizgi aracı etkin** açıldığı için noktayı sürükleme hiçbir şey değiştirmiyordu (SolidWorks'te düzenlemede araç etkin değildir).
+- **Neden kaçtı:** Ajanların ve eski testlerin çoğu eskizi belge verisiyle (`setDoc`) kurup iç API ile değiştiriyordu; "Değiştir kutusu → ✓ → model" zinciri gerçek tıklamayla denenmedi.
+- **Düzeltme (v0.84):** `SketchEditor.putData` veriyi yerinde değiştirir (nesne kimliği korunur; `setData` de kullanır); var olan eskiz Seç aracıyla açılır. Test `se1` (ölçü 80→100 ✓, kayıt, sayfa yenileme, ✕ sonrası başka değer, geri al, köşe sürükleme, ✕ → Kaydet ve çık).
+
 ## 1. Özet
 
 | Alan | Kritik | Yüksek | Orta | Düşük | Toplam |

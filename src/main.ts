@@ -1681,7 +1681,8 @@ function openSketch(f: SketchFeature, isNew: boolean, tool?: SkTool) {
   showPM(`${f.name}`, () => exitSketch(true), () => exitSketch(false));
   armBack();
   setTab("sketch");
-  editor.setTool(tool ?? "line");
+  // SolidWorks: var olan eskiz düzenlenirken hiçbir çizim aracı etkin değildir (seçip sürüklenebilir)
+  editor.setTool(tool ?? (isNew ? "line" : "select"));
   updatePlanes();
   renderCommands();
   rebuild();

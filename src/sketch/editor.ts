@@ -292,8 +292,13 @@ export class SketchEditor implements InputHandler {
     this.undoStack.push(JSON.stringify(this.data));
     this.setData(JSON.parse(s));
   }
-  private setData(d: SketchData) {
+  /** veriyi yerinde değiştirir: belge özelliği (f.data) ile aynı nesne kalmalı, yoksa ✓'de değişiklik kaybolur */
+  private putData(d: SketchData) {
+    for (const k of Object.keys(this.data)) if (!(k in d)) delete (this.data as any)[k];
     Object.assign(this.data, d);
+  }
+  private setData(d: SketchData) {
+    this.putData(d);
     this.sel.clear();
     this.st = {};
     this.resolve();
@@ -3908,13 +3913,13 @@ export class SketchEditor implements InputHandler {
     const snap = JSON.stringify(this.data);
     let flip = false;
     const restore = () => {
-      this.data = JSON.parse(snap);
+      this.putData(JSON.parse(snap));
       this.resolve();
       this.render();
     };
     const live = (v: number | null, toggleFlip = false) => {
       if (toggleFlip) flip = !flip;
-      this.data = JSON.parse(snap);
+      this.putData(JSON.parse(snap));
       const dd = this.data.dims.find((x) => x.id === d.id);
       if (dd && v !== null && (v > 0 || dd.t === "dist")) {
         const sg = (dd.t === "dist" && dd.sub !== "a" ? Math.sign(dd.v || 1) : 1) * (flip ? -1 : 1);
