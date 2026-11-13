@@ -7,7 +7,7 @@ import type { Kernel } from "../kernel";
 import type { MeshData, Vec3 } from "../doc/types";
 import { compile } from "../doc/compile";
 import { h, numField, checkField, selectField, segField, group, button } from "../ui/dom";
-import { type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, mateTypesFor, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
+import { type AsmFeat, type AsmDoc, type AsmComp, type AsmPart, type Mate, type MateEnt, type MateType, type ExplodeStep, MATE_NAMES, MATE_GROUPS, ASM_ID, mateTypesFor, newAsm, bom, cylAxis, loadLib, saveToLib, removeFromLib, worldBox } from "./assembly";
 import { fastener, FASTENER_NAMES, FASTENER_SIZES, type FastenerKind } from "./toolbox";
 import { solveAll, dofAll, wEnt, mateRes } from "./solver";
 
@@ -138,12 +138,13 @@ export class AsmUI {
   async refresh() {
     const v = this.ctx.viewer;
     for (const c of this.doc.comps) {
-      const key = c.id + ":" + JSON.stringify(c.part.features).length + ":" + hash(JSON.stringify(c.part.features));
+      const fs = JSON.stringify(this.featsOf(c));
+      const key = c.id + ":" + fs.length + ":" + hash(fs);
       if ((this as any)["k_" + c.id] === key && this.meshes.has(c.id)) continue;
       this.ctx.setStatus("busy", `Bileşen kuruluyor: ${c.name}`);
       const old = (this as any)["k_" + c.id] ? this.meshes.get(c.id) : undefined;
       try {
-        const { kfeats } = compile(c.part.features, c.part.profiles ?? {});
+        const { kfeats } = compile(this.featsOf(c), c.part.profiles ?? {});
         const r = await this.ctx.kernel.build(kfeats);
         this.meshes.set(c.id, r.mesh);
         if (old && r.mesh) this.remapMates(c, old, r.mesh);
@@ -205,6 +206,152 @@ export class AsmUI {
       }
     }
     if (moved || lost) this.ctx.toast(lost ? `${c.name}: ${moved} eşleşme referansı güncellendi, ${lost} referans bulunamadı (⚠ — düzenleyin)` : `${c.name}: ${moved} eşleşme referansı yeni geometriye taşındı`, lost > 0);
+  }
+  /** bileşenin özellikleri + ona uygulanan montaj özellikleri (montaj kesmesi / deliği; parça dosyasına yazılmaz) */
+  featsOf(c: AsmComp): any[] {
+    const fs = (this.doc.feats ?? []).filter((f) => !f.off && f.comps.includes(c.id));
+    if (!fs.length) return c.part.features;
+    const qi = QQ(c).invert();
+    const L = (w: Vec3) => V3(w).sub(V3(c.p)).applyQuaternion(qi).toArray() as Vec3;
+    const D = (w: Vec3) => V3(w).applyQuaternion(qi).toArray() as Vec3;
+    const out: any[] = [...c.part.features];
+    for (const f of fs) {
+      const pts: Record<string, { x: number; y: number }> = {};
+      const ents: any[] = [];
+      let k = 0;
+      const P = (x: number, y: number) => ((pts["p" + ++k] = { x, y }), "p" + k);
+      for (const [x, y] of f.pts) {
+        if (f.type === "hole") ents.push({ id: "c" + ++k, t: "circle", c: P(x, y), r: f.d / 2 });
+        else {
+          const a = P(x - f.w / 2, y - f.h / 2), b = P(x + f.w / 2, y - f.h / 2), cc = P(x + f.w / 2, y + f.h / 2), d = P(x - f.w / 2, y + f.h / 2);
+          for (const [u, v] of [[a, b], [b, cc], [cc, d], [d, a]]) ents.push({ id: "l" + ++k, t: "line", p1: u, p2: v });
+        }
+      }
+      const sid = "__as_" + f.id;
+      out.push({ id: sid, type: "sketch", name: f.name, plane: { k: "face", frame: { o: L(f.o), x: D(f.x), n: D(f.n) } }, data: { pts, ents, rels: [], dims: [], seq: k + 1 } });
+      out.push({ id: "__ax_" + f.id, type: "extrude", name: f.name, sketch: sid, cut: true, end: f.through ? "through" : "blind", d1: f.depth, rev: false, dir2: false, end2: "blind", d2: 10 });
+    }
+    return out;
+  }
+  /** SolidWorks montaj özelliği: montaj deliği / kesmesi */
+  openAsmCut() {
+    const st = { type: "hole" as "hole" | "cut", d: 10, w: 20, h: 10, through: true, depth: 10, frame: null as null | { o: Vec3; x: Vec3; n: Vec3 }, pts: [] as [number, number][], comps: new Set(this.doc.comps.map((c) => c.id)) };
+    const finish = () => {
+      this.picker = null;
+      this.ctx.hidePM();
+      this.renderTree();
+    };
+    const done = async () => {
+      if (!st.frame || !st.pts.length) return this.ctx.toast("Bir bileşenin düz yüzüne dokunarak konum seçin", true);
+      if (!st.comps.size) return this.ctx.toast("Etkilenecek en az bir bileşen seçin", true);
+      const n = (this.doc.feats ??= []).length + 1;
+      this.doc.feats.push({ id: uid(), type: st.type, name: `${st.type === "hole" ? "Montaj Deliği" : "Montaj Kesmesi"}${n}`, ...st.frame, pts: st.pts, d: st.d, w: st.w, h: st.h, through: st.through, depth: st.depth, comps: [...st.comps] });
+      finish();
+      this.save();
+      await this.refresh();
+      this.solve();
+      this.draw();
+      this.renderTree();
+    };
+    this.ctx.showPM("Montaj kesme / deliği", done, finish);
+    const body = document.getElementById("pm-body")!;
+    const num = (label: string, v: number, set: (x: number) => void) => numField(label, v, (x) => x > 0 && set(x), { unit: "mm" });
+    const render = () => {
+      body.innerHTML = "";
+      body.appendChild(group("Tür", segField([{ v: "hole", t: "Delik" }, { v: "cut", t: "Dikdörtgen kesme" }], st.type, (v) => ((st.type = v as any), render()))));
+      body.appendChild(group("Boyut", ...(st.type === "hole" ? [num("Çap", st.d, (x) => (st.d = x))] : [num("Genişlik", st.w, (x) => (st.w = x)), num("Yükseklik", st.h, (x) => (st.h = x))])));
+      body.appendChild(group("Uç koşulu", segField([{ v: "t", t: "Tümünü geç" }, { v: "b", t: "Kör" }], st.through ? "t" : "b", (v) => ((st.through = v === "t"), render())), ...(st.through ? [] : [num("Derinlik", st.depth, (x) => (st.depth = x))])));
+      body.appendChild(group("Konumlar", h("div", "pm-picks", st.pts.length ? st.pts.map((p) => `(${p[0].toFixed(1)}, ${p[1].toFixed(1)})`).join(" · ") : "Bir bileşenin düz yüzüne dokunun; her dokunuş bir konum ekler"), ...(st.pts.length ? [button("Son konumu sil", () => (st.pts.pop(), st.pts.length || (st.frame = null), render()), "btn")] : [])));
+      const list = h("div", "pm-picks");
+      for (const c of this.doc.comps) {
+        const lab = h("label", "check");
+        const cb = h("input") as HTMLInputElement;
+        cb.type = "checkbox";
+        cb.checked = st.comps.has(c.id);
+        cb.addEventListener("change", () => (cb.checked ? st.comps.add(c.id) : st.comps.delete(c.id)));
+        lab.append(cb, " " + c.name);
+        list.appendChild(lab);
+      }
+      body.appendChild(group("Etkilenen bileşenler", list));
+    };
+    this.picker = (p) => {
+      if (!p?.ent || p.ent.kind !== "plane" || !(p as any).point) return this.ctx.toast("Bir düz yüze dokunun", true);
+      const c = this.doc.comps.find((x) => x.id === p.comp)!;
+      const wn = V3(p.ent.n).applyQuaternion(QQ(c)).normalize();
+      const pt = (p as any).point as THREE.Vector3;
+      // yüz düzlemine izdüşür
+      const wc = V3(p.ent.c).applyQuaternion(QQ(c)).add(V3(c.p));
+      const w = pt.clone().addScaledVector(wn, -pt.clone().sub(wc).dot(wn));
+      if (!st.frame) {
+        const ref = Math.abs(wn.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+        const x = new THREE.Vector3().crossVectors(ref, wn).normalize();
+        st.frame = { o: w.toArray() as Vec3, x: x.toArray() as Vec3, n: wn.toArray() as Vec3 };
+      }
+      const o = V3(st.frame.o), x = V3(st.frame.x), y = new THREE.Vector3().crossVectors(V3(st.frame.n), x);
+      const r = w.clone().sub(o);
+      st.pts.push([Math.round(r.dot(x) * 100) / 100, Math.round(r.dot(y) * 100) / 100]);
+      render();
+    };
+    render();
+  }
+  /** SolidWorks Delik Hizalama: farklı bileşenlerdeki paralel, örtüşen ama eş eksenli olmayan delikler */
+  holeAlignment(tol = 0.01) {
+    type Hole = { comp: AsmComp; c: THREE.Vector3; a: THREE.Vector3; r: number; t0: number; t1: number };
+    const holes: Hole[] = [];
+    for (const c of this.doc.comps) {
+      const md = this.meshes.get(c.id);
+      if (!md || c.hidden) continue;
+      const q = QQ(c);
+      md.faces.forEach((f, fi) => {
+        if (!f.r || !f.ax) return;
+        const ac = V3(f.ac ?? f.c).applyQuaternion(q).add(V3(c.p));
+        const a = V3(f.ax).applyQuaternion(q).normalize();
+        // eksen boyunca yüz uzunluğu ve iç (delik) mi: yüz normali eksene doğru mu
+        let t0 = Infinity, t1 = -Infinity, inward = 0;
+        for (let i = 0; i < md.faceGroups.length; i += 3) {
+          if (md.faceGroups[i + 2] !== fi) continue;
+          for (let k = md.faceGroups[i]; k < md.faceGroups[i] + md.faceGroups[i + 1]; k++) {
+            const vi = md.triangles[k];
+            const w = new THREE.Vector3(md.vertices[vi * 3], md.vertices[vi * 3 + 1], md.vertices[vi * 3 + 2]).applyQuaternion(q).add(V3(c.p));
+            const t = w.clone().sub(ac).dot(a);
+            t0 = Math.min(t0, t);
+            t1 = Math.max(t1, t);
+            const nrm = new THREE.Vector3(md.normals[vi * 3], md.normals[vi * 3 + 1], md.normals[vi * 3 + 2]).applyQuaternion(q);
+            const rad = w.clone().sub(ac).addScaledVector(a, -t);
+            inward += nrm.dot(rad) < 0 ? 1 : -1;
+          }
+        }
+        if (inward > 0 && !holes.some((o) => o.comp === c && o.c.distanceTo(ac) < 1e-4 && Math.abs(o.r - f.r!) < 1e-4)) holes.push({ comp: c, c: ac, a, r: f.r, t0, t1 });
+      });
+    }
+    const rows: { a: Hole; b: Hole; off: number }[] = [];
+    for (let i = 0; i < holes.length; i++)
+      for (let j = i + 1; j < holes.length; j++) {
+        const A = holes[i], B = holes[j];
+        if (A.comp === B.comp || Math.abs(A.a.dot(B.a)) < 0.999) continue;
+        const d = B.c.clone().sub(A.c);
+        const along = d.dot(A.a);
+        const off = d.clone().addScaledVector(A.a, -along).length();
+        if (off <= tol || off >= Math.max(A.r, B.r)) continue;
+        // eksen boyunca örtüşme / değme (1 mm)
+        const s = B.a.dot(A.a) > 0 ? 1 : -1;
+        const b0 = along + Math.min(s * B.t0, s * B.t1), b1 = along + Math.max(s * B.t0, s * B.t1);
+        if (b1 < A.t0 - 1 || b0 > A.t1 + 1) continue;
+        rows.push({ a: A, b: B, off });
+      }
+    return rows.map((r) => ({ a: r.a.comp.name, b: r.b.comp.name, da: r.a.r * 2, db: r.b.r * 2, off: r.off }));
+  }
+  showHoleAlignment() {
+    const rows = this.holeAlignment();
+    const dlg = document.createElement("dialog");
+    dlg.className = "input-dialog";
+    dlg.innerHTML = rows.length
+      ? `<h2>Delik hizalama: ${rows.length} hizasız delik</h2><table class="cut-table"><tr><th>Bileşen 1</th><th>Ø</th><th>Bileşen 2</th><th>Ø</th><th>Sapma (mm)</th></tr>${rows.map((x) => `<tr><td>${x.a}</td><td>${x.da.toFixed(2)}</td><td>${x.b}</td><td>${x.db.toFixed(2)}</td><td>⚠ ${x.off.toFixed(3)}</td></tr>`).join("")}</table>`
+      : `<h2>Delik hizalama</h2><p>Hizasız delik bulunmadı ✓</p>`;
+    dlg.appendChild(button("Kapat", () => dlg.close(), "btn primary"));
+    document.body.appendChild(dlg);
+    dlg.addEventListener("close", () => dlg.remove());
+    dlg.showModal();
   }
   /** parça dosyasındaki değişiklikleri (aynı parça kimliği) montaja getir */
   syncFromPart(part: AsmPart) {
@@ -1462,7 +1609,7 @@ export class AsmUI {
     render();
   }
   async interference() {
-    const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(c.part.features, c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+    const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
     this.ctx.setStatus("busy", "Girişim hesaplanıyor…");
     const r = await this.ctx.kernel.asm("interfere", parts);
     this.meshes.clear();
@@ -1472,7 +1619,7 @@ export class AsmUI {
     this.ctx.toast(pr.length ? "Girişim: " + pr.map((x) => `${vis[x.a].name} ↔ ${vis[x.b].name} (${x.vol.toFixed(1)} mm³)`).join(" · ") : "Girişim yok ✓", pr.length > 0);
   }
   async exportStep() {
-    const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(c.part.features, c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+    const parts = this.doc.comps.filter((c) => !c.hidden).map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
     this.ctx.setStatus("busy", "STEP hazırlanıyor…");
     const r = await this.ctx.kernel.asm("step", parts);
     this.meshes.clear();
@@ -1652,7 +1799,7 @@ export class AsmUI {
     const use = sel.length >= 2 ? sel : vis;
     const min = parseFloat((prompt("Boşluk doğrulama: en az boşluk (mm)", "1") ?? "").replace(",", "."));
     if (!isFinite(min)) return;
-    const parts = use.map((c) => ({ features: compile(c.part.features, c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
+    const parts = use.map((c) => ({ features: compile(this.featsOf(c), c.part.profiles ?? {}).kfeats, q: c.q, p: c.p, name: c.name }));
     this.ctx.setStatus("busy", "Boşluk hesaplanıyor…");
     const r = await this.ctx.kernel.asm("clearance", parts);
     this.meshes.clear();
@@ -1837,6 +1984,28 @@ export class AsmUI {
       ul.appendChild(li);
       if ((this.mateDraft || this.picker) && (this.sel === c.id || this.selSet.has(c.id) || this.doc.comps.length <= 3)) planeRows(c.id, "child");
     }
+    if (this.doc.feats?.length) {
+      ul.appendChild(h("li", "rollbar", "Montaj özellikleri"));
+      for (const f of this.doc.feats) {
+        const li = h("li", "child" + (f.off ? " off" : ""), `${f.type === "hole" ? "⊙" : "▭"} ${f.name} (${f.comps.length} bileşen)`);
+        li.title = "Sağ tık / uzun bas: bastır veya sil";
+        const act = async (k: "off" | "del") => {
+          if (k === "del") this.doc.feats = this.doc.feats!.filter((x) => x !== f);
+          else f.off = !f.off;
+          this.save();
+          await this.refresh();
+          this.solve();
+          this.draw();
+          this.renderTree();
+        };
+        li.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          if (confirm(`${f.name}: ${f.off ? "Etkinleştir" : "Bastır"}? (İptal = silme seçeneği)`)) void act("off");
+          else if (confirm(`${f.name} silinsin mi?`)) void act("del");
+        });
+        ul.appendChild(li);
+      }
+    }
     if (this.doc.mates.length) {
       ul.appendChild(h("li", "rollbar", `Eşleşmeler (${this.doc.mates.filter((m) => m.id !== "__draft").length})`));
       for (const m of this.doc.mates) {
@@ -1929,6 +2098,7 @@ export class AsmUI {
       "sep",
       { id: "cpattern", label: "Bileşen Çoğalt", icon: "lpattern", run: () => this.openPattern() },
       { id: "cmirror", label: "Bileşen Aynala", icon: "mirror", run: () => this.openMirror() },
+      { id: "asmCut", label: "Montaj Kesme / Delik", icon: "hole", run: () => this.openAsmCut() },
       { id: "collide", label: "Çarpışma Algıla", icon: "measure", run: () => ((this.collide = !this.collide), this.ctx.toast(this.collide ? "Sürüklerken çarpışma algılama açık" : "Çarpışma algılama kapalı")), active: () => this.collide },
       { id: "explodeView", label: "Patlatılmış Görünüm", icon: "lpattern", run: () => this.openExplode() },
       { id: "explode", label: this.doc.exploded ? "Daralt" : "Patlat", icon: "cpattern", run: () => this.toggleExplode(), active: () => !!this.doc.exploded },
@@ -1938,6 +2108,7 @@ export class AsmUI {
       "sep",
       { id: "interf", label: "Girişim", icon: "interfere", run: () => this.interference() },
       { id: "clear", label: "Boşluk Doğrula", icon: "measure", run: () => this.clearance() },
+      { id: "holeal", label: "Delik Hizalama", icon: "hole", run: () => this.showHoleAlignment() },
       { id: "asec", label: "Montaj Kesiti", icon: "section", run: () => this.openSection() },
       { id: "matex", label: "MateXpert", icon: "relations", run: () => this.mateXpert() },
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => this.massProps() },

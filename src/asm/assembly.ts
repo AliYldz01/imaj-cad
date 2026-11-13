@@ -49,7 +49,26 @@ export interface Mate {
 export interface SubAsm { id: string; name: string; comps: string[]; rigid: boolean; poses: Record<string, { p: Vec3; q: [number, number, number, number] }> }
 /** patlatılmış görünüm adımı (SolidWorks Patlatma adımı) */
 export interface ExplodeStep { id: string; comps: string[]; dir: Vec3; d: number }
-export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean; subs?: SubAsm[] }
+/** montaj özelliği (SolidWorks montaj kesmesi / deliği): yalnız montajda, seçili bileşenleri keser */
+export interface AsmFeat {
+  id: string;
+  type: "hole" | "cut";
+  name: string;
+  /** dünya çerçevesi: başlangıç noktası, x ekseni, yüz normali (dışa) */
+  o: Vec3;
+  x: Vec3;
+  n: Vec3;
+  /** çerçevede konumlar (mm) */
+  pts: [number, number][];
+  d: number;
+  w: number;
+  h: number;
+  through: boolean;
+  depth: number;
+  comps: string[];
+  off?: boolean;
+}
+export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean; subs?: SubAsm[]; feats?: AsmFeat[] }
 /** montajın kendi ana düzlemleri / orijini için sanal bileşen kimliği */
 export const ASM_ID = "__asm";
 

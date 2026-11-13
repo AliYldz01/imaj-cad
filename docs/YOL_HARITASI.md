@@ -522,3 +522,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Çarpışma algılama gerçek geometriyle (mil–delik yanlış alarm vermez) | ✅ |
 | Silindir eşleşme ekseni doğru (yarım yüz merkezi değil) | ✅ |
 | Bağlam içi düzenlemede sayfa yenilenirse ana parça korunur | ✅ |
+
+## v0.38 — Montaj kesme / delik ve delik hizalama
+| Özellik | Durum |
+|---|---|
+| Montaj deliği / dikdörtgen montaj kesmesi (tümünü geç / kör), seçili bileşenlere uygulanır, parça dosyası değişmez | ✅ |
+| Montaj özelliğini bastır / sil (ağaç, sağ tık) | ✅ |
+| Delik hizalama raporu (hizasız delikler ve sapma) | ✅ |

@@ -10,13 +10,13 @@ SolidWorks montaj mantığı: bileşenler 6 serbestlikle başlar (ilk bileşen s
 | Bileşen | Gizle / göster, saydam | ✅ |
 | Bileşen | Bileşeni taşı: serbest sürükle (eşleşmelere uyarak), Delta XYZ, XYZ konumuna | ✅ |
 | Bileşen | Bileşeni döndür: serbest sürükle (eşleşmelere uyarak), Delta XYZ (açı) | ✅ |
-| Bileşen | Çarpışma algılama (sürüklerken dur) | ✅ (sınır kutusu) |
+| Bileşen | Çarpışma algılama (sürüklerken dur) | ✅ gerçek geometri (v0.37) |
 | Bileşen | Doğrusal / dairesel bileşen çoğaltma | ✅ |
 | Bileşen | Bileşenleri aynala: kopya / ters el (aynalı parça) | ✅ |
 | Bileşen | Alt montaj (rijit/esnek), bileşen değiştir, eşleşmeleriyle kopyala | ✅ |
 | Bileşen | Yapılandırmalar | ⬜ |
 | Bileşen | Bağlam içinde parça düzenleme | ✅ |
-| Bileşen | Montaj özellikleri (montaj kesmesi / deliği) | ⬜ |
+| Bileşen | Montaj özellikleri (montaj kesmesi / deliği) | ✅ v0.38 |
 | Bileşen | Bağlantı elemanları (cıvata / somun / pul, M4–M20) | ✅ |
 | Seçim | Düz yüz, silindir, doğrusal kenar, dairesel kenar, köşe | ✅ |
 | Seçim | Bileşen ve montaj ana düzlemleri / orijin | ✅ |
@@ -35,6 +35,6 @@ SolidWorks montaj mantığı: bileşenler 6 serbestlikle başlar (ilk bileşen s
 | Patlatma | Patlatma adımları (bileşen + yön + mesafe), otomatik adımlar, patlat / daralt animasyonu, patlatma çizgileri | ✅ |
 | Değerlendirme | Girişim tespiti (gerçek geometri), kütle özellikleri, malzeme listesi (CSV), STEP montaj | ✅ |
 | Değerlendirme | Boşluk doğrulama, montaj kesit görünümü | ✅ |
-| Değerlendirme | Delik hizalama | ⬜ |
+| Değerlendirme | Delik hizalama | ✅ v0.38 |
 | Hareket | Hareket etüdü (döner / doğrusal motor) | ✅ |
 | Hareket | Fiziksel dinamik, animasyon kaydı | ⬜ |
