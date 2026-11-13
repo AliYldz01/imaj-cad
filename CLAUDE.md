@@ -1,7 +1,7 @@
 # İmaj CAD — devam kılavuzu (yeni sohbet buradan başlar)
 
 Bu dosya, projeyi sıfırdan açılan bir sohbette kaldığı yerden sürdürmek için gereken her şeyi içerir.
-Ayrıntılı özellik listesi: `docs/YOL_HARITASI.md` · Kullanıcı özeti: `README.md` · **SolidWorks fark raporu ve düzeltme planı: `docs/SOLIDWORKS_FARK_RAPORU.md`** (maddeler E/F/S/W/G numaralı; düzeltildikçe ✅ işaretle) · **SolidWorks özellik başvuru listesi (seçenek seviyesinde, ✅/🟡/⬜ durumlu): `docs/SOLIDWORKS_OZELLIKLERI.md`** — yeni özellik yazarken buradaki seçenekleri esas al, bitince durumunu güncelle.
+**Son denetim (v0.35): `docs/DENETIM_v0.35.md`** — kalıcı referans, montaj–parça bağı ve sıradaki paketler buradan · Ayrıntılı özellik listesi: `docs/YOL_HARITASI.md` · Kullanıcı özeti: `README.md` · **SolidWorks fark raporu ve düzeltme planı: `docs/SOLIDWORKS_FARK_RAPORU.md`** (maddeler E/F/S/W/G numaralı; düzeltildikçe ✅ işaretle) · **SolidWorks özellik başvuru listesi (seçenek seviyesinde, ✅/🟡/⬜ durumlu): `docs/SOLIDWORKS_OZELLIKLERI.md`** — yeni özellik yazarken buradaki seçenekleri esas al, bitince durumunu güncelle.
 
 ## 1. Amaç
 
@@ -110,6 +110,7 @@ Canlı: https://aliyldz01.github.io/imaj-cad/ · Depo: GitHub `AliYldz01/imaj-ca
 
 ## 5. Sıradaki işler (öncelik sırasıyla)
 
+00. **Denetim v0.35 paket sırası** (`docs/DENETIM_v0.35.md`): Paket 0 Esc gerilemesi + eski testler → Paket 1 kalıcı referanslar → Paket 2 montaj–parça bağı → Paket 3 montaj kesme/delik + delik hizalama → Paket 4 teknik resim.
 0. **SolidWorks fark raporundaki düzeltmeler** (`docs/SOLIDWORKS_FARK_RAPORU.md` §7 paket sırası A→E; montaj = Paket D) — Paket A ✅ (v0.13); Paket B kısmi (v0.14) — kalan B: F3 burulma/kılavuz, F4 loft teğetlik, F5 setback/konik, F18 pah, F19 eksen/nokta seçimi, E4 sanal köşe, E5, E8, E9, E10, E16, E17; Paket C kısmi (v0.15) — kalan C: S2 flanş profili, S5 DXF büküm notları, S6 aç/katla, W1 köşe başına işlem, W3 kesim listesi özellikleri, W4 3B eskiz ilişkileri; Paket D ilk sürüm (v0.16) — kalan D (v0.17 sonrası): gelişmiş/mekanik eşleşmeler (simetrik, açı limiti, genişlik, menteşe, dişli, vida…), gerçek geometriyle çarpışma, ayna bileşen, alt montaj, bağlam içi düzenleme; ardından **Paket E** ve kalan B/C maddeleri. **3B eskiz**: rapordaki maddeler tamamlandı (v0.22; spline/öteleme SolidWorks'te de 3B eskizde yok).
 1. **MONTAJ MODÜLÜ** — v0.32–v0.33'te SolidWorks mantığı (`docs/MONTAJ_RAPORU.md`); kalan ⬜: yapılandırmalar, montaj kesme/delik özellikleri, yol/kam/yuva eşleşmeleri, delik hizalama, fiziksel dinamik / animasyon kaydı. Eski not: ilk sürüm v0.16'da; kalanlar Paket D notunda: bileşen ekleme (parça dosyaları / mevcut parça), sabitleme, eşleşmeler (çakışık, paralel, dik, eş merkezli, mesafe, açı, teğet), serbestlik göstergesi, bileşeni sürükleyerek taşıma/döndürme, girişim kontrolü, patlatılmış görünüm, montaj ağacı, BOM (malzeme listesi), STEP montaj dışa aktarma. SolidWorks davranışına uygun olmalı; telefon kontrolleriyle de çalışmalı.
 1b. Masaüstü arayüz ekleri: seçim kırıntıları (breadcrumbs), sağ görev bölmesi (tasarım kütüphanesi / dosyalar), şerit özelleştirme, bağlam araç çubuğunun SW gibi genişletilmesi.
