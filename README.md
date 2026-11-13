@@ -27,6 +27,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.52: Yüzey Loft ve Sınır Doldur (kenarlardan eğri yüzey).
 - v0.53: Yüzey Kırp ve Yüzey Dik (kapalı yüzeylerden katı).
 - v0.54: Teknik resimde ölçüleri sürükleme, Detay B, 2. sayfa ve montajda patlatılmış görünüş.
+- v0.55: Dairenin üst/alt/sol/sağ noktasından verilen ölçüler çap değişince kaymıyor.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

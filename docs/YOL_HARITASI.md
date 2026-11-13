@@ -612,3 +612,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.53 | Yüzey kırp (düzlem / yüzey), yüzey dik (kapalıysa katı) | ✅ |
 
 | v0.54 | Teknik resim: ölçü sürükleme, detay görünüşü, 2. sayfa, montajda patlatılmış görünüş | ✅ |
+
+| v0.55 | Çeyrek noktasından ölçü: çap değişince nokta kaymıyor | ✅ |

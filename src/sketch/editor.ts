@@ -162,6 +162,8 @@ interface Inference {
   onModel?: number;
   /** dikdörtgen merkezi: köşegen uç noktaları */
   rectC?: [string, string];
+  /** çeyrek noktası: 0 sağ, 1 üst, 2 sol, 3 alt (merkezle yatay/dikey hizalanır) */
+  quad?: number;
   glyph?: string;
   label?: string;
 }
@@ -226,6 +228,7 @@ export class SketchEditor implements InputHandler {
     try {
       this.loadModelRefs();
     } catch {}
+    this.fixOldQuads();
     this.labelBox = document.createElement("div");
     host.viewer.labels.appendChild(this.labelBox);
     this.offRender = host.viewer.onRender(() => this.placeLabels());
@@ -323,6 +326,20 @@ export class SketchEditor implements InputHandler {
   }
 
   /** Çöz ve tanımlılığı hesapla */
+  /** eski eskizler: çeyrekten yakalanıp yalnız "çember üzerinde" kalmış ve ölçülendirilmiş noktalar → merkezle hizala (v0.55 öncesi kayma hatası) */
+  private fixOldQuads() {
+    const sk = this.data;
+    for (const r of [...sk.rels]) {
+      if (r.t !== "onCircle") continue;
+      const [pid, cid] = r.refs;
+      const c = getEnt(sk, cid) as SCircle | undefined;
+      if (!c?.c || !sk.pts[pid] || !sk.dims.some((d) => d.refs.includes(pid))) continue;
+      if (sk.rels.some((x) => (x.t === "horizontal" || x.t === "vertical") && x.refs.includes(pid) && x.refs.includes(c.c))) continue;
+      const p = P(sk, pid), q = P(sk, c.c), tol = 1e-6 * Math.max(1, c.r);
+      if (Math.abs(p[1] - q[1]) < tol) addRel(sk, "horizontal", [pid, c.c]);
+      else if (Math.abs(p[0] - q[0]) < tol) addRel(sk, "vertical", [pid, c.c]);
+    }
+  }
   resolve() {
     this.result = solve(this.data);
     this.defined = analyze(this.data, this.result.ok ? this.result.dof : 1);
@@ -762,7 +779,7 @@ export class SketchEditor implements InputHandler {
           const g = arcAngles(sk, n.e as SArc);
           if (!inArc((k * Math.PI) / 2, g.s, g.e)) continue;
         }
-        if (d2(q, p) < tol * 0.8) return { p: q, on: { id: n.e.id, t: n.t }, glyph: "◔", label: "Çeyrek" };
+        if (d2(q, p) < tol * 0.8) return { p: q, on: { id: n.e.id, t: n.t }, quad: k, glyph: "◔", label: "Çeyrek" };
       }
     }
     // hizalama çizgileri
@@ -1042,6 +1059,11 @@ export class SketchEditor implements InputHandler {
     if (inf.on) addRel(this.data, inf.on.t === "line" ? "onLine" : "onCircle", [id, inf.on.id]);
     if (inf.on2) addRel(this.data, inf.on2.t === "line" ? "onLine" : "onCircle", [id, inf.on2.id]);
     if (inf.mid) addRel(this.data, "midpoint", [id, inf.mid]);
+    // çeyrek: çember üzerinde kalması yetmez, yarıçap değişince kaymasın diye merkezle yatay / dikey hizala (SolidWorks çeyrek noktası)
+    if (inf.quad !== undefined && inf.on && inf.on.t !== "line") {
+      const ce = getEnt(this.data, inf.on.id) as SCircle | undefined;
+      if (ce?.c) addRel(this.data, inf.quad % 2 === 0 ? "horizontal" : "vertical", [id, ce.c]);
+    }
     return id;
   }
 
