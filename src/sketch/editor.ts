@@ -296,8 +296,25 @@ export class SketchEditor implements InputHandler {
   }
 
   /** Bir işlemi uygula: başarısızsa geri al */
+  /** ölçü mevcut değeriyle eklense hiçbir serbestliği almıyor mu (gereksiz ölçü) */
+  private dimRedundant(spec: Omit<SDim, "id" | "v">, cur: number): boolean {
+    if (!this.result.ok) return false;
+    const tmp: SketchData = JSON.parse(JSON.stringify(this.data));
+    const v = spec.t === "dist" && (spec as any).sub !== "a" ? cur : Math.abs(cur);
+    const d = { id: "probeDim", ...spec, v } as SDim;
+    if (d.t === "dist" && d.sub !== "a" && cur < 0) (d.refs = [d.refs[1], d.refs[0]]), (d.v = -cur);
+    tmp.dims.push(d);
+    const r = solve(tmp, undefined, false);
+    const prev = new Set(this.result.redundant);
+    return r.ok && (r.redundant.some((x) => !prev.has(x)) || r.dof >= this.result.dof);
+  }
+  /** son op gereksiz (fazla) ölçü yüzünden reddedildi */
+  redundantHit = false;
   private op(fn: () => void, failMsg = "Bu işlem eskizi çözülemez hale getiriyor (aşırı tanımlı)"): boolean {
     const before = JSON.stringify(this.data);
+    const dimIds = new Set(this.data.dims.map((d) => d.id));
+    const prevRed = new Set(this.result?.redundant ?? []), prevDof = this.result?.ok ? this.result.dof : undefined;
+    const geo0 = Object.keys(this.data.pts).length + ":" + this.data.ents.length;
     this.snapshot();
     try {
       fn();
@@ -310,6 +327,18 @@ export class SketchEditor implements InputHandler {
     }
     cleanup(this.data);
     const r = solve(this.data);
+    // SolidWorks gibi: yeni sürücü ölçü hiçbir serbestliği almıyorsa (değeri tutsa bile) gereksizdir → reddet
+    const newDims = this.data.dims.filter((d) => !dimIds.has(d.id) && !d.ref);
+    this.redundantHit = false;
+    if (r.ok && !r.conflicts.length && newDims.length && (r.redundant.some((x) => !prevRed.has(x)) || (prevDof !== undefined && r.dof >= prevDof && geo0 === Object.keys(this.data.pts).length + ":" + this.data.ents.length))) {
+      this.undoStack.pop();
+      Object.assign(this.data, JSON.parse(before));
+      this.redundantHit = true;
+      this.resolve();
+      this.render();
+      if (failMsg) this.host.toast("Gereksiz ölçü: bu ölçü eskizi aşırı tanımlar (değer zaten diğer ölçü / ilişkilerle belirli)", true);
+      return false;
+    }
     if (!r.ok || r.conflicts.length) {
       this.undoStack.pop();
       Object.assign(this.data, JSON.parse(before));
@@ -3299,6 +3328,17 @@ export class SketchEditor implements InputHandler {
     this.render();
     if (!spec) return this.host.toast("Bu seçim için ölçü yok");
     const cur = measure(this.data, spec);
+    // SolidWorks: ölçü konur konmaz gereksizse sor — sürülen (referans) yap ya da vazgeç
+    if (this.dimRedundant(spec, cur)) {
+      if (confirm("Gereksiz ölçü: bu ölçüyü eklemek eskizi aşırı tanımlar (değeri zaten diğer ölçü / ilişkilerle belirli).\n\nTamam = sürülen (referans) ölçü olarak ekle · İptal = ekleme")) {
+        this.op(() => {
+          const d: SDim = { id: nid(this.data, "d"), ...spec, v: Math.abs(cur), ref: true } as SDim;
+          this.data.dims.push(d);
+        });
+        this.host.changed();
+      }
+      return;
+    }
     this.promptValue(e.clientX, e.clientY, Math.abs(cur), spec.t === "angle" ? "°" : "mm", (v) => {
       if (spec.t !== "angle" && v <= 0 && spec.t !== "dist") return this.host.toast("Değer sıfırdan büyük olmalı", true);
       const make = (): SDim => {
@@ -3314,7 +3354,7 @@ export class SketchEditor implements InputHandler {
       const ok = this.op(() => this.data.dims.push(make()), "");
       if (ok) return this.host.changed();
       // SolidWorks gibi: aşırı tanımlıyorsa referans ölçü olarak eklemeyi öner
-      if (confirm("Bu ölçü eskizi aşırı tanımlar. Referans (sürülen) ölçü olarak eklensin mi?")) {
+      if (confirm(this.redundantHit ? "Gereksiz ölçü: bu ölçü eskizi aşırı tanımlar (değeri zaten belirli). Sürülen (referans) ölçü olarak eklensin mi?" : "Bu ölçü eskizi aşırı tanımlar. Referans (sürülen) ölçü olarak eklensin mi?")) {
         this.op(() => {
           const d = make();
           d.ref = true;
