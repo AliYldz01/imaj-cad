@@ -3,6 +3,9 @@ import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, Measure
 
 export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members: { key: string; name: string; body: number }[]; heals?: RefHeals };
 
+/** Kiriş orta kesiti: cu = v yönündeki en uzak lif (Iu ile), cv = u yönündeki (Iv ile) */
+export interface BeamSec { ax: number; u: number; v: number; L: number; A: number; Iu: number; Iv: number; Iuv: number; cu: number; cv: number; c: [number, number] }
+
 export class Kernel {
   private worker: Worker;
   private nextId = 1;
@@ -100,6 +103,12 @@ export class Kernel {
     await this.ready;
     const r = await this.request<{ items: SectionItem[] }>({ type: "section", frame } as any);
     return r.items;
+  }
+
+  async beam(ax = -1): Promise<BeamSec | null> {
+    await this.ready;
+    const r = await this.request<{ r: BeamSec | null }>({ type: "beam", ax } as any);
+    return r.r;
   }
 
   async props(): Promise<MassProps | null> {

@@ -835,6 +835,7 @@ export interface MassProps {
 export type KernelRequest =
   | { id: number; type: "build"; features: KFeature[]; fontUrl?: string }
   | { id: number; type: "section"; frame: Frame }
+  | { id: number; type: "beam"; ax?: number }
   | { id: number; type: "export"; format: "step" | "stl" }
   | { id: number; type: "measure"; items: MeasureItem[] }
   | { id: number; type: "props" }
@@ -851,6 +852,7 @@ export type KernelResponse =
   | { id: number; type: "built"; mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members?: { key: string; name: string; body: number }[]; heals?: RefHeals }
   | { id: number; type: "measured"; lines: string[] }
   | { id: number; type: "section"; items: SectionItem[] }
+  | { id: number; type: "beam"; r: any; message?: string }
   | { id: number; type: "props"; props: MassProps | null }
   | { id: number; type: "exported"; blob: Blob | null; message?: string }
   | ({ id: number; type: "flat" } & FlatResult)

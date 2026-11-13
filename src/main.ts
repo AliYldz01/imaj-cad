@@ -24,7 +24,7 @@ import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
 import { techSheet, sheetDxf, type TechInfo } from "./drawing/techdraw";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
-import { holeDefaults, MATERIALS, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
+import { holeDefaults, MATERIALS, MECH, beamCalc, type BeamSupport, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
 import { type Act, type Dir, DIRS8, comboOf, keyMap, keyOf, dirOf, gestCfg, openCustomize, printList } from "./ui/keys";
 import { ICONS } from "./ui/icons";
@@ -4146,6 +4146,61 @@ function renderMeasurePanel(lines: string[]) {
   }
 }
 
+/** Basit mukavemet analizi (SimulationXpress benzeri, kiriş teorisi): en uzun eksen boyunca kiriş kabulü */
+let anaSt: { sup: BeamSupport; load: "point" | "udl"; F: number; dir: number; self: boolean; ax: number } = { sup: "cant", load: "point", F: 1000, dir: -1, self: false, ax: -1 };
+async function openAnalysis() {
+  if (mode.k === "sketch") exitSketch(true);
+  let b = await kernel.beam(anaSt.ax);
+  if (!b) return toast("Analiz için bir katı gerekir", true);
+  const matKey = doc.material ?? "steel";
+  const mat = MATERIALS[matKey], mech = MECH[matKey] ?? MECH.steel;
+  const AX = ["X", "Y", "Z"];
+  const dlg = h("dialog", "input-dialog analysis-dialog") as HTMLDialogElement;
+  const out = h("div", "pm-result");
+  const f = (v: number, d = 2) => fmtNum(v, d);
+  const calc = () => {
+    if (!b) return;
+    // yük yönü: kesit düzlemindeki iki eksenden biri (v → Iu ile eğilme)
+    const dir = anaSt.dir === b.u || anaSt.dir === b.v ? anaSt.dir : b.v;
+    anaSt.dir = dir;
+    const I = dir === b.v ? b.Iu : b.Iv, c = dir === b.v ? b.cu : b.cv;
+    const mass = (b.A * b.L / 1000) * mat.rho / 1000; // kg (prizmatik kabul)
+    let r = beamCalc(anaSt.sup, anaSt.load, anaSt.F, b.L, mech.E, I);
+    if (anaSt.self) { const w = beamCalc(anaSt.sup, "udl", mass * 9.81, b.L, mech.E, I); r = { M: r.M + w.M, d: r.d + w.d }; }
+    const sig = (r.M * c) / I, n = mech.Sy / Math.max(sig, 1e-9);
+    const ok = n >= 2 ? "✅ Güvenli" : n >= 1 ? "⚠️ Sınırda (güvenlik katsayısı < 2)" : "❌ Akma! (güvenlik katsayısı < 1)";
+    (dlg as any).__res = { sig, d: r.d, n, M: r.M, I, c, L: b.L, A: b.A };
+    out.innerHTML = `<div>Kiriş boyu: <b>${f(b.L, 1)} mm</b> (${AX[b.ax]} ekseni) · Kesit alanı ${f(b.A, 1)} mm²</div>
+      <div>Atalet momenti I: ${f(I, 0)} mm⁴ · uç lif c: ${f(c, 2)} mm · W = ${f(I / c, 0)} mm³</div>
+      <div>En büyük moment: ${f(r.M / 1000, 1)} N·m</div>
+      <div>En büyük gerilme σ: <b>${f(sig, 1)} MPa</b> (akma ${mech.Sy} MPa)</div>
+      <div>En büyük sehim δ: <b>${f(r.d, 3)} mm</b> (L/${r.d > 0 ? Math.round(b.L / r.d) : "∞"})</div>
+      <div>Güvenlik katsayısı: <b>${n > 999 ? ">999" : f(n, 2)}</b> — ${ok}</div>
+      <p class="small">Kabul: prizmatik kiriş, orta kesit; doğrusal elastik, ${mat.name} E = ${mech.E} MPa. Yerel gerilme yığılmaları, burkulma ve kayma hesaba katılmaz — ön boyutlandırma içindir.</p>`;
+  };
+  const rebuildUI = () => {
+    dlg.innerHTML = "<h2>Basit Mukavemet Analizi</h2>";
+    const body = h("div", "pm-body");
+    body.append(
+      selectField<string>("Kiriş ekseni", [{ v: "-1", t: "Otomatik (en uzun)" }, ...AX.map((t, i) => ({ v: String(i), t }))], String(anaSt.ax), async (v) => { anaSt.ax = +v; b = await kernel.beam(anaSt.ax); rebuildUI(); }),
+      selectField<BeamSupport>("Mesnet", [{ v: "cant", t: "Ankastre (konsol)" }, { v: "simple", t: "İki ucu basit mesnet" }, { v: "fixed", t: "İki ucu ankastre" }], anaSt.sup, (v) => { anaSt.sup = v; rebuildUI(); }),
+      selectField<"point" | "udl">("Yük", [{ v: "point", t: anaSt.sup === "cant" ? "Tekil yük (uçta)" : "Tekil yük (ortada)" }, { v: "udl", t: "Yayılı yük (toplam)" }], anaSt.load, (v) => { anaSt.load = v; calc(); }),
+      numField("Kuvvet", anaSt.F, (v) => { anaSt.F = v; calc(); }, { unit: "N", min: 0 }),
+      selectField<string>("Yük yönü", [b!.v, b!.u].map((i) => ({ v: String(i), t: AX[i] })), String(anaSt.dir === b!.u ? b!.u : b!.v), (v) => { anaSt.dir = +v; calc(); }),
+      checkField("Öz ağırlığı ekle", anaSt.self, (v) => { anaSt.self = v; calc(); }),
+    );
+    dlg.append(body, out);
+    const row = h("div", "pm-row");
+    row.append(button("Malzeme…", () => { dlg.close(); chooseMaterial(); }, "btn"), button("Kapat", () => dlg.close(), "btn primary"));
+    dlg.appendChild(row);
+    calc();
+  };
+  rebuildUI();
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+
 async function showMassProps() {
   if (mode.k === "sketch") exitSketch(true);
   const p = await kernel.props();
@@ -4757,6 +4812,7 @@ function commands(): Cmd[] {
       { id: "measure", label: "Ölç", icon: "measure", run: () => startMeasure(), active: () => mode.k === "measure" },
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => showMassProps() },
       { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
+      { id: "analysis", label: "Mukavemet", icon: "measure", run: () => void openAnalysis() },
       { id: "section", label: "Kesit", icon: "section", run: () => openSection(), active: () => !!section },
       { id: "material", label: "Malzeme", icon: "material", run: () => chooseMaterial() },
       { id: "equations", label: "Denklemler", icon: "equations", run: () => openEquations() },

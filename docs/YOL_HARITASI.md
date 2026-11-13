@@ -600,3 +600,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Özellik | Durum |
 |---|---|
 | Perspektif / ortografik görünüm (seçim ve yakalama perspektifte de doğru) | ✅ |
+
+| v0.49 | Basit mukavemet analizi (kiriş: σ, sehim, güvenlik katsayısı) | ✅ |

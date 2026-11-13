@@ -89,3 +89,22 @@ export const MATERIALS: Record<string, { name: string; rho: number }> = {
   pla: { name: "PLA", rho: 1.24 },
   wood: { name: "Ahşap (meşe)", rho: 0.75 },
 };
+
+/** Basit analiz için elastisite modülü E ve akma (ya da çekme) dayanımı Sy, MPa */
+export const MECH: Record<string, { E: number; Sy: number }> = {
+  steel: { E: 210000, Sy: 235 }, stainless: { E: 193000, Sy: 215 }, castiron: { E: 110000, Sy: 150 },
+  aluminium: { E: 69000, Sy: 240 }, brass: { E: 100000, Sy: 200 }, copper: { E: 117000, Sy: 70 },
+  titanium: { E: 114000, Sy: 880 }, pom: { E: 2800, Sy: 65 }, pa6: { E: 2500, Sy: 70 },
+  pe: { E: 1000, Sy: 25 }, abs: { E: 2200, Sy: 40 }, pla: { E: 3500, Sy: 50 }, wood: { E: 11000, Sy: 40 },
+};
+
+export type BeamSupport = "cant" | "simple" | "fixed";
+/** Kiriş formülleri: tekil yük F (N) uçta / ortada, ya da yayılı q (N/mm) → en büyük moment (N·mm) ve sehim (mm) */
+export function beamCalc(sup: BeamSupport, load: "point" | "udl", F: number, L: number, E: number, I: number) {
+  const q = F / L; // yayılı: F toplam yük
+  let M: number, d: number;
+  if (sup === "cant") { M = load === "point" ? F * L : (q * L * L) / 2; d = load === "point" ? (F * L ** 3) / (3 * E * I) : (q * L ** 4) / (8 * E * I); }
+  else if (sup === "simple") { M = load === "point" ? (F * L) / 4 : (q * L * L) / 8; d = load === "point" ? (F * L ** 3) / (48 * E * I) : (5 * q * L ** 4) / (384 * E * I); }
+  else { M = load === "point" ? (F * L) / 8 : (q * L * L) / 12; d = load === "point" ? (F * L ** 3) / (192 * E * I) : (q * L ** 4) / (384 * E * I); }
+  return { M, d };
+}

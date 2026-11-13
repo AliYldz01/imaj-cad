@@ -3521,6 +3521,48 @@ function section(id: number, fr: Frame) {
   post({ id, type: "section", items });
 }
 
+/** Basit mukavemet: gövdenin en uzun ekseni boyunca orta kesit özellikleri (alan, atalet, uç lif) */
+function beamSec(id: number, axIn: number) {
+  try {
+    const list = bodies.length ? bodies : [];
+    if (!list.length) return post({ id, type: "beam", r: null, message: "Katı yok" });
+    const a = list.length === 1 ? list[0] : makeCompound(list.map((b) => b.clone()));
+    const [mn, mx] = a.boundingBox.bounds as [Vec3, Vec3];
+    const ext = [0, 1, 2].map((i) => mx[i] - mn[i]);
+    const ax = axIn >= 0 ? axIn : ext.indexOf(Math.max(...ext));
+    const u = (ax + 1) % 3, v = (ax + 2) % 3;
+    const mid = (mn[ax] + mx[ax]) / 2, pad = 10;
+    const P = (pu: number, pv: number): Vec3 => { const p: Vec3 = [0, 0, 0]; p[ax] = mid; p[u] = pu; p[v] = pv; return p; };
+    const face = makePolygon([P(mn[u] - pad, mn[v] - pad), P(mx[u] + pad, mn[v] - pad), P(mx[u] + pad, mx[v] + pad), P(mn[u] - pad, mx[v] + pad)]);
+    const oc = getOC() as any;
+    const op = new oc.BRepAlgoAPI_Common(a.wrapped, face.wrapped, new oc.Message_ProgressRange());
+    const sec = cast(op.Shape()) as Shape;
+    op.delete();
+    const m = sec.mesh({ tolerance: 0.01, angularTolerance: 0.1 });
+    const V = m.vertices, T = m.triangles;
+    let A = 0, Su = 0, Sv = 0, Suu = 0, Svv = 0, Suv = 0;
+    const q = (i: number) => [V[3 * i + u], V[3 * i + v]];
+    for (let k = 0; k < T.length; k += 3) {
+      const [x1, y1] = q(T[k]), [x2, y2] = q(T[k + 1]), [x3, y3] = q(T[k + 2]);
+      const d = Math.abs((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)) / 2;
+      A += d; Su += d * (x1 + x2 + x3) / 3; Sv += d * (y1 + y2 + y3) / 3;
+      Suu += d / 6 * (x1 * x1 + x2 * x2 + x3 * x3 + x1 * x2 + x2 * x3 + x3 * x1);
+      Svv += d / 6 * (y1 * y1 + y2 * y2 + y3 * y3 + y1 * y2 + y2 * y3 + y3 * y1);
+      Suv += d / 12 * (2 * x1 * y1 + 2 * x2 * y2 + 2 * x3 * y3 + x1 * y2 + x2 * y1 + x2 * y3 + x3 * y2 + x1 * y3 + x3 * y1);
+    }
+    if (A < 1e-9) return post({ id, type: "beam", r: null, message: "Orta kesit bulunamadı" });
+    const cu = Su / A, cv = Sv / A;
+    // Iu = ∫(v-cv)² (u ekseni etrafında eğilme, yük v yönünde), Iv = ∫(u-cu)²
+    const Iu = Svv - A * cv * cv, Iv = Suu - A * cu * cu, Iuv = Suv - A * cu * cv;
+    let cU = 0, cV = 0;
+    for (let i = 0; i < V.length / 3; i++) { const [x, y] = q(i); cU = Math.max(cU, Math.abs(x - cu)); cV = Math.max(cV, Math.abs(y - cv)); }
+    if (list.length > 1) try { a.delete(); } catch {}
+    post({ id, type: "beam", r: { ax, u, v, L: ext[ax], A, Iu, Iv, Iuv, cu: cV, cv: cU, c: [cu, cv] } });
+  } catch (e) {
+    post({ id, type: "beam", r: null, message: errMsg(e) });
+  }
+}
+
 function exportShape(id: number, format: "step" | "stl") {
   const a = all();
   if (!a) return post({ id, type: "exported", blob: null, message: "Dışa aktarılacak katı yok" });
@@ -3616,6 +3658,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "measure") measure(req.id, req.items);
     else if (req.type === "props") props(req.id);
     else if (req.type === "section") section(req.id, req.frame);
+    else if (req.type === "beam") beamSec(req.id, req.ax ?? -1);
     else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
