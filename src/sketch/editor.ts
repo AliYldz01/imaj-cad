@@ -1,7 +1,7 @@
 // Eskiz düzenleyici: SolidWorks mantığında çizim araçları, otomatik ilişkiler,
 // akıllı ölçü, sürükleyerek düzenleme, kırpma, radyüs ve tanımlılık renkleri.
 import * as THREE from "three";
-import type { Frame, RelType, SArc, SCircle, SDim, SEnt, SLine, SketchData, Vec2, Vec3, SectionItem, SEllipse, SText } from "../doc/types";
+import type { Frame, RelType, SArc, SCircle, SDim, SEnt, SLine, SketchData, Vec2, Vec3, SectionItem, SEllipse, SText, SSpline } from "../doc/types";
 import { ORIGIN } from "../doc/types";
 import { evalNum, fmtNum, toLocal, toWorld, dot, sub } from "../doc/math";
 import type { InputHandler, Viewer } from "../viewer";
@@ -11,9 +11,9 @@ import { prefs } from "../input/prefs";
 import { offsetEnts, mirrorEnts, linearPattern, circularPattern, moveEnts, centroid } from "./ops";
 import {
   P, addArc, addCircle, addLine, addPointEnt, addPt, addRel, applicableRelations, arcAngles, cleanup, deleteIds,
-  entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf, entSamples, ellipseGeo, replacePoint,
+  entPoints, getEnt, lineAngleSign, measure, nid, relationsOf, REL_GLYPH, REL_NAMES, usersOf, entSamples, ellipseGeo, replacePoint, splineHandle,
 } from "./model";
-import { extractLoops, segPoints } from "./profile";
+import { extractLoops, segPoints, textAlong } from "./profile";
 import {
   add2, ang, arcMid, circle3, circleCircle, crs2, d2, dot2, inArc, len2, lineCircle, lineLine, mul2, nearestOnArc,
   nearestOnSeg, niceStep, norm2, normAng, perp, pointInPoly, sub2, TAU,
@@ -204,7 +204,7 @@ export class SketchEditor implements InputHandler {
   private lastClick = { t: 0, p: [0, 0] as Vec2 };
   private offRender: () => void;
   opts = {
-    sides: 6, filletR: 5, chamferD: 3, showRels: true, chainDim: false, comb: false, combScale: 1, ...(() => { try { const o = JSON.parse(localStorage.getItem("imajcad.skset") || "{}"); return { gridStep: +o.gridStep || 0, angSnap: +o.angSnap || 0 }; } catch { return { gridStep: 0, angSnap: 0 }; } })(), slotDims: "none" as "none" | "cc" | "total",
+    sides: 6, filletR: 5, chamferD: 3, showRels: true, chainDim: false, comb: false, combScale: 1, ...(() => { try { const o = JSON.parse(localStorage.getItem("imajcad.skset") || "{}"); return { gridStep: +o.gridStep || 0, angSnap: +o.angSnap || 0 }; } catch { return { gridStep: 0, angSnap: 0 }; } })(), slotDims: "none" as "none" | "cc" | "total", textFont: "",
     gridSnap: (() => {
       try {
         return localStorage.getItem("imajcad.gridSnap") === "1";
@@ -682,6 +682,16 @@ export class SketchEditor implements InputHandler {
     if (e.t === "arc") {
       const { c, s, e: en } = arcAngles(sk, e);
       return nearestOnArc(p, c, e.r, s, en);
+    }
+    if (e.t === "text" && e.on) {
+      const lay = textAlong(sk, e) ?? [];
+      let bd = Infinity, bq: Vec2 = P(sk, e.p);
+      for (const c of lay) {
+        const a = (c.angle * Math.PI) / 180, m: Vec2 = [c.x + Math.cos(a) * e.size * 0.3 - Math.sin(a) * e.size * 0.5, c.y + Math.sin(a) * e.size * 0.3 + Math.cos(a) * e.size * 0.5];
+        const dd = Math.max(0, d2(p, m) - e.size * 0.5);
+        if (dd < bd) (bd = dd), (bq = m);
+      }
+      return { q: bq, d: bd };
     }
     if (e.t === "text") {
       const q = P(sk, e.p);
@@ -1163,7 +1173,11 @@ export class SketchEditor implements InputHandler {
     }
     if (!this.press.moved && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 7) {
       this.press.moved = true;
-      if (this.tool === "select" && (!this.press.hit || this.press.hit.id === ORIGIN) && e.pointerType !== "touch") this.startBox(this.press.x, this.press.y);
+      const hnd = this.tool === "select" ? this.handleAt(this.press.local) : null;
+      if (hnd) {
+        this.snapshot();
+        this.drag = { kind: "handle", ids: [], start: this.press.local, orig: {}, ent: hnd.ent, hi: hnd.i, hs: hnd.s };
+      } else if (this.tool === "select" && (!this.press.hit || this.press.hit.id === ORIGIN) && e.pointerType !== "touch") this.startBox(this.press.x, this.press.y);
       else if (this.tool === "select") this.beginDrag(this.press.local, this.press.hit);
       else if (this.dragCreates()) this.click(this.press.local, e);
     }
@@ -1763,11 +1777,9 @@ export class SketchEditor implements InputHandler {
     this.host.toast(parts.length ? parts.join(" · ") : "Eskizde sorun bulunamadı");
   }
 
-  /** Seçili öğeleri blok olarak kütüphaneye kaydet */
-  saveBlock(name: string) {
+  /** Öğelerden blok tanımı (noktalar ağırlık merkezine göre) */
+  private blockDef(ents: SEnt[]): { def: BlockDef; c: Vec2 } {
     const sk = this.data;
-    const ents = sk.ents.filter((e) => this.sel.has(e.id));
-    if (!ents.length) return this.host.toast("Önce blok yapılacak öğeleri seçin", true);
     const pids = new Set(ents.flatMap((e) => entPoints(e)));
     pids.delete(ORIGIN);
     const pts: Record<string, { x: number; y: number }> = {};
@@ -1786,17 +1798,83 @@ export class SketchEditor implements InputHandler {
     const inSet = (r: string) => pids.has(r) || ents.some((e) => e.id === r);
     const rels = sk.rels.filter((r) => r.t !== "fix" && r.refs.every(inSet));
     const dims = sk.dims.filter((d) => d.refs.every(inSet)).map((d) => ({ ...d, lp: [d.lp[0] - cx, d.lp[1] - cy] as Vec2 }));
+    const clean = JSON.parse(JSON.stringify(ents)).map((e: any) => (delete e.blk, e));
+    return { def: { pts, ents: clean, rels: JSON.parse(JSON.stringify(rels)), dims }, c: [cx, cy] };
+  }
+
+  /** Seçili öğeleri blok olarak kütüphaneye kaydet (öğeler bu bloğun örneği olur) */
+  saveBlock(name: string) {
+    const ents = this.data.ents.filter((e) => this.sel.has(e.id));
+    if (!ents.length) return this.host.toast("Önce blok yapılacak öğeleri seçin", true);
     const lib = loadBlocks();
-    lib[name] = { pts, ents: JSON.parse(JSON.stringify(ents)), rels: JSON.parse(JSON.stringify(rels)), dims };
+    lib[name] = this.blockDef(ents).def;
     saveBlocks(lib);
+    const tag = `${name}#${nid(this.data, "b")}`;
+    for (const e of ents) e.blk = tag;
+    this.host.changed();
     this.host.toast(`"${name}" bloğu kaydedildi`);
   }
 
+  /** Eskizdeki blok örnekleri: etiket → öğeler */
+  blockInstances(name?: string): Map<string, SEnt[]> {
+    const m = new Map<string, SEnt[]>();
+    for (const e of this.data.ents) if (e.blk && (!name || e.blk.split("#")[0] === name)) m.set(e.blk, [...(m.get(e.blk) ?? []), e]);
+    return m;
+  }
+  /** Blok düzenleme modu (SolidWorks Bloğu Düzenle): bir örnek yerinde düzenlenir, Bloğu güncelle → tanım + tüm örnekler */
+  blockEdit: { tag: string; before: Set<string> } | null = null;
+  private selBlockTag(): string | undefined {
+    for (const id of this.sel) {
+      const e = this.data.ents.find((x) => x.id === id);
+      if (e?.blk) return e.blk;
+    }
+  }
+  editBlock(tag = this.selBlockTag()) {
+    if (!tag) return this.host.toast("Önce bir blok örneğinin öğesini seçin", true);
+    this.blockEdit = { tag, before: new Set(this.data.ents.map((e) => e.id)) };
+    this.sel.clear();
+    for (const e of this.data.ents) if (e.blk === tag) this.sel.add(e.id);
+    this.host.toast(`Blok düzenleniyor: ${tag.split("#")[0]} — bitince "Bloğu güncelle"`);
+    this.render();
+    this.renderPanel();
+  }
+  /** Düzenlenen örnekten tanımı yenile, diğer örnekleri aynı ağırlık merkezinde yeniden kur */
+  finishBlockEdit(apply = true) {
+    const be = this.blockEdit;
+    this.blockEdit = null;
+    if (!be || !apply) return this.renderPanel();
+    const name = be.tag.split("#")[0];
+    this.op(() => {
+      const sk = this.data;
+      for (const e of sk.ents) if (!be.before.has(e.id)) e.blk = be.tag; // düzenlerken çizilenler bloğa katılır
+      const mine = sk.ents.filter((e) => e.blk === be.tag);
+      if (!mine.length) return;
+      const lib = loadBlocks();
+      lib[name] = this.blockDef(mine).def;
+      saveBlocks(lib);
+      for (const [tag, ents] of this.blockInstances(name)) {
+        if (tag === be.tag) continue;
+        const c = this.blockDef(ents).c;
+        deleteIds(sk, ents.map((e) => e.id));
+        this.insertBlock(name, c, tag);
+      }
+    }, "Blok güncellenemedi");
+    this.host.toast(`"${name}" bloğu ve tüm örnekleri güncellendi`);
+    this.renderPanel();
+  }
+  /** Bloğu dağıt: örnek sıradan öğelere döner */
+  explodeBlock(tag = this.selBlockTag()) {
+    if (!tag) return this.host.toast("Önce bir blok örneğinin öğesini seçin", true);
+    this.op(() => this.data.ents.forEach((e) => e.blk === tag && delete e.blk));
+    this.host.toast("Blok dağıtıldı");
+  }
+
   /** Bloğu verilen noktaya ekle */
-  private insertBlock(name: string, at: Vec2) {
+  private insertBlock(name: string, at: Vec2, tag?: string) {
     const b = loadBlocks()[name];
     if (!b) return;
     const sk = this.data;
+    tag ??= `${name}#${nid(sk, "b")}`;
     const map = new Map<string, string>();
     for (const id of Object.keys(b.pts)) {
       const n = nid(sk, "p");
@@ -1811,6 +1889,7 @@ export class SketchEditor implements InputHandler {
     for (const e of b.ents) {
       const c: any = JSON.parse(JSON.stringify(e));
       c.id = map.get(e.id);
+      c.blk = tag;
       for (const k of ["p", "p1", "p2", "c", "s", "e", "a", "k"]) if (typeof c[k] === "string") c[k] = rid(c[k]);
       if (Array.isArray(c.pts)) c.pts = c.pts.map(rid);
       sk.ents.push(c);
@@ -2460,7 +2539,10 @@ export class SketchEditor implements InputHandler {
         if (!o.text.trim()) return this.host.toast("Önce metni yazın", true);
         this.op(() => {
           const pid = this.makePoint(inf);
-          sk.ents.push({ id: nid(sk, "x"), t: "text", p: pid, text: o.text, size: o.textSize, angle: o.textAngle });
+          // eğriye dokunulduysa ya da tek eğri seçiliyse: eğri üzerinde metin
+          const selCurve = [...this.sel].map((id) => getEnt(sk, id)).find((x) => x && x.t !== "text" && x.t !== "point");
+          const on = inf.on?.id ?? selCurve?.id;
+          sk.ents.push({ id: nid(sk, "x"), t: "text", p: pid, text: o.text, size: o.textSize, angle: o.textAngle, ...(on ? { on } : {}), ...(o.textFont ? { font: o.textFont } : {}) });
         });
         return;
       }
@@ -2610,7 +2692,80 @@ export class SketchEditor implements InputHandler {
     this.renderPanel();
   }
 
-  private drag: { kind: "pt" | "line" | "radius" | "move"; ids: string[]; start: Vec2; orig: Record<string, Vec2>; ent?: string } | null = null;
+  private drag: { kind: "pt" | "line" | "radius" | "move" | "handle"; ids: string[]; start: Vec2; orig: Record<string, Vec2>; ent?: string; hi?: number; hs?: number } | null = null;
+
+  /** Spline tutamakları: her nokta için iki uç (a = geri, b = ileri) */
+  splineHandles(e: SSpline): { i: number; p: Vec2; a: Vec2; b: Vec2; set: boolean }[] {
+    const closed = e.pts.length > 2 && e.pts[0] === e.pts[e.pts.length - 1];
+    const pts = (closed ? e.pts.slice(0, -1) : e.pts).map((id) => P(this.data, id));
+    return pts.map((p, i) => {
+      const v = splineHandle(pts, closed, i, e.h);
+      return { i, p, a: sub2(p, v), b: add2(p, v), set: !!e.h?.[i] };
+    });
+  }
+  /** İmleç seçili bir spline'ın tutamak ucunda mı */
+  private handleAt(p: Vec2): { ent: string; i: number; s: number } | null {
+    const tol = this.tolPx * this.wpp();
+    for (const id of this.sel) {
+      const e = getEnt(this.data, id);
+      if (e?.t !== "spline") continue;
+      for (const hd of this.splineHandles(e)) {
+        if (d2(p, hd.b) < tol) return { ent: e.id, i: hd.i, s: 1 };
+        if (d2(p, hd.a) < tol) return { ent: e.id, i: hd.i, s: -1 };
+      }
+    }
+    return null;
+  }
+  /** Seçim spline + ucunda buluşan yay mı: {spline, yay, uç indeksi} */
+  private curvPair(ids: string[]): { sp: SSpline; arc: SArc | SCircle; i: number } | null {
+    const es = ids.map((id) => getEnt(this.data, id));
+    const sp = es.find((x) => x?.t === "spline") as SSpline | undefined;
+    const arc = es.find((x) => x?.t === "arc" || x?.t === "circle") as SArc | SCircle | undefined;
+    if (!sp || !arc || sp.pts.length < 2) return null;
+    const n = sp.pts.length;
+    for (const i of [0, n - 1]) {
+      const q = P(this.data, sp.pts[i]);
+      if (Math.abs(d2(q, P(this.data, arc.c)) - arc.r) < 1e-3 * Math.max(1, arc.r)) return { sp, arc, i };
+    }
+    return null;
+  }
+  /** Eşit eğrilik: spline ucundaki tutamağı yayın teğetine çevirir, boyunu κ = 1/R verecek şekilde seçer (Bezier: κ0 = 2|(P2−P0)×t| / (3L²)) */
+  equalCurvature(ids: string[]) {
+    const cp = this.curvPair(ids);
+    if (!cp) return this.host.toast("Spline ucu ile o uçta buluşan bir yay seçin", true);
+    const { sp, arc, i } = cp;
+    const closed = sp.pts.length > 2 && sp.pts[0] === sp.pts[sp.pts.length - 1];
+    const pts = (closed ? sp.pts.slice(0, -1) : sp.pts).map((id) => P(this.data, id));
+    const last = i !== 0, k = last ? pts.length - 1 : 0, nb = last ? k - 1 : 1;
+    const P0 = pts[k], c = P(this.data, arc.c);
+    const rad = norm2(sub2(P0, c));
+    let t: Vec2 = [-rad[1], rad[0]];
+    // spline'ın gidiş yönü (ucundan içeri) teğetle aynı tarafta olsun
+    const inward = sub2(pts[nb], P0);
+    if (t[0] * inward[0] + t[1] * inward[1] < 0) t = [-t[0], -t[1]];
+    // P2: komşu segmentin ikinci kontrol noktası (komşu noktanın tutamağıyla)
+    const hn = splineHandle(pts, closed, nb, sp.h);
+    const P2 = last ? add2(pts[nb], hn) : sub2(pts[nb], hn);
+    const w = sub2(P2, P0), cr = w[0] * t[1] - w[1] * t[0];
+    // eğrilik merkezi yayın merkeziyle aynı tarafta olmalı
+    const side = sub2(c, P0), cs = side[0] * t[1] - side[1] * t[0];
+    if (Math.abs(cr) < 1e-9 || Math.sign(cr) !== Math.sign(cs)) return this.host.toast("Eşit eğrilik bu yönde kurulamıyor (spline yayın öbür tarafına bükülüyor)", true);
+    const L = Math.sqrt((2 * Math.abs(cr) * arc.r) / 3);
+    // ilk noktada tutamak ileri yönde (h), sonda geri yönde (−h) uygulanır
+    const hv: Vec2 = last ? [-t[0] * L, -t[1] * L] : [t[0] * L, t[1] * L];
+    this.setSplineHandle(sp.id, k, hv);
+    this.host.toast(`Eşit eğrilik: R ${fmtNum(arc.r, 2)} · tutamak ${fmtNum(L, 2)} mm`);
+  }
+  /** Tutamağı ayarla (açı ° ve ağırlık mm) ya da sıfırla */
+  setSplineHandle(id: string, i: number, v: Vec2 | null) {
+    this.op(() => {
+      const e = getEnt(this.data, id) as SSpline;
+      const n = e.pts.length;
+      e.h = e.h ?? Array(n).fill(null);
+      e.h[i] = v;
+      if (e.h.every((x) => !x)) delete e.h;
+    });
+  }
 
   private beginDrag(p: Vec2, h: Hit | null) {
     const sk = this.data;
@@ -2635,6 +2790,13 @@ export class SketchEditor implements InputHandler {
     const dr = this.drag;
     if (!dr) return;
     const sk = this.data;
+    if (dr.kind === "handle") {
+      const e = getEnt(sk, dr.ent!) as SSpline;
+      const pp = this.splineHandles(e)[dr.hi!].p;
+      e.h = e.h ?? Array(e.pts.length).fill(null);
+      e.h[dr.hi!] = mul2(sub2(p, pp), dr.hs!);
+      return this.render();
+    }
     const dv = sub2(p, dr.start);
     if (dr.kind === "radius") {
       const e = getEnt(sk, dr.ent!) as SCircle | SArc;
@@ -3882,6 +4044,13 @@ export class SketchEditor implements InputHandler {
       this.addLines(this.entPolyline(e), col, this.sel.has(e.id) || this.hov?.id === e.id ? 3 : 2, !!e.cons);
       // eğrilik tarağı (SolidWorks): seçili spline / konik için normal yönde eğrilikle orantılı dişler + zarf
       if ((e.t === "spline" || e.t === "parabola" || e.t === "ellipse") && this.sel.has(e.id) && this.opts.comb) for (const seg of this.combOf(this.entPolyline(e))) this.addLines(seg, 0xd6336c, 1);
+      // spline tutamakları (seçiliyken): nokta ± tutamak, uçlarda kare; elle verilmiş olanlar mavi
+      if (e.t === "spline" && this.sel.has(e.id))
+        for (const hd of this.splineHandles(e)) {
+          const col = hd.set ? 0x1c7ed6 : 0x868e96, r = 4 * this.wpp();
+          this.addLines([hd.a, hd.b], col, 1.5);
+          for (const t of [hd.a, hd.b]) this.addLines([[t[0] - r, t[1] - r], [t[0] + r, t[1] - r], [t[0] + r, t[1] + r], [t[0] - r, t[1] + r], [t[0] - r, t[1] - r]], col, 1.5);
+        }
     }
     // noktalar
     const ptCols = new Map<number, number[]>();
@@ -4158,6 +4327,14 @@ export class SketchEditor implements InputHandler {
   }
 
   private drawText(e: SText) {
+    const lay = e.on ? textAlong(this.data, e) : null;
+    if (lay) {
+      for (const c of lay) this.drawTextAt({ ...e, on: undefined, text: c.ch, angle: c.angle }, [c.x, c.y]);
+      return;
+    }
+    this.drawTextAt(e, P(this.data, e.p));
+  }
+  private drawTextAt(e: SText, q: Vec2) {
     const el = document.createElement("div");
     const col = this.entColor(e);
     el.className = "sk-text";
@@ -4167,7 +4344,6 @@ export class SketchEditor implements InputHandler {
     el.style.fontSize = px * 1.05 + "px";
     el.style.lineHeight = "1";
     this.labelBox.appendChild(el);
-    const q = P(this.data, e.p);
     // metin taban çizgisi sol alt köşededir
     this.anchors.push({ el, w: this.W(q), dx: 0, dy: 0, text: { angle: e.angle } } as any);
   }
@@ -4429,6 +4605,19 @@ export class SketchEditor implements InputHandler {
     box.appendChild(title);
     const hint = HINTS[this.tool];
     if (hint && (this.tool !== "select" || !this.sel.size)) box.appendChild(h("p", "pm-hint", hint));
+    if (this.blockEdit) {
+      const bx = h("div", "pm-section block-edit");
+      bx.appendChild(h("b", "", `Blok düzenleniyor: ${this.blockEdit.tag.split("#")[0]}`));
+      bx.appendChild(h("p", "pm-hint", "Örneği düzenleyin (yeni çizilen öğeler bloğa katılır). Güncelleyince tanım ve tüm örnekler değişir."));
+      const r = h("div", "pm-buttons");
+      const ok = h("button", "btn primary", "Bloğu güncelle");
+      ok.addEventListener("click", () => this.finishBlockEdit(true));
+      const no = h("button", "btn", "Blok düzenlemeden çık");
+      no.addEventListener("click", () => this.finishBlockEdit(false));
+      r.append(ok, no);
+      bx.appendChild(r);
+      box.appendChild(bx);
+    }
 
     if (this.tool === "block") {
       const lib = loadBlocks();
@@ -4541,6 +4730,11 @@ export class SketchEditor implements InputHandler {
       box.appendChild(this.textField("Metin", this.opts.text, (v) => (this.opts.text = v)));
       box.appendChild(this.numField("Yükseklik (mm)", this.opts.textSize, (v) => (this.opts.textSize = v)));
       box.appendChild(this.numField("Açı (°)", this.opts.textAngle, (v) => (this.opts.textAngle = v), { any: true }));
+      const fs = document.createElement("select");
+      fs.innerHTML = `<option value="">Yazı tipi: Sans</option><option value="bold">Sans kalın</option><option value="serif">Serif</option><option value="mono">Eş aralıklı (mono)</option>`;
+      fs.value = this.opts.textFont;
+      fs.addEventListener("change", () => (this.opts.textFont = fs.value));
+      box.append(fs, h("p", "pm-hint", "Eğri üzerinde metin: bir çizgiye / yaya / spline'a dokunun (ya da önce eğriyi seçin)."));
     }
     if (this.tool === "slot" || this.tool === "cslot") {
       const sl = document.createElement("select");
@@ -4602,6 +4796,26 @@ export class SketchEditor implements InputHandler {
           cb.addEventListener("click", () => (this.toggleComb(), this.renderPanel()));
           box.appendChild(cb);
           if (this.opts.comb) box.appendChild(this.numField("Tarak ölçeği", this.opts.combScale, (v) => ((this.opts.combScale = Math.max(0.05, v)), this.render()), { min: 0.05 } as any));
+          if (e.t === "spline") {
+            box.appendChild(h("p", "pm-hint", "Tutamaklar: uçlarındaki kareleri sürükleyin (yön = teğet, boy = ağırlık)."));
+            const hs = this.splineHandles(e);
+            for (const [k, nm] of [[0, "Başlangıç"], [hs.length - 1, "Bitiş"]] as const) {
+              const v = sub2(hs[k].b, hs[k].p);
+              box.appendChild(this.numField(`${nm} teğet açısı (°)`, +((Math.atan2(v[1], v[0]) * 180) / Math.PI).toFixed(3), (deg) => {
+                const L = Math.hypot(v[0], v[1]) || 1, r = (deg * Math.PI) / 180;
+                this.setSplineHandle(e.id, k, [Math.cos(r) * L, Math.sin(r) * L]);
+              }, { any: true }));
+              box.appendChild(this.numField(`${nm} ağırlığı (mm)`, +Math.hypot(v[0], v[1]).toFixed(3), (L) => {
+                const a = Math.atan2(v[1], v[0]);
+                this.setSplineHandle(e.id, k, [Math.cos(a) * L, Math.sin(a) * L]);
+              }, { min: 0.01 } as any));
+            }
+            if (e.h) {
+              const rb = h("button", "btn", "Tutamakları sıfırla");
+              rb.addEventListener("click", () => this.op(() => delete e.h));
+              box.appendChild(rb);
+            }
+          }
         }
         if (e?.t === "text") {
           box.appendChild(this.textField("Metin", e.text, (v) => this.op(() => (e.text = v))));
@@ -4612,6 +4826,18 @@ export class SketchEditor implements InputHandler {
           fs.value = e.font ?? "";
           fs.addEventListener("change", () => this.op(() => (e.font = fs.value || undefined)));
           box.appendChild(fs);
+          const cs = document.createElement("select");
+          const curves = sk.ents.filter((x) => x.t !== "text" && x.t !== "point");
+          cs.innerHTML = `<option value="">Eğri üzerinde değil</option>` + curves.map((x) => `<option value="${x.id}">Eğri: ${x.id} (${x.t})</option>`).join("");
+          cs.value = e.on ?? "";
+          cs.addEventListener("change", () => this.op(() => (e.on = cs.value || undefined)));
+          box.appendChild(cs);
+          if (e.on) {
+            box.appendChild(this.numField("Harf aralığı (×)", e.sp ?? 1, (v) => this.op(() => (e.sp = Math.max(0.3, v))), { min: 0.3 } as any));
+            const fb = h("button", "btn", "Eğrinin yönünü çevir");
+            fb.addEventListener("click", () => this.op(() => (e.flip = !e.flip)));
+            box.appendChild(fb);
+          }
         }
         const dd = sk.dims.find((x) => x.id === ids[0]);
         if (dd) {
@@ -4649,6 +4875,13 @@ export class SketchEditor implements InputHandler {
         }
         box.appendChild(wrap);
       }
+      // eşit eğrilik (spline ucu ↔ yay): tutamak yönü teğete, boyu eğriliği eşitleyecek şekilde ayarlanır (tek seferlik)
+      const ecu = ids.length === 2 ? this.curvPair(ids) : null;
+      if (ecu) {
+        const b = h("button", "btn rel-btn", "≈ Eşit eğrilik");
+        b.addEventListener("click", () => this.equalCurvature(ids));
+        (box.querySelector(".pm-buttons") ?? box).appendChild(b);
+      }
       const existing = new Map<string, (typeof sk.rels)[0]>();
       ids.forEach((id) => relationsOf(sk, id).forEach((r) => existing.set(r.id, r)));
       if (existing.size) {
@@ -4672,6 +4905,14 @@ export class SketchEditor implements InputHandler {
           if (nm) this.saveBlock(nm);
         });
         box.appendChild(bb);
+        const tag = this.selBlockTag();
+        if (tag && !this.blockEdit) {
+          const eb = h("button", "btn", `Bloğu düzenle (${tag.split("#")[0]})`);
+          eb.addEventListener("click", () => this.editBlock(tag));
+          const xb = h("button", "btn", "Bloğu dağıt");
+          xb.addEventListener("click", () => this.explodeBlock(tag));
+          box.append(eb, xb);
+        }
       }
       const row = h("div", "pm-buttons");
       const cons = h("button", "btn", "Yapı geometrisi");

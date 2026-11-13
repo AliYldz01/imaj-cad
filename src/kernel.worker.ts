@@ -139,9 +139,10 @@ function loopDrawing(l: Loop) {
 
 function textDrawing(t: TextItem) {
   const fam = t.font && FONT_FILES[t.font] ? t.font : "default";
-  let d: any = drawText(t.text, { startX: t.x, startY: t.y, fontSize: t.size, fontFamily: fam });
-  if (t.angle) d = d.rotate(t.angle, [t.x, t.y]);
-  return d;
+  // orijinde çiz, döndür, taşı (replicad startX/startY'yi ters işaretle uyguluyor: metin −x'e kayıyordu)
+  let d: any = drawText(t.text, { startX: 0, startY: 0, fontSize: t.size, fontFamily: fam });
+  if (t.angle) d = d.rotate(t.angle, [0, 0]);
+  return d.translate(t.x, t.y);
 }
 
 function profile(loops: Loop[], texts: TextItem[] = []) {

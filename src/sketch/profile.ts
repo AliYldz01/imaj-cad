@@ -1,7 +1,8 @@
 // Eskizden kapalı konturları (profil), yolları ve ince özellik bölgelerini çıkarır.
 import type { Loop, Seg, SketchData, TextItem, Vec2 } from "../doc/types";
 import { ang, arcMid, circleCircle, d2, lineCircle, lineLine, mul2, add2, sub2, norm2, perp, normAng, pointInPoly, polyArea, TAU } from "./geom";
-import { ellipseGeo, splineBeziers, bez2, bez3 } from "./model";
+import { ellipseGeo, splineBeziers, bez2, bez3, entSamples } from "./model";
+import type { SText } from "../doc/types";
 
 export function pointPos(sk: SketchData, id: string): Vec2 {
   if (id === "O") return [0, 0];
@@ -52,7 +53,7 @@ function collect(sk: SketchData) {
     } else if (e.t === "spline") {
       const closed = e.pts.length > 2 && e.pts[0] === e.pts[e.pts.length - 1];
       const pts = (closed ? e.pts.slice(0, -1) : e.pts).map(P);
-      for (const bz of splineBeziers(pts, closed)) edges.push({ seg: { t: "c", ...bz }, a: key(bz.a), b: key(bz.b), used: false });
+      for (const bz of splineBeziers(pts, closed, e.h)) edges.push({ seg: { t: "c", ...bz }, a: key(bz.a), b: key(bz.b), used: false });
     } else if (e.t === "parabola") {
       const a = P(e.s), b = P(e.e), k = P(e.k);
       const rho = e.rho ?? 0.5;
@@ -67,7 +68,10 @@ function collect(sk: SketchData) {
       }
     } else if (e.t === "text") {
       const p = P(e.p);
-      if (e.text.trim()) texts.push({ text: e.text, x: p[0], y: p[1], size: e.size, angle: e.angle, font: (e as any).font });
+      if (!e.text.trim()) continue;
+      const lay = e.on ? textAlong(sk, e) : null;
+      if (lay) for (const c of lay) texts.push({ text: c.ch, x: c.x, y: c.y, size: e.size, angle: c.angle, font: e.font });
+      else texts.push({ text: e.text, x: p[0], y: p[1], size: e.size, angle: e.angle, font: (e as any).font });
     }
   }
   return { edges, closedLoops, texts };
@@ -278,4 +282,55 @@ export function thinRegion(chains: { segs: Seg[]; closed: boolean }[], t: number
     }
   }
   return loops;
+}
+
+/** Yaklaşık harf genişliği (yükseklik katı) */
+export function charW(ch: string, font?: string) {
+  if (font === "mono") return 0.6;
+  if (ch === " ") return 0.32;
+  if ("iljI.,:;'|!".includes(ch)) return 0.3;
+  if ("MWmw@".includes(ch)) return 0.88;
+  if (/[A-Z0-9ĞÜŞÖÇ]/.test(ch)) return 0.68;
+  return 0.56 * (font === "bold" ? 1.08 : 1);
+}
+/** Eğri üzerinde metin (SolidWorks): her harf eğri boyunca, teğet yönünde; başlangıç = metin noktasının eğrideki izdüşümü */
+export function textAlong(sk: SketchData, e: SText): { ch: string; x: number; y: number; angle: number }[] | null {
+  const cv = sk.ents.find((x) => x.id === e.on);
+  if (!cv || cv.t === "text" || cv.t === "point") return null;
+  let pts = entSamples(sk, cv);
+  if (pts.length < 2) return null;
+  if (e.flip) pts = [...pts].reverse();
+  const L = [0];
+  for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + d2(pts[i - 1], pts[i]));
+  const at = (s: number): { p: Vec2; t: Vec2 } => {
+    const tot = L[L.length - 1];
+    s = Math.max(0, Math.min(tot, s));
+    let i = 1;
+    while (i < L.length - 1 && L[i] < s) i++;
+    const seg = L[i] - L[i - 1] || 1, u = (s - L[i - 1]) / seg;
+    const a = pts[i - 1], b = pts[i];
+    return { p: [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u], t: norm2(sub2(b, a)) };
+  };
+  // başlangıç: metin noktasının izdüşümü
+  const q = pointPos(sk, e.p);
+  let s0 = 0, best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], ab = sub2(b, a), l2 = ab[0] * ab[0] + ab[1] * ab[1] || 1;
+    const u = Math.max(0, Math.min(1, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1]) / l2));
+    const dd = d2(q, [a[0] + ab[0] * u, a[1] + ab[1] * u]);
+    if (dd < best) (best = dd), (s0 = L[i - 1] + u * Math.sqrt(l2));
+  }
+  const out: { ch: string; x: number; y: number; angle: number }[] = [];
+  let acc = s0;
+  const sp = e.sp ?? 1;
+  for (const ch of e.text) {
+    const w = charW(ch, e.font) * e.size * sp;
+    const m = at(acc + w / 2);
+    if (ch !== " ") {
+      const o = add2(m.p, mul2(m.t, -charW(ch, e.font) * e.size / 2));
+      out.push({ ch, x: o[0], y: o[1], angle: (Math.atan2(m.t[1], m.t[0]) * 180) / Math.PI });
+    }
+    acc += w;
+  }
+  return out;
 }

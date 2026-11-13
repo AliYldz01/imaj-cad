@@ -14,13 +14,13 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 ## 2. Eskiz
 - ✅ v0.62 2.1 Radyüs / pah sonrası sanal sivri köşe (köşe ölçüsü korunur)
 - ✅ v0.62 2.2 Yay / daire ölçüsünde merkez / en yakın / en uzak
-- 🟡 v0.62 2.3 İlişkiler: eş yarıçaplı ✅ (zaten vardı), delme ✅; eşit eğrilik ⬜ (spline modeli eğrilik kısıtı desteklemiyor)
+- ✅ v0.64 2.3 İlişkiler: eş yarıçaplı, delme (v0.62), eşit eğrilik (spline ucu ↔ yay; tek seferlik, çözücü kısıtı değil)
 - ✅ v0.62 2.4 Ayrı Taşı / Kopyala / Döndür / Ölçekle komutları, Esnet
-- 🟡 v0.63 2.5 Eğrilik tarağı ✅; spline tutamakları ⬜
+- ✅ v0.64 2.5 Eğrilik tarağı (v0.63), spline tutamakları (sürükle, açı / ağırlık, sıfırla)
 - ✅ v0.62 2.6 Silüet kenarı dönüştürme, döngü / iç döngü seç
 - ✅ v0.63 2.7 Eskiz çoğaltmada örnek atla, kanal ölçü tipi (merkez–merkez / toplam), zincir ölçü
-- 🟡 v0.63 2.8 Metin: yazı tipi (normal / kalın / tırnaklı / eş aralıklı) ✅; eğri üzerinde metin ⬜
-- 🟡 v0.62 2.9 SketchXpert ✅; blok düzenleme modu ⬜
+- ✅ v0.64 2.8 Metin: yazı tipi (v0.63), eğri üzerinde metin (harf aralığı, yön çevir)
+- ✅ v0.64 2.9 SketchXpert (v0.62), blok düzenleme modu (tüm örnekler güncellenir), bloğu dağıt
 - ✅ v0.63 2.10 Eskiz düzlemini değiştir; türetilmiş eskiz (kopya); ızgara adımı + açı yakalama ayarları
 
 ## 3. Parça özellikleri

@@ -92,7 +92,15 @@ export function updateDerived(sk: SketchData) {
 }
 
 /** Spline noktalarından kübik Bezier parçaları (Catmull-Rom) */
-export function splineBeziers(pts: Vec2[], closed: boolean): { a: Vec2; b: Vec2; c1: Vec2; c2: Vec2 }[] {
+/** i. noktadaki tutamak (kontrol noktası ötelemesi): verilmişse o, yoksa Catmull–Rom */
+export function splineHandle(pts: Vec2[], closed: boolean, i: number, h?: (Vec2 | null)[]): Vec2 {
+  if (h?.[i]) return h[i]!;
+  const n = pts.length;
+  const get = (k: number): Vec2 => (closed ? pts[((k % n) + n) % n] : pts[Math.max(0, Math.min(n - 1, k))]);
+  const a = get(i - 1), b = get(i + 1);
+  return [(b[0] - a[0]) / 6, (b[1] - a[1]) / 6];
+}
+export function splineBeziers(pts: Vec2[], closed: boolean, h?: (Vec2 | null)[]): { a: Vec2; b: Vec2; c1: Vec2; c2: Vec2 }[] {
   const n = pts.length;
   const out: { a: Vec2; b: Vec2; c1: Vec2; c2: Vec2 }[] = [];
   if (n < 2) return out;
@@ -103,8 +111,8 @@ export function splineBeziers(pts: Vec2[], closed: boolean): { a: Vec2; b: Vec2;
     out.push({
       a: p1,
       b: p2,
-      c1: [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6],
-      c2: [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6],
+      c1: h?.[i] ? [p1[0] + h[i]![0], p1[1] + h[i]![1]] : [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6],
+      c2: h?.[(i + 1) % n] ? [p2[0] - h[(i + 1) % n]![0], p2[1] - h[(i + 1) % n]![1]] : [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6],
     });
   }
   return out;
@@ -154,7 +162,7 @@ export function entSamples(sk: SketchData, e: SEnt): Vec2[] {
       const closed = e.pts.length > 2 && e.pts[0] === e.pts[e.pts.length - 1];
       const pts = (closed ? e.pts.slice(0, -1) : e.pts).map((id) => P(sk, id));
       const out: Vec2[] = [];
-      for (const b of splineBeziers(pts, closed)) for (let i = out.length ? 1 : 0; i <= 16; i++) out.push(bez3(b.a, b.c1, b.c2, b.b, i / 16));
+      for (const b of splineBeziers(pts, closed, e.h)) for (let i = out.length ? 1 : 0; i <= 16; i++) out.push(bez3(b.a, b.c1, b.c2, b.b, i / 16));
       return out;
     }
     case "parabola": {

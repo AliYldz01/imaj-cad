@@ -34,6 +34,14 @@ export function copyEnts(
       ne.id = nid(sk, e.t[0]);
       for (const key of ["c", "a", "s", "e", "k", "p"]) if (typeof ne[key] === "string") ne[key] = ptOf(ne[key]);
       if (ne.pts) ne.pts = ne.pts.map(ptOf);
+      if (e.t === "spline" && e.h) {
+        const hv = (v: Vec2 | null, i: number) => {
+          if (!v) return null;
+          const q = P(sk, e.pts[i]), a = map(q), b = map([q[0] + v[0], q[1] + v[1]]);
+          return [b[0] - a[0], b[1] - a[1]] as Vec2;
+        };
+        ne.h = e.h.map(hv);
+      }
       if (e.t === "ellipse") ne.rb = e.rb * k;
       if (e.t === "text") ne.size = e.size * k;
       sk.ents.push(ne);
@@ -151,6 +159,13 @@ export function moveEnts(sk: SketchData, ents: SEnt[], o: { dx: number; dy: numb
     ents.forEach((e) => entPoints(e).forEach((p) => pts.add(p)));
     sk.dims = sk.dims.filter((d) => !d.refs.some((r) => pts.has(r) || ents.some((e) => e.id === r)));
   }
+  for (const e of ents)
+    if (e.t === "spline" && e.h)
+      e.h = e.h.map((v, i) => {
+        if (!v) return null;
+        const q = P(sk, e.pts[i]), a = f(q), b = f([q[0] + v[0], q[1] + v[1]]);
+        return [b[0] - a[0], b[1] - a[1]] as Vec2;
+      });
   const pts = new Set<string>();
   ents.forEach((e) => entPoints(e).forEach((p) => p !== ORIGIN && pts.add(p)));
   for (const id of pts) {

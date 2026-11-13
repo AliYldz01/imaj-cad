@@ -630,3 +630,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.62 | Eskiz: sanal sivri köşe, yay koşulu, ayrı Taşı/Kopyala/Döndür/Ölçekle/Esnet, yüz döngüsü + silüet dönüştürme, delme ilişkisi, çoğaltmada örnek atla, SketchXpert | ✅ |
 
 | v0.63 | Eskiz: kanal ölçü tipi, zincir ölçü, ızgara / açı yakalama ayarı, eğrilik tarağı, metin yazı tipi, eskiz düzlemini değiştir, türetilmiş eskiz | ✅ |
+
+| v0.64 | Eskiz: blok düzenleme / dağıtma, eğri üzerinde metin, spline tutamakları, eşit eğrilik; metin konumu düzeltmesi | ✅ |

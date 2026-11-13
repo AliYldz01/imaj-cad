@@ -27,6 +27,8 @@ interface EntBase {
   id: string;
   /** Yapı geometrisi (merkez çizgisi vb.) — katıya katılmaz */
   cons?: boolean;
+  /** Blok örneği etiketi "ad#n" (blok düzenleme / dağıtma) */
+  blk?: string;
 }
 export interface SPointEnt extends EntBase { t: "point"; p: string }
 export interface SLine extends EntBase { t: "line"; p1: string; p2: string }
@@ -36,11 +38,11 @@ export interface SArc extends EntBase { t: "arc"; c: string; s: string; e: strin
 /** Elips: merkez c, büyük eksen ucu a, küçük yarıçap rb. t0/t1 varsa kısmi elips (s, e uç noktaları türetilir) */
 export interface SEllipse extends EntBase { t: "ellipse"; c: string; a: string; rb: number; t0?: number; t1?: number; s?: string; e?: string }
 /** Noktalardan geçen spline */
-export interface SSpline extends EntBase { t: "spline"; pts: string[] }
+export interface SSpline extends EntBase { t: "spline"; pts: string[]; /** spline tutamakları: noktadaki kontrol noktası ötelemesi (mm; teğet yönü × ağırlık), null = otomatik */ h?: (Vec2 | null)[] }
 /** Parabol (ikinci derece Bezier): başlangıç, bitiş, kontrol noktası */
 export interface SParabola extends EntBase { t: "parabola"; s: string; e: string; k: string; /** konik: rho (0,5 = parabol, <0,5 elips, >0,5 hiperbol) */ rho?: number }
 /** Eskiz metni */
-export interface SText extends EntBase { t: "text"; p: string; text: string; size: number; angle: number; font?: string }
+export interface SText extends EntBase { t: "text"; p: string; text: string; size: number; angle: number; font?: string; /** eğri üzerinde metin: eğri öğesinin kimliği */ on?: string; /** harf aralığı katsayısı (1 = normal) */ sp?: number; /** eğrinin öbür tarafına çevir */ flip?: boolean }
 export type SEnt = SPointEnt | SLine | SCircle | SArc | SEllipse | SSpline | SParabola | SText;
 
 export type RelType =
