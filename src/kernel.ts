@@ -1,7 +1,7 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, CutItem, WeldItem, DrawData, Vec3 } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, CutItem, WeldItem, DrawData, Vec3, RefHeals } from "./doc/types";
 
-export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members: { key: string; name: string; body: number }[] };
+export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members: { key: string; name: string; body: number }[]; heals?: RefHeals };
 
 export class Kernel {
   private worker: Worker;
@@ -47,7 +47,7 @@ export class Kernel {
     await this.ready;
     const fontUrl = new URL("fonts/DejaVuSans.ttf", document.baseURI).href;
     const r = await this.request<BuildResult>({ type: "build", features, fontUrl } as any);
-    return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {}, members: r.members ?? [] };
+    return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {}, members: r.members ?? [], heals: r.heals };
   }
 
   async export(format: "step" | "stl"): Promise<{ blob: Blob | null; message?: string }> {

@@ -17,6 +17,9 @@ Yöntem: 77 e2e test + 6 deneme senaryosu + kod taraması (`SOLIDWORKS_OZELLIKLE
 8. Çarpışma algılama sınır kutusuyla (`worldBox`).
 9. Kayıtlar "STL içe aktarma" diyor; menüde yalnız STEP içe aktarma var.
 
+## Durum
+- v0.36: Paket 0 ✅, Paket 1 kalıcı referanslar ✅ (testi `kr1`); kalan: yeniden seç penceresi, delik konumu ölçüsü.
+
 ## Önerilen sıra
 0. Esc gerilemesi + 4 eski test + kayıt düzeltmesi
 1. Kalıcı referanslar (üreten özellik + eskiz öğesi + konum türüyle adlandırma; bulunamazsa uyarı + yeniden seç)

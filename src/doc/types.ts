@@ -111,7 +111,9 @@ export const ORIGIN = "O";
 // ---------------- Özellikler ----------------
 
 /** Kenar referansı: orta noktası ve (doğrusalsa) yönü ile geometrik olarak saklanır */
-export interface EdgeRef { m: Vec3; d?: Vec3 | null }
+export interface EdgeRef { m: Vec3; d?: Vec3 | null; /** kalıcı referans imzası (worker doldurur) */ s?: any }
+/** worker'ın döndürdüğü referans onarımları: anahtar = eski konum (3 ondalık) */
+export type RefHeals = { e: Record<string, { m: Vec3; s: any }>; f: Record<string, { c: Vec3; s: any }> };
 /** Yüz referansı: merkezi ve normali */
 export interface FaceRef { c: Vec3; n?: Vec3 | null; /** silindirik yüz yarıçapı (aynı merkezli yüzleri ayırmak için) */ r?: number }
 
@@ -816,7 +818,7 @@ export type KernelRequest =
 export type KernelResponse =
   | { type: "ready" }
   | { type: "fatal"; message: string }
-  | { id: number; type: "built"; mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members?: { key: string; name: string; body: number }[] }
+  | { id: number; type: "built"; mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members?: { key: string; name: string; body: number }[]; heals?: RefHeals }
   | { id: number; type: "measured"; lines: string[] }
   | { id: number; type: "section"; items: SectionItem[] }
   | { id: number; type: "props"; props: MassProps | null }

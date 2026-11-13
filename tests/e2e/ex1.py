@@ -20,16 +20,17 @@ with sync_playwright() as p:
     # 1) boş eskiz: Esc sormadan çıkar
     n0 = nfe(); new_sketch(); chk("eskiz açık", md() == "sketch")
     pg.mouse.move(700, 450)
-    for _ in range(3):
-        if md() == "sketch": pg.keyboard.press("Escape"); time.sleep(0.3)
-    chk("boş eskiz Esc → soru yok, çıktı", not dlg() and md() == "part" and nfe() == n0, (md(), nfe()))
+    for _ in range(3): pg.keyboard.press("Escape"); time.sleep(0.2)
+    chk("eskizde Esc eskizden çıkmaz (SolidWorks)", not dlg() and md() == "sketch", md())
+    pg.click("#pm-cancel"); time.sleep(0.3)
+    chk("boş eskiz ✕ → soru yok, çıktı", not dlg() and md() == "part" and nfe() == n0, (md(), nfe()))
     # 2) çizim varken Esc → soru; Vazgeç → eskizde kalır
-    new_sketch(); draw_line(); pg.evaluate(f"{ed}.setTool('select')"); pg.keyboard.press("Escape"); time.sleep(0.3)
-    chk("çizimli eskiz Esc → soru", dlg())
+    new_sketch(); draw_line(); pg.evaluate(f"{ed}.setTool('select')"); pg.click("#pm-cancel"); time.sleep(0.3)
+    chk("çizimli eskiz ✕ → soru", dlg())
     pg.click("dialog.exit-dialog button[data-v=stay]"); time.sleep(0.2)
     chk("Vazgeç → eskizde, çizim duruyor", md() == "sketch" and pg.evaluate(f"{ed}.data.ents.length") == 1)
     # pencerede Esc = Vazgeç
-    pg.keyboard.press("Escape"); time.sleep(0.3); chk("ikinci Esc → soru", dlg())
+    pg.click("#pm-cancel"); time.sleep(0.3); chk("ikinci ✕ → soru", dlg())
     pg.keyboard.press("Escape"); time.sleep(0.3)
     chk("pencerede Esc = Vazgeç", not dlg() and md() == "sketch")
     # 3) ✕ → soru → Kaydetmeden çık

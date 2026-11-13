@@ -44,7 +44,9 @@ with sync_playwright() as p:
     print("radii undef:", pg.evaluate("(()=>{const e=window.__app.mode.editor; return e.data.ents.filter(x=>(x.t==='arc'||x.t==='circle')&&!e.defined.radii.has(x.id)).map(x=>x.id)})()"))
     # referans ölçü: zaten tanımlı çizgiye ölçü → referans önerisi
     pg.screenshot(path=out+"2_defined.png")
-    pg.click("#pm-cancel"); time.sleep(0.5); wait_ready(pg)
+    pg.click("#pm-cancel"); time.sleep(0.5)
+    if pg.query_selector("dialog.exit-dialog[open]"): pg.click("dialog.exit-dialog button[data-v=discard]"); time.sleep(0.3)
+    wait_ready(pg)
     # kesişim eğrisi: Üst düzlemde eskiz (kutuyu keser)
     pg.click("#tree li:has-text('Sağ Düzlem')"); pg.click("#tree-actions button:has-text('Eskiz')"); time.sleep(0.3); zoom()
     tool("Kesişim Eğr."); clk((0,0)); time.sleep(0.8); print("isect:", ents(), st())

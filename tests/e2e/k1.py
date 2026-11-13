@@ -32,7 +32,7 @@ with sync_playwright() as p:
     run(pg,"fill pattern", base+[{"id":"fp","type":"fpattern","name":"FP","feats":["h1"],"face":{"c":[100,10,-60],"n":[0,1,0]},"spacing":25,"layout":"stagger","margin":8,"angle":0}])
     # diş
     cyl = sketch("s7","C",TOP, lambda pt,line,rect,circle,text: circle(0,0,10))
-    run(pg,"thread M20", [cyl, ext("c1","s7",d1=40), {"id":"th","type":"thread","name":"T","face":{"c":[0,20,0],"r":10},"pitch":2.5,"length":30,"left":False,"fromEnd":True}])
+    run(pg,"thread M20", [cyl, ext("c1","s7",d1=40), {"id":"th","type":"thread","name":"T","face":{"c":[0,20,6.37],"r":10},"pitch":2.5,"length":30,"left":False,"fromEnd":True}])
     # esnet
     bar = sketch("s8","B",FRONT, lambda pt,line,rect,circle,text: rect(0,0,200,20))
     for mode,val in [("bend",90),("twist",90),("taper",0.5),("stretch",1.5)]:

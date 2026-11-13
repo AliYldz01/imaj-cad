@@ -234,7 +234,16 @@ function planarFace(ref: FaceRef): { c: Vec3; n: Vec3; face: any } | null {
       best = { c, n: planar ? vnorm(tup(face.normalAt(c))) : [0, 0, 0], face };
     }
   }
-  return best && bd < 2 ? best : null;
+  if (best && bd < 2) {
+    if (!(ref as any).s) heals.f[refKey(ref.c)] = faceSig(best.face, bbAll());
+    return best;
+  }
+  const B = bbAll();
+  const f = faceBySig(ref, allFaces(), new Set(), B);
+  if (!f) return null;
+  heals.f[refKey(ref.c)] = faceSig(f, B);
+  const c = tup(f.center);
+  return { c, n: String(f.geomType) === "PLANE" ? vnorm(tup(f.normalAt(c))) : [0, 0, 0], face: f };
 }
 
 /** Profil yüzüne değen parçalar */
@@ -627,10 +636,54 @@ function wrapTool(f: Extract<KFeature, { type: "wrap" }>) {
   return { solid: tool.intersect(ring), cut: f.mode === "deboss" };
 }
 
-/** Saklanan geometrik referansa en yakın kenarları bulur */
+// ---------- Kalıcı referanslar ----------
+// Kenar / yüz önce kayıtlı konumla (2 mm) aranır. Bulunamazsa kayıtlı imza (tür, yön, komşu düz yüz
+// normalleri, yarıçap, gövde sınır kutusuna göre göreli konum `u`) ile en uygun aday seçilir.
+// Bulunan referansın imzası ve yeni konumu ana iş parçacığına "heals" olarak döner; belge kendini onarır.
+let heals: { e: Record<string, any>; f: Record<string, any> } = { e: {}, f: {} };
+const refKey = (v: Vec3) => v.map((x) => (+x).toFixed(3)).join(",");
+function bbAll(): { lo: Vec3; sz: Vec3 } {
+  const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const b of bodies) {
+    try {
+      const [a, c] = (b as any).boundingBox.bounds;
+      for (let i = 0; i < 3; i++) (lo[i] = Math.min(lo[i], a[i])), (hi[i] = Math.max(hi[i], c[i]));
+    } catch {}
+  }
+  if (!isFinite(lo[0])) return { lo: [0, 0, 0], sz: [1, 1, 1] };
+  return { lo, sz: [0, 1, 2].map((i) => Math.max(hi[i] - lo[i], 1e-3)) as Vec3 };
+}
+const relU = (p: Vec3, B: { lo: Vec3; sz: Vec3 }): Vec3 => [0, 1, 2].map((i) => (p[i] - B.lo[i]) / B.sz[i]) as Vec3;
+const r4 = (v: Vec3): Vec3 => v.map((x) => Math.round(x * 1e4) / 1e4) as Vec3;
+function planeNormalsOfEdge(h: number): Vec3[] {
+  const out: Vec3[] = [];
+  for (const f of allFaces()) {
+    if (String(f.geomType) !== "PLANE" || !(f.edges as any[]).some((x) => x.hashCode === h)) continue;
+    try {
+      const c = tup(f.center);
+      out.push(r4(vnorm(tup(f.normalAt(c)))));
+    } catch {}
+  }
+  return out;
+}
+function edgeSig(e: any, B: { lo: Vec3; sz: Vec3 }) {
+  const t = String(e.geomType);
+  const m = tup(e.pointAt(0.5));
+  const s: any = { t, u: r4(relU(m, B)), fn: planeNormalsOfEdge(e.hashCode) };
+  if (t === "LINE") s.d = r4(vnorm(vsub(tup(e.pointAt(1)), tup(e.pointAt(0)))));
+  else {
+    const c = circle3d(tup(e.pointAt(0)), m, tup(e.pointAt(1)));
+    if (c) s.r = +c.r.toFixed(4);
+  }
+  return { m: r4(m), s };
+}
+const normalsMatch = (a: Vec3[], b: Vec3[]) => a.length === b.length && a.every((n) => b.some((k) => vdot(n, k) > 0.999));
+/** Saklanan geometrik referansa en yakın kenarları bulur (bulunamazsa imzayla) */
 function matchEdges(refs: EdgeRef[]): Set<number> {
-  const info = allEdges().map((e) => ({ h: e.hashCode, m: tup(e.pointAt(0.5)) }));
+  const edges = allEdges();
+  const info = edges.map((e) => ({ e, h: e.hashCode, m: tup(e.pointAt(0.5)) }));
   const out = new Set<number>();
+  let B: { lo: Vec3; sz: Vec3 } | null = null;
   for (const r of refs) {
     let best: (typeof info)[0] | null = null;
     let bd = Infinity;
@@ -638,22 +691,91 @@ function matchEdges(refs: EdgeRef[]): Set<number> {
       const d = vlen(vsub(i.m, r.m));
       if (d < bd) [bd, best] = [d, i];
     }
-    if (best && bd < 2) out.add(best.h);
+    if (best && bd < 2) {
+      out.add(best.h);
+      if (!(r as any).s) {
+        B ??= bbAll();
+        heals.e[refKey(r.m)] = edgeSig(best.e, B);
+      }
+      continue;
+    }
+    const sg = (r as any).s;
+    if (!sg) continue;
+    B ??= bbAll();
+    const sc: { i: (typeof info)[0]; v: number }[] = [];
+    for (const i of info) {
+      if (String(i.e.geomType) !== sg.t || out.has(i.h)) continue;
+      if (sg.d && i.e.geomType === "LINE") {
+        const d = vnorm(vsub(tup(i.e.pointAt(1)), tup(i.e.pointAt(0))));
+        if (Math.abs(vdot(d, sg.d)) < 0.999) continue;
+      }
+      if (sg.fn && !normalsMatch(sg.fn, planeNormalsOfEdge(i.h))) continue;
+      const u = relU(i.m, B);
+      sc.push({ i, v: vlen(vsub(u, sg.u)) + (sg.r && i.e.geomType !== "LINE" ? 0 : 0) });
+    }
+    sc.sort((a, b) => a.v - b.v);
+    if (sc.length && sc[0].v < 0.35 && (sc.length < 2 || sc[1].v - sc[0].v > 0.03)) {
+      out.add(sc[0].i.h);
+      heals.e[refKey(r.m)] = edgeSig(sc[0].i.e, B);
+    }
   }
   return out;
 }
+function faceSig(f: any, B: { lo: Vec3; sz: Vec3 }) {
+  const t = String(f.geomType);
+  const c = tup(f.center);
+  const s: any = { t, u: r4(relU(c, B)) };
+  if (t === "PLANE")
+    try {
+      s.n = r4(vnorm(tup(f.normalAt(c))));
+    } catch {}
+  if (t === "CYLINDRE")
+    try {
+      s.r = +cylinderParams(f).rho.toFixed(4);
+    } catch {}
+  return { c: r4(c), s };
+}
+/** Konumla bulunamayan yüzü imzayla bul */
+function faceBySig(ref: FaceRef, faces: any[], taken: Set<number>, B: { lo: Vec3; sz: Vec3 }): any | null {
+  const sg = (ref as any).s;
+  if (!sg) return null;
+  const diag = vlen(B.sz);
+  const sc: { f: any; v: number }[] = [];
+  for (const f of faces) {
+    if (String(f.geomType) !== sg.t || taken.has(f.hashCode)) continue;
+    const c = tup(f.center);
+    let v = vlen(vsub(relU(c, B), sg.u));
+    if (sg.n) {
+      try {
+        if (vdot(vnorm(tup(f.normalAt(c))), sg.n) < 0.999) continue;
+      } catch {
+        continue;
+      }
+    }
+    if (sg.r !== undefined)
+      try {
+        v += Math.abs(cylinderParams(f).rho - sg.r) / diag;
+      } catch {}
+    sc.push({ f, v });
+  }
+  sc.sort((a, b) => a.v - b.v);
+  if (sc.length && sc[0].v < 0.35 && (sc.length < 2 || sc[1].v - sc[0].v > 0.03)) return sc[0].f;
+  return null;
+}
 
 function matchFaces(refs: FaceRef[]): Set<number> {
-  const info = allFaces().map((f) => {
+  const faces = allFaces();
+  const info = faces.map((f) => {
     const c = tup(f.center);
     let n: Vec3 | null = null;
     if (String(f.geomType) === "PLANE")
       try {
         n = vnorm(tup(f.normalAt(c)));
       } catch {}
-    return { h: f.hashCode, c, n };
+    return { h: f.hashCode, c, n, f };
   });
   const out = new Set<number>();
+  let B: { lo: Vec3; sz: Vec3 } | null = null;
   for (const r of refs) {
     let best: (typeof info)[0] | null = null;
     let bd = Infinity;
@@ -661,7 +783,20 @@ function matchFaces(refs: FaceRef[]): Set<number> {
       const d = vlen(vsub(i.c, r.c)) + (r.n && i.n ? (1 - vdot(i.n, r.n)) * 5 : 0);
       if (d < bd) [bd, best] = [d, i];
     }
-    if (best && bd < 2) out.add(best.h);
+    if (best && bd < 2) {
+      out.add(best.h);
+      if (!(r as any).s) {
+        B ??= bbAll();
+        heals.f[refKey(r.c)] = faceSig(best.f, B);
+      }
+      continue;
+    }
+    B ??= bbAll();
+    const f = faceBySig(r, faces, out, B);
+    if (f) {
+      out.add(f.hashCode);
+      heals.f[refKey(r.c)] = faceSig(f, B);
+    }
   }
   return out;
 }
@@ -2856,6 +2991,7 @@ async function build(id: number, features: KFeature[]) {
   const errors: { featureId: string; message: string }[] = [];
   bodies = [];
   frames = {};
+  heals = { e: {}, f: {} };
   tools.clear();
   memberReg = new Map();
   welds = [];
@@ -2868,7 +3004,7 @@ async function build(id: number, features: KFeature[]) {
     }
   }
   const a = all();
-  if (!a) return post({ id, type: "built", mesh: null, errors, frames });
+  if (!a) return post({ id, type: "built", mesh: null, errors, frames, heals });
   try {
     const mesh = toMesh(a);
     freeAll(a);
@@ -2882,7 +3018,7 @@ async function build(id: number, features: KFeature[]) {
     }
     let members: { key: string; name: string; body: number }[] = [];
     if (memberReg.size) members = [...memberBodyMap()].map(([key, body]) => ({ key, name: memberReg.get(key)!.name, body }));
-    post({ id, type: "built", mesh, errors, frames, members }, [
+    post({ id, type: "built", mesh, errors, frames, members, heals }, [
       mesh.vertices.buffer,
       mesh.normals.buffer,
       mesh.triangles.buffer,
@@ -2892,7 +3028,7 @@ async function build(id: number, features: KFeature[]) {
     ]);
   } catch (e) {
     errors.push({ featureId: "", message: "Görüntü üretilemedi: " + errMsg(e) });
-    post({ id, type: "built", mesh: null, errors, frames });
+    post({ id, type: "built", mesh: null, errors, frames, heals });
   }
 }
 

@@ -504,3 +504,11 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Elips (eğik de olabilir; eksene yakınsa yatay/dikey) | ✅ |
 | Eskizde / özellik panelinde Esc, ✕ ve telefon geri tuşu: değişiklik varsa "Çıkmak istediğinize emin misiniz?" (Kaydet ve çık / Kaydetmeden çık / Vazgeç) | ✅ |
 | Sayfa kapatılırken uyarı (açık işlemde değişiklik varsa) | ✅ |
+
+## v0.36 — Kalıcı referanslar
+| Özellik | Durum |
+|---|---|
+| Önceki ölçü değişince radyüs, pah, kabuk, koniklik, kenar flanşı, diş vb. kenar/yüzünü bulmaya devam eder (imzayla eşleme + belgeye onarım) | ✅ |
+| Eskizde Esc eskizden çıkmaz (SolidWorks gibi); ✕ ve geri tuşu sormaya devam eder | ✅ |
+| Bulunamayan referans için "yeniden seç" penceresi | ⬜ |
+| Delik sihirbazı konumlarını kenara ölçülendirme | ⬜ |

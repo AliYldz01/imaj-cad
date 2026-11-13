@@ -1,6 +1,7 @@
 import "./style.css";
 import { Viewer, type InputHandler, type PickHit } from "./viewer";
 import { Kernel } from "./kernel";
+import type { RefHeals } from "./doc/types";
 import { initSolver } from "./sketch/solver";
 import { SketchEditor, TOOL_NAMES, type SkTool } from "./sketch/editor";
 import { newSketch } from "./sketch/model";
@@ -275,6 +276,23 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
   return { feats: all };
 }
 
+/** worker'ın kalıcı referans onarımlarını belgeye işle (geri alma yığınına girmez) */
+function applyHeals(h: RefHeals) {
+  const ek = Object.keys(h.e).length, fk = Object.keys(h.f).length;
+  if (!ek && !fk) return;
+  const key = (v: number[]) => v.map((x) => (+x).toFixed(3)).join(",");
+  const isV3 = (v: any) => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
+  let n = 0;
+  const walk = (o: any) => {
+    if (!o || typeof o !== "object") return;
+    if (Array.isArray(o)) return o.forEach(walk);
+    if (isV3(o.m) && !("a" in o) && h.e[key(o.m)]) Object.assign(o, h.e[key(o.m)]), n++;
+    else if (isV3(o.c) && !("o" in o) && h.f[key(o.c)] && Object.keys(o).every((k) => ["c", "n", "r", "s"].includes(k))) Object.assign(o, h.f[key(o.c)]), n++;
+    for (const k in o) if (k !== "data" && k !== "s") walk(o[k]);
+  };
+  doc.features.forEach(walk);
+  if (n) saveDoc();
+}
 async function rebuild() {
   if (asmUI?.on) return;
   if (building) {
@@ -298,6 +316,7 @@ async function rebuild() {
         if (sf.plane.face) sf.plane.face = { ...sf.plane.face, c: [sf.plane.face.c[0] + (fr.o[0] - sf.plane.face.c[0]) * Math.abs(fr.n[0]), sf.plane.face.c[1] + (fr.o[1] - sf.plane.face.c[1]) * Math.abs(fr.n[1]), sf.plane.face.c[2] + (fr.o[2] - sf.plane.face.c[2]) * Math.abs(fr.n[2])] };
       }
     }
+    if (res.heals) applyHeals(res.heals);
     viewer.setModel(res.mesh);
     memberBodies = res.members;
     const errs = new Map(errors);
@@ -4721,8 +4740,7 @@ function escAction() {
     if (mode.k === "sketch") {
       if (mode.editor.isDrawing()) mode.editor.finishChain();
       else if (mode.editor.tool !== "select") mode.editor.setTool("select");
-      else if (mode.editor.sel.size) mode.editor.sel.clear(), mode.editor.render(), mode.editor.renderPanel();
-      else return void guardedCancel(true);
+      else mode.editor.sel.clear(), mode.editor.render(), mode.editor.renderPanel();
       renderCommands();
     } else if (mode.k === "pickSketchPlane") cancelPick();
     else if (mode.k === "pm") void guardedCancel(true);

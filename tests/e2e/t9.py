@@ -24,4 +24,5 @@ with sync_playwright() as p:
         tool("Tam Tanımla"); time.sleep(0.4)
         print(name, "|", before, "->", pg.inner_text("#status-text"))
         pg.click("#pm-cancel"); time.sleep(0.4)
+        if pg.query_selector("dialog.exit-dialog[open]"): pg.click("dialog.exit-dialog button[data-v=discard]"); time.sleep(0.3)
     b.close()
