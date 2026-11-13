@@ -869,11 +869,26 @@ export class Viewer {
     this.applyStyle();
   }
   /** Analiz renklendirmesi (koniklik analizi vb.): köşe normaline göre renk; null = kapalı */
-  analysis: ((n: [number, number, number]) => number) | null = null;
-  setAnalysis(fn: ((n: [number, number, number]) => number) | null) {
+  analysis: ((n: [number, number, number], i: number) => number) | null = null;
+  setAnalysis(fn: ((n: [number, number, number], i: number) => number) | null) {
     this.analysis = fn;
     this.applyColors();
     this.applyStyle();
+  }
+  /** analiz: köşe yer değiştirmesi (null = asıl şekil); kenarlar gizlenir */
+  setDeform(d: Float32Array | null) {
+    if (!this.modelMesh || !this.mesh) return;
+    const g = this.modelMesh.geometry as THREE.BufferGeometry;
+    const v = this.mesh.vertices;
+    if (!d) g.setAttribute("position", new THREE.BufferAttribute(v, 3));
+    else {
+      const p = new Float32Array(v.length);
+      for (let i = 0; i < v.length; i++) p[i] = v[i] + d[i];
+      g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+    }
+    g.computeBoundingSphere();
+    if (this.edgeObj) this.edgeObj.visible = !d && this.displayStyle !== "shaded";
+    this.requestRender();
   }
   private colorsOn() {
     return this.faceColors.size > 0 || !!this.analysis;
@@ -883,7 +898,7 @@ export class Viewer {
     const g = this.modelMesh.geometry as THREE.BufferGeometry;
     if (this.analysis) {
       const nr = this.mesh.normals as ArrayLike<number>, n = nr.length / 3, col = new Float32Array(n * 3), c = new THREE.Color();
-      for (let i = 0; i < n; i++) c.setHex(this.analysis([nr[i * 3], nr[i * 3 + 1], nr[i * 3 + 2]])).toArray(col, i * 3);
+      for (let i = 0; i < n; i++) c.setHex(this.analysis([nr[i * 3], nr[i * 3 + 1], nr[i * 3 + 2]], i)).toArray(col, i * 3);
       g.setAttribute("color", new THREE.BufferAttribute(col, 3));
       (this.modelMesh.material as THREE.MeshStandardMaterial).vertexColors = true;
       return;

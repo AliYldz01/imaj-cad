@@ -71,7 +71,7 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.75 9.2 Kumpas: Bluetooth (Sylvac / Nordic UART / HM-10 köprü, metin ya da µm) + klavye (HID) kumpası; gerçek cihazla deneme kullanıcıda
 
 ## 10. İleri
-- ⬜ 10.1 Sonlu eleman analizi
+- ✅ v0.76 10.1 Sonlu eleman analizi (doğrusal statik, voksel ağ, sabitleme / kuvvet / basınç / öz ağırlık, von Mises + yer değiştirme renkleri, abartılı şekil)
 
 ## 11. Bakım
 - ⬜ 11.1 `sk1` testini onar

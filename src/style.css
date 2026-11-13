@@ -517,3 +517,6 @@ dialog.photo-dlg textarea { width: 100%; min-height: 60px; box-sizing: border-bo
 .photo-th img { width: 100%; height: 90px; object-fit: cover; border-radius: 4px; }
 .cal-badge { position: fixed; right: 10px; bottom: 70px; z-index: 30; background: #1f6feb; color: #fff; border: 0; border-radius: 16px; padding: 6px 12px; font-weight: 600; }
 dialog.cal-dlg .cal-last { font-size: 28px; font-weight: 700; text-align: center; margin: 8px 0; }
+.fea-panel { max-height: calc(100% - 20px); overflow: auto; width: 270px; }
+.fea-leg { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0; }
+.fea-leg i { flex: 1; height: 10px; border-radius: 3px; background: linear-gradient(90deg, hsl(240 95% 50%), hsl(180 95% 50%), hsl(120 95% 50%), hsl(60 95% 50%), hsl(0 95% 50%)); }

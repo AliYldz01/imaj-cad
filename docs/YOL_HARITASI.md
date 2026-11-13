@@ -654,3 +654,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.74 | Telefon / kalemsiz: panelde derinlik oku, aday çubuğu, sihirbaz tam tanımlı, fotoğraftan kenar izleme, sesle ölçü | ✅ |
 
 | v0.75 | Saha: modele fotoğraf notları, Bluetooth / klavye kumpası ile ölçü girişi | ✅ |
+
+| v0.76 | Sonlu eleman analizi (doğrusal statik, voksel ağ, kuvvet / basınç / öz ağırlık, von Mises / yer değiştirme, abartılı şekil) | ✅ |

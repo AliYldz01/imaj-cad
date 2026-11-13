@@ -32,6 +32,7 @@ import { ICONS } from "./ui/icons";
 import { WIZARDS } from "./ui/wizards";
 import { parseSpokenNumbers, voiceSupported, listenOnce } from "./input/voice";
 import { Photos, Caliper, decodeCaliper } from "./ui/field";
+import { sampleField, type FeaResult } from "./fea/fea";
 import { AsmUI } from "./asm/asmui";
 import { loadLib } from "./asm/assembly";
 import { loadBlocks } from "./sketch/editor";
@@ -956,6 +957,11 @@ async function rebuild() {
     viewer.setModel(res.mesh);
     void ghostPreview(feats);
     applyLook();
+    if (fea) {
+      if (fea.vf && res.mesh && fea.vf.length !== res.mesh.vertices.length / 3) (fea.res = undefined), (fea.field = fea.disp = undefined), renderFea();
+      fea.vf = undefined;
+      feaPaint();
+    }
     memberBodies = res.members;
     const errs = new Map(errors);
     res.errors.forEach((e) => errs.set(e.featureId.split("~")[0], e.message));
@@ -5440,6 +5446,210 @@ function toggleDraftAnalysis() {
   applyDraftAnalysis();
   renderCommands();
 }
+// ---------- Sonlu eleman analizi (doğrusal statik) ----------
+const NU: Record<string, number> = { aluminium: 0.33, brass: 0.34, copper: 0.34, titanium: 0.34, castiron: 0.26, pom: 0.35, pa6: 0.39, pe: 0.42, abs: 0.35, pla: 0.36, wood: 0.3 };
+const FEA_DIRS: [string, [number, number, number]][] = [["−Y", [0, -1, 0]], ["+Y", [0, 1, 0]], ["−X", [-1, 0, 0]], ["+X", [1, 0, 0]], ["−Z", [0, 0, -1]], ["+Z", [0, 0, 1]]];
+let fea: { el: HTMLElement; res?: FeaResult; show: "vm" | "u"; deform: boolean; worker?: Worker; vf?: Int32Array; field?: Float32Array; disp?: Float32Array; addKind: "F" | "Fn" | "p"; addV: number; addDir: number; t?: number } | null = null;
+const feaStudy = () => (doc.fea ??= { fix: [], loads: [], n: 6000 });
+function feaFaceIdx(ref: FaceRef): number {
+  const m = viewer.mesh;
+  if (!m) return -1;
+  let bi = -1, bd = Infinity;
+  m.faces.forEach((f, i) => {
+    if (!!ref.n !== !!f.n) return;
+    if (ref.n && f.n && f.n[0] * ref.n[0] + f.n[1] * ref.n[1] + f.n[2] * ref.n[2] < 0.999) return;
+    const d = Math.hypot(f.c[0] - ref.c[0], f.c[1] - ref.c[1], f.c[2] - ref.c[2]);
+    if (d < bd) (bd = d), (bi = i);
+  });
+  return bd < 2 ? bi : -1;
+}
+function feaTris(faces: number[] | null): number[] {
+  const m = viewer.mesh!, fg = m.faceGroups, tri = m.triangles, v = m.vertices, out: number[] = [];
+  const want = faces && new Set(faces);
+  for (let g = 0; g < fg.length; g += 3) {
+    if (want && !want.has(fg[g + 2])) continue;
+    for (let k = fg[g]; k < fg[g] + fg[g + 1]; k++) out.push(v[tri[k] * 3], v[tri[k] * 3 + 1], v[tri[k] * 3 + 2]);
+  }
+  return out;
+}
+const feaColor = (t: number) => {
+  t = Math.max(0, Math.min(1, t));
+  const c = new THREE.Color();
+  c.setHSL(((1 - t) * 240) / 360, 0.95, 0.5);
+  return c.getHex();
+};
+function feaPaint() {
+  if (!fea || !viewer.mesh) return;
+  const m = viewer.mesh;
+  if (!fea.vf || fea.vf.length !== m.vertices.length / 3) {
+    fea.vf = new Int32Array(m.vertices.length / 3).fill(-1);
+    for (let g = 0; g < m.faceGroups.length; g += 3) for (let k = m.faceGroups[g]; k < m.faceGroups[g] + m.faceGroups[g + 1]; k++) fea.vf[m.triangles[k]] = m.faceGroups[g + 2];
+  }
+  if (fea.res && fea.field) {
+    const mx = fea.show === "vm" ? fea.res.vmMax : fea.res.uMax, f = fea.field;
+    viewer.setAnalysis((_n, i) => feaColor(f[i] / (mx || 1)));
+    viewer.setDeform(fea.deform && fea.disp ? fea.disp : null);
+    return;
+  }
+  const st = feaStudy(), fix = new Set(st.fix.map(feaFaceIdx)), ld = new Set(st.loads.flatMap((l) => l.ref.map(feaFaceIdx)));
+  const vf = fea.vf;
+  viewer.setDeform(null);
+  viewer.setAnalysis((_n, i) => (fix.has(vf[i]) ? 0x2fb344 : ld.has(vf[i]) ? 0x9c36b5 : 0xb8c0cc));
+}
+function closeFea() {
+  if (!fea) return;
+  fea.worker?.terminate();
+  fea.el.remove();
+  fea = null;
+  viewer.setDeform(null);
+  viewer.setAnalysis(null);
+  applyDraftAnalysis();
+  renderCommands();
+}
+function openFea() {
+  if (fea) return closeFea();
+  if (mode.k === "sketch") exitSketch(true);
+  if (!viewer.mesh) return toast("Analiz için bir katı gerekir", true);
+  if (draftAna) toggleDraftAnalysis();
+  fea = { el: h("div", "draft-ana fea-panel"), show: "vm", deform: false, addKind: "F", addV: 1000, addDir: 0 };
+  $("#view").appendChild(fea.el);
+  renderFea();
+  feaPaint();
+  renderCommands();
+}
+function renderFea() {
+  if (!fea) return;
+  const F = fea, st = feaStudy(), el = F.el;
+  el.innerHTML = "";
+  const matKey = doc.material ?? "steel", mech = MECH[matKey] ?? MECH.steel, nu = NU[matKey] ?? 0.3;
+  el.append(h("div", "pm-sub", "Statik Analiz (sonlu eleman)"), h("div", "small", `${MATERIALS[matKey]?.name ?? matKey}: E ${mech.E} MPa · ν ${nu} · akma ${mech.Sy} MPa`));
+  const sel = () => [...psel.faces];
+  const invalid = () => (F.res = undefined, (F.field = F.disp = undefined));
+  el.appendChild(h("div", "pm-sub", `Sabitlemeler (${st.fix.length} yüz)`));
+  const r1 = h("div", "pm-buttons");
+  r1.append(
+    button("Seçili yüzleri sabitle", () => {
+      if (!sel().length) return toast("Önce sabit olacak yüzleri seçin");
+      commitDoc(() => feaStudy().fix.push(...sel().map(faceRef)));
+      invalid(), clearPartSel(), renderFea(), feaPaint();
+    }, "btn"),
+    button("Temizle", () => (commitDoc(() => (feaStudy().fix = [])), invalid(), renderFea(), feaPaint()), "btn"),
+  );
+  el.appendChild(r1);
+  el.appendChild(h("div", "pm-sub", `Yükler (${st.loads.length})`));
+  st.loads.forEach((l, i) => {
+    const row = h("div", "pm-relrow");
+    const txt = l.kind === "p" ? `Basınç ${l.v} MPa` : l.kind === "Fn" ? `Normal kuvvet ${l.v} N` : `Kuvvet ${l.v} N ${FEA_DIRS[l.dir][0]}`;
+    row.append(h("span", "", `${txt} · ${l.ref.length} yüz`), button("✕", () => (commitDoc(() => feaStudy().loads.splice(i, 1)), invalid(), renderFea(), feaPaint()), "btn rel-x"));
+    el.appendChild(row);
+  });
+  el.appendChild(selectField("Yük türü", [{ v: "F", t: "Kuvvet (yönlü, N)" }, { v: "Fn", t: "Yüze dik kuvvet (N)" }, { v: "p", t: "Basınç (MPa)" }], F.addKind, (v) => ((F.addKind = v as any), renderFea())));
+  el.appendChild(numField(F.addKind === "p" ? "Basınç" : "Toplam kuvvet", F.addV, (v) => (F.addV = v), { unit: F.addKind === "p" ? "MPa" : "N", any: true } as any));
+  if (F.addKind === "F") el.appendChild(selectField("Yön", FEA_DIRS.map(([t], i) => ({ v: String(i), t })), String(F.addDir), (v) => (F.addDir = +v)));
+  el.appendChild(button("Seçili yüzlere yük ekle", () => {
+    if (!sel().length) return toast("Önce yük uygulanacak yüzleri seçin");
+    commitDoc(() => feaStudy().loads.push({ ref: sel().map(faceRef), kind: F.addKind, v: F.addV, dir: F.addDir }));
+    invalid(), clearPartSel(), renderFea(), feaPaint();
+  }, "btn"));
+  const sw = h("label", "pm-check");
+  const sc = h("input") as HTMLInputElement;
+  sc.type = "checkbox";
+  sc.checked = !!st.self;
+  sc.addEventListener("change", () => (commitDoc(() => (feaStudy().self = sc.checked || undefined)), invalid()));
+  sw.append(sc, document.createTextNode(" Öz ağırlık (−Y)"));
+  el.appendChild(sw);
+  el.appendChild(selectField("Ağ", [{ v: "2000", t: "Kaba (~2 000 eleman)" }, { v: "6000", t: "Orta (~6 000)" }, { v: "20000", t: "İnce (~20 000)" }, { v: "50000", t: "Çok ince (~50 000)" }], String(st.n), (v) => (commitDoc(() => (feaStudy().n = +v)), invalid())));
+  const prog = h("div", "small fea-prog");
+  el.append(button("▶ Çöz", () => void runFea(prog), "btn primary"), prog);
+  if (F.res) {
+    const r = F.res, n = mech.Sy / Math.max(r.vmMax, 1e-9);
+    const ok = n >= 2 ? "✅ Güvenli" : n >= 1 ? "⚠️ Sınırda" : "❌ Akma";
+    const out = h("div", "pm-result fea-res");
+    out.innerHTML = `<div>En büyük von Mises: <b>${fmtNum(r.vmMax, 1)} MPa</b></div><div>En büyük yer değiştirme: <b>${fmtNum(r.uMax, 4)} mm</b></div><div>Güvenlik katsayısı: <b>${fmtNum(n, 2)}</b> ${ok}</div><div class="small">${r.ne} eleman · ${r.iters} yineleme · tepki ${fmtNum(Math.hypot(...r.Freac), 1)} N${r.msg ? " · ⚠ " + r.msg : ""}</div>`;
+    el.appendChild(out);
+    el.appendChild(selectField("Göster", [{ v: "vm", t: "Gerilme (von Mises)" }, { v: "u", t: "Yer değiştirme" }], F.show, (v) => ((F.show = v as any), feaFields(), renderFea(), feaPaint())));
+    const mx = F.show === "vm" ? r.vmMax : r.uMax;
+    const leg = h("div", "fea-leg");
+    leg.innerHTML = `<span>0</span><i></i><span>${fmtNum(mx, F.show === "vm" ? 1 : 4)} ${F.show === "vm" ? "MPa" : "mm"}</span>`;
+    el.appendChild(leg);
+    const dl = h("label", "pm-check");
+    const dc = h("input") as HTMLInputElement;
+    dc.type = "checkbox";
+    dc.checked = F.deform;
+    dc.addEventListener("change", () => ((F.deform = dc.checked), feaPaint()));
+    dl.append(dc, document.createTextNode(" Şekil değiştirmiş (abartılı) göster"));
+    el.appendChild(dl);
+  }
+  el.appendChild(button("Kapat", () => closeFea(), "btn"));
+}
+/** sonuç alanını yüzey köşelerine taşı */
+function feaFields() {
+  if (!fea?.res || !viewer.mesh) return;
+  const v = viewer.mesh.vertices, n = v.length / 3, f = new Float32Array(n), d = new Float32Array(n * 3), o = [0, 0, 0];
+  const bb = viewer.mesh.bbox!, L = Math.max(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]);
+  const k = fea.res.uMax > 0 ? (0.08 * L) / fea.res.uMax : 0;
+  for (let i = 0; i < n; i++) {
+    const p = [v[i * 3], v[i * 3 + 1], v[i * 3 + 2]];
+    const vm = sampleField(fea.res, p, "vm"), um = sampleField(fea.res, p, "u", o);
+    f[i] = fea.show === "vm" ? vm : um;
+    for (let c = 0; c < 3; c++) d[i * 3 + c] = o[c] * k;
+  }
+  fea.field = f;
+  fea.disp = d;
+}
+async function runFea(prog?: HTMLElement): Promise<FeaResult | null> {
+  if (!fea || !viewer.mesh) return null;
+  const st = feaStudy();
+  const fixI = st.fix.map(feaFaceIdx).filter((i) => i >= 0);
+  if (!fixI.length) return toast("Önce en az bir sabit yüz seçin", true), null;
+  if (!st.loads.length && !st.self) return toast("Önce bir yük ekleyin", true), null;
+  const matKey = doc.material ?? "steel", mech = MECH[matKey] ?? MECH.steel;
+  const msg = {
+    tris: feaTris(null),
+    n: st.n,
+    E: mech.E,
+    nu: NU[matKey] ?? 0.3,
+    fix: fixI.map((i) => feaTris([i])),
+    loads: st.loads.map((l) => {
+      const tr = feaTris(l.ref.map(feaFaceIdx).filter((i) => i >= 0));
+      return l.kind === "p" ? { tris: tr, p: l.v } : l.kind === "Fn" ? { tris: tr, Fn: l.v } : { tris: tr, F: FEA_DIRS[l.dir][1].map((c) => c * l.v) as [number, number, number] };
+    }),
+    ...(st.self ? { rho: (MATERIALS[matKey]?.rho ?? 7.85) * 1e-9, g: [0, -9810, 0] as [number, number, number] } : {}),
+  };
+  fea.worker?.terminate();
+  const w = new Worker(new URL("./fea/fea.worker.ts", import.meta.url), { type: "module" });
+  fea.worker = w;
+  const t0 = performance.now();
+  if (prog) prog.textContent = "Ağ oluşturuluyor…";
+  $("#status").classList.add("busy");
+  const res = await new Promise<FeaResult | null>((ok) => {
+    w.onmessage = (e) => {
+      if (e.data.prog) return void (prog && (prog.textContent = `Çözülüyor… yineleme ${e.data.prog[0]} · artık ${e.data.prog[1].toExponential(1)}`));
+      if (e.data.err) toast("Analiz hatası: " + e.data.err, true);
+      ok(e.data.res ?? null);
+    };
+    w.onerror = (e) => (toast("Analiz hatası: " + e.message, true), ok(null));
+    w.postMessage(msg);
+  });
+  $("#status").classList.remove("busy");
+  w.terminate();
+  if (!fea) return null;
+  fea.worker = undefined;
+  if (!res) return null;
+  if (!res.ne || (!res.ok && res.msg && !res.iters)) {
+    toast(res.msg ?? "Analiz yapılamadı", true);
+    if (prog) prog.textContent = res.msg ?? "";
+    return res;
+  }
+  fea.res = res;
+  fea.t = performance.now() - t0;
+  feaFields();
+  renderFea();
+  feaPaint();
+  toast(`Analiz tamam: σmax ${fmtNum(res.vmMax, 1)} MPa, δmax ${fmtNum(res.uMax, 4)} mm (${(fea.t / 1000).toFixed(1)} sn)`);
+  return res;
+}
+(window as any).__fea = { open: openFea, run: () => runFea(), close: closeFea, get st() { return fea; } };
 (window as any).__draftAna = () => draftAna && { ...draftAna, el: undefined };
 
 async function openAnalysis() {
@@ -6213,6 +6423,7 @@ function commands(): Cmd[] {
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => showMassProps() },
       { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
       { id: "analysis", label: "Mukavemet", icon: "measure", run: () => void openAnalysis() },
+      { id: "fea", label: "Statik Analiz", icon: "measure", run: () => openFea(), active: () => !!fea },
       { id: "photos", label: "Fotoğraflar", icon: "measure", run: () => photos.gallery() },
       { id: "caliper", label: "Kumpas", icon: "measure", run: () => caliper.dialog() },
       { id: "whatswrong", label: "Ne Yanlış?", icon: "measure", run: () => openWhatsWrong() },

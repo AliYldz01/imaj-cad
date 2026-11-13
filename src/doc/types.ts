@@ -751,6 +751,8 @@ export interface PartDoc {
   /** yapılandırmalar (SolidWorks konfigürasyon / tasarım tablosu): değişken değerleri ve bastırılan özellikler */
   configs?: { name: string; vars: Record<string, string>; off: string[] }[];
   /** görünüm: parça rengi ve yüz renkleri (yüz referansıyla; model değişince kalıcı referansla izlenir) */
+  /** sonlu eleman çalışması: sabit yüzler, yükler, ağ yoğunluğu */
+  fea?: { fix: FaceRef[]; loads: { ref: FaceRef[]; kind: "F" | "Fn" | "p"; v: number; dir: number }[]; n: number; self?: boolean };
   look?: { part?: string; faces?: { ref: FaceRef; color: string }[] };
   /** teknik resim ayarları: sürüklenmiş ölçü ötelemeleri, detay görünüşü (ön görünüş koordinatlarında) */
   drawing?: { off?: Record<string, [number, number]>; detail?: { x: number; y: number; r: number; k: number } | null; user?: any[]; ovr?: Record<string, any>; notes?: any[]; vOff?: Record<string, [number, number]> };
