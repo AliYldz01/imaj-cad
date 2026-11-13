@@ -54,6 +54,10 @@ const toWorld = (f: Frame, p: Vec2): Vec3 => {
   const y = vcross(f.n, f.x);
   return vadd(f.o, vadd(vmul(f.x, p[0]), vmul(y, p[1])));
 };
+const toLocal = (f: Frame, p: Vec3): Vec2 => {
+  const y = vcross(f.n, f.x), d = vsub(p, f.o);
+  return [vdot(d, f.x), vdot(d, y)];
+};
 const tup = (v: any): Vec3 => v.toTuple() as Vec3;
 const solidsOf = (s: Shape): Shape[] => {
   try {
@@ -393,6 +397,7 @@ function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
   const p0 = sp.startPoint, t0 = sp.tangentAt(0);
   // SolidWorks profil yönelimi: yolu izle (Frenet) / normali sabit tut (sabit üçyüzlü)
   const opts: any = f.orient === "normal" ? { support: new oc.gp_Ax2(new oc.gp_Pnt(p0.x, p0.y, p0.z), new oc.gp_Dir(t0.x, t0.y, t0.z)), transitionMode: "right" } : { frenet: true, transitionMode: "right" };
+  if ((f.twist || f.guide) && !f.helix) return sweepStations(f, spine);
   if (f.circ && f.circ > 0) {
     // dairesel profil: yalnız çap ile boru / çubuk (profil eskizi gerekmez)
     const ring = (d: number) => genericSweep(assembleWire([makeCircle(d / 2, [p0.x, p0.y, p0.z], [t0.x, t0.y, t0.z])]) as any, spine, opts, false);
@@ -411,6 +416,57 @@ function sweepTool(f: Extract<KFeature, { type: "sweep" }>) {
   }
   if (!solid) throw new Error("Profil yok");
   return solid;
+}
+
+/** burulmalı / kılavuzlu süpürme: yol boyunca istasyonlarda dönmüş + ölçeklenmiş profil kesitlerinden loft */
+function sweepStations(f: Extract<KFeature, { type: "sweep" }>, spine: any): Shape {
+  const N = 16;
+  const P = (t: number) => tup(spine.pointAt(t)), T = (t: number) => vnorm(tup(spine.tangentAt(t)));
+  const p0 = P(0), t0 = T(0);
+  let pframe: Frame;
+  let drawAt: (sc: number) => any;
+  if (f.circ && f.circ > 0) {
+    const x0 = vnorm(Math.abs(t0[2]) < 0.9 ? vcross(t0, [0, 0, 1]) : vcross(t0, [1, 0, 0]));
+    pframe = { o: p0, x: x0, n: t0 };
+    drawAt = (sc) => drawCircle((f.circ! / 2) * sc);
+  } else {
+    if (!f.pl) throw new Error("Profil eskizi yok");
+    pframe = resolvePlane(f.pl);
+    const outer = f.loops.find((l) => l.depth === 0) ?? f.loops[0];
+    if (!outer) throw new Error("Profil yok");
+    const lp = toLocal(pframe, p0);
+    drawAt = (sc) => (loopDrawing(outer) as any).translate(-lp[0], -lp[1]).scale(sc, [0, 0]);
+  }
+  const sg = vdot(pframe.n, t0) >= 0 ? 1 : -1;
+  let x = vnorm(vsub(pframe.x, vmul(t0, vdot(pframe.x, t0))));
+  // kılavuz: istasyon düzlemini kesen kılavuz noktasına uzaklık
+  let gpts: Vec3[] | null = null;
+  if (f.guide) {
+    const gw: any = pathWire(f.guide.segs, f.guide.closed, resolvePlane(f.guide.pl));
+    gpts = Array.from({ length: 241 }, (_, i) => tup(gw.pointAt(i / 240)));
+  }
+  const gdist = (p: Vec3, t: Vec3) => {
+    if (!gpts) return 1;
+    let best = gpts[0], bd = Infinity;
+    for (const g of gpts) {
+      const d = Math.abs(vdot(vsub(g, p), t));
+      if (d < bd) (bd = d), (best = g);
+    }
+    const v = vsub(best, p);
+    return vlen(vsub(v, vmul(t, vdot(v, t))));
+  };
+  const r0 = gdist(p0, t0) || 1;
+  const secs: any[] = [];
+  for (let i = 0; i <= N; i++) {
+    const s = i / N, p = P(s), t = T(s);
+    x = vnorm(vsub(x, vmul(t, vdot(x, t))));
+    const a = (((f.twist ?? 0) * Math.PI) / 180) * s;
+    const y = vcross(t, x);
+    const xr = vadd(vmul(x, Math.cos(a)), vmul(y, Math.sin(a)));
+    const sc = gpts ? Math.max(0.01, gdist(p, t) / r0) : 1;
+    secs.push(drawAt(sc).sketchOnPlane(makePlane({ o: p, x: xr, n: vmul(t, sg) })));
+  }
+  return secs[0].loftWith(secs.slice(1), { ruled: false });
 }
 
 /** Kapalı çoklu çizgiyi eşit yay uzunluğu aralıklı M noktaya örnekler */

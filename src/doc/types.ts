@@ -229,6 +229,10 @@ export interface SweepFeature extends FeatBase {
   orient?: "follow" | "normal";
   /** helis yolu (SolidWorks Helis/Spiral): yol eskizindeki daire taban çemberi; hatve, tur, sol el, koniklik (°) */
   helix?: { pitch: number; turns: number; left?: boolean; taper?: number };
+  /** burulma açısı (°, yol boyunca) */
+  twist?: number;
+  /** kılavuz eğri eskizi: profil, kılavuza olan uzaklığa göre ölçeklenir */
+  guide?: string;
 }
 export interface LoftFeature extends FeatBase {
   type: "loft";
@@ -674,7 +678,7 @@ export type KFeature =
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
   | { id: string; type: "scale"; factor: number; center: "origin" | "centroid" }
   | { id: string; type: "import"; data: string; fmt?: "step" | "stl" }
-  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number } }
+  | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean } }
   | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
   | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }

@@ -229,6 +229,8 @@ function consumerOf(sketchId: string) {
 const viewer = new Viewer($("#view"));
 const kernel = new Kernel();
 let featureErrors = new Map<string, string>();
+/** bu oturumda hatasız kurulmuş özellikler (sonradan referans kaybolursa yeniden seç sorulur) */
+const builtOk = new Set<string>();
 
 function setStatus(kind: "ok" | "busy" | "err" | "load" | "under" | "over", text: string) {
   const s = $("#status");
@@ -420,6 +422,33 @@ function setFaceColor(fi: number, c: string | null) {
   });
 }
 
+/** referansı kaybolan özellik için "yeniden seç" penceresi */
+function offerReselect(fid: string, msg: string) {
+  const f = getFeat(fid) as any;
+  if (!f || document.querySelector("dialog.reselect-dialog")) return;
+  const dlg = h("dialog", "input-dialog reselect-dialog") as HTMLDialogElement;
+  dlg.innerHTML = `<h2>Eksik referans</h2><p><b>${f.name}</b>: ${msg}</p><p class="small">Model değiştiği için seçili kenar / yüz bulunamadı. Özelliği açıp yenisini seçebilirsiniz.</p>`;
+  const row = h("div", "pm-row");
+  row.append(
+    button("Yeniden seç", () => {
+      dlg.close();
+      editFeature(fid);
+      if (mode.k === "pm") {
+        const d = mode.draft as any;
+        for (const k of ["edges", "faces"]) if (Array.isArray(d[k])) d[k] = [];
+        if (d.face) d.face = undefined;
+        renderFeaturePM(kindOf(mode.draft));
+        hint("Yeni kenar / yüz seçin, sonra ✓");
+      }
+    }, "btn primary"),
+    button("Daha sonra", () => dlg.close(), "btn"),
+  );
+  dlg.appendChild(row);
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
+
 /** worker'ın kalıcı referans onarımlarını belgeye işle (geri alma yığınına girmez) */
 function applyHeals(h: RefHeals) {
   const ek = Object.keys(h.e).length, fk = Object.keys(h.f).length;
@@ -466,7 +495,13 @@ async function rebuild() {
     memberBodies = res.members;
     const errs = new Map(errors);
     res.errors.forEach((e) => errs.set(e.featureId, e.message));
-    if (mode.k === "part") featureErrors = errs;
+    if (mode.k === "part") {
+      // SolidWorks "eksik referans": yeni ortaya çıkan referans hatası için yeniden seç penceresi
+      for (const [fid, msg] of errs) if (builtOk.has(fid) && /bulunamad|seçin/i.test(msg) && !firstBuild) offerReselect(fid, msg);
+      for (const f of doc.features) if (!errs.has(f.id)) builtOk.add(f.id);
+      for (const id of errs.keys()) builtOk.delete(id);
+      featureErrors = errs;
+    }
     draftError = draftId ? errs.get(draftId) ?? null : null;
     if (draftId && errs.get(draftId)) setStatus("err", errs.get(draftId)!);
     else if (mode.k === "part" && errs.size) setStatus("err", `${errs.size} özellikte hata`);
@@ -1849,6 +1884,10 @@ function renderFeaturePM(kind: string) {
         );
       }
       gp.appendChild(selectField("Profil yönelimi", [{ v: "follow", t: "Yolu izle" }, { v: "normal", t: "Normali sabit tut" }], d.orient ?? "follow", (v) => ((d.orient = v as any), upd())));
+      if (!d.helix) {
+        gp.appendChild(numField("Burulma açısı (yol boyunca)", d.twist ?? 0, (v) => ((d.twist = v || undefined), upd()), { unit: "°" }));
+        gp.appendChild(selectField("Kılavuz eğri (isteğe bağlı)", [{ v: "", t: "Yok" }, ...opts], d.guide ?? "", (v) => ((d.guide = v || undefined), upd())));
+      }
       if (!circ) gp.appendChild(h("p", "pm-hint", "Profil eskizi, yolun başlangıç noktasında yola dik bir düzlemde olmalıdır."));
       body.appendChild(gp);
       body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), upd())));

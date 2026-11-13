@@ -568,3 +568,10 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Parça rengi ve yüz rengi (sağ tık; ölçü değişince korunur) | ✅ |
 | STL içe aktarma (ikili / ASCII → katı) | ✅ |
 | Perspektif, birim sistemi, yüzey modelleme, doğrudan düzenleme, analiz | ⬜ |
+
+## v0.44 — Süpürme burulma / kılavuz, eksik referans penceresi
+| Özellik | Durum |
+|---|---|
+| Süpürmede burulma açısı | ✅ |
+| Süpürmede kılavuz eğri (profil ölçeklenir) | ✅ |
+| Eksik referans: "Yeniden seç" penceresi | ✅ |

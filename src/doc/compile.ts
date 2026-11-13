@@ -272,7 +272,15 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           }
           const path = extractPath(ps.data);
           if (path.error) throw new Error(`${ps.name}: ${path.error}`);
-          kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient });
+          let guide: { pl: KPlane; segs: any[]; closed: boolean } | undefined;
+          if (f.guide) {
+            const gs = sketchOf(f.guide);
+            const gpl = gs && kplane(gs.plane, feats, gs.id);
+            const gp = gs && extractPath(gs.data);
+            if (!gs || !gpl || !gp || gp.error) throw new Error("Kılavuz eğri eskizi okunamadı");
+            guide = { pl: gpl, segs: gp.segs, closed: gp.closed };
+          }
+          kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient, twist: f.twist, guide });
           break;
         }
         case "loft": {
