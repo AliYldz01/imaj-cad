@@ -2450,6 +2450,12 @@ function cutList(id: number) {
   } catch (e) {
     console.warn(e);
   }
+  // gövde merkezi (teknik resimde balon için)
+  for (const it of items)
+    try {
+      const bb = bodies[it.body].boundingBox.bounds as [Vec3, Vec3];
+      it.c = [(bb[0][0] + bb[1][0]) / 2, (bb[0][1] + bb[1][1]) / 2, (bb[0][2] + bb[1][2]) / 2];
+    } catch {}
   post({ id, type: "cutlist", items, welds: weldInfo });
 }
 

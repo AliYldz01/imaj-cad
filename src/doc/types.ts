@@ -677,7 +677,7 @@ export interface PartDoc {
   /** görünüm: parça rengi ve yüz renkleri (yüz referansıyla; model değişince kalıcı referansla izlenir) */
   look?: { part?: string; faces?: { ref: FaceRef; color: string }[] };
   /** teknik resim ayarları: sürüklenmiş ölçü ötelemeleri, detay görünüşü (ön görünüş koordinatlarında) */
-  drawing?: { off?: Record<string, [number, number]>; detail?: { x: number; y: number; r: number; k: number } | null };
+  drawing?: { off?: Record<string, [number, number]>; detail?: { x: number; y: number; r: number; k: number } | null; user?: any[]; ovr?: Record<string, any>; notes?: any[]; vOff?: Record<string, [number, number]> };
   config?: string;
   /** özellik alanlarına bağlı denklemler: "özellikId.alan" -> ifade */
   eqs?: Record<string, string>;
@@ -768,6 +768,8 @@ export interface CutItem {
   /** sınır kutusu ölçüleri (büyükten küçüğe) */
   dims: [number, number, number];
   key?: string;
+  /** gövde merkezi (dünya) */
+  c?: Vec3;
 }
 
 /** İmalat resmi görünüşü (mm, görünüş düzleminde) */

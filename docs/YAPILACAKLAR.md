@@ -4,12 +4,12 @@ Kullanıcı isteği (2026-11-13): listedeki tüm işler sırayla uygulanacak. He
 Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 
 ## 1. Teknik resim
-- ⬜ 1.1 Ölçü ekleme (iki nokta / kenar), silme, değerini düzenleme (metin geçersiz kılma)
-- ⬜ 1.2 Ölçü toleransı (±, sınır, ISO uyum H7 vb.)
-- ⬜ 1.3 Yüzey pürüzlülüğü sembolü (Ra), geometrik tolerans çerçevesi (GD&T) + referans (datum)
-- ⬜ 1.4 Kesit görünüşünü taşıma (sürükle-bırak, kalıcı)
-- ⬜ 1.5 Kaynaklı yapı resmi: kesim listesi tablosu + balon + kaynak sembolü
-- ⬜ 1.6 Sac açınım resmi / DXF: büküm notları (açı, yön, iç yarıçap), büküm çizgisi katmanları (yukarı / aşağı)
+- ✅ v0.61 1.1 Ölçü ekleme (iki nokta / kenar), silme, değerini düzenleme (metin geçersiz kılma)
+- ✅ v0.61 1.2 Ölçü toleransı (±, sınır, ISO uyum H7 vb.)
+- ✅ v0.61 1.3 Yüzey pürüzlülüğü sembolü (Ra), geometrik tolerans çerçevesi (GD&T) + referans (datum)
+- ✅ v0.61 1.4 Kesit görünüşünü taşıma (sürükle-bırak, kalıcı)
+- ✅ v0.61 1.5 Kaynaklı yapı resmi: kesim listesi tablosu + balon + kaynak sembolü
+- ✅ v0.61 1.6 Sac açınım resmi / DXF: büküm notları (açı, yön, iç yarıçap), büküm çizgisi katmanları (yukarı / aşağı)
 
 ## 2. Eskiz
 - ⬜ 2.1 Radyüs / pah sonrası sanal sivri köşe (köşe ölçüsü korunur)

@@ -33,6 +33,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.58: Montajda telefonda bileşen parmakla sürüklenir; Girişim paneli (liste + kırmızı girişim hacmi); kütle hesabı parçanın malzemesiyle; silindir kenarında yanlış köşe seçimi giderildi.
 - v0.59: Montajda bileşen başına yapılandırma; Yol, Kam ve Yuva eşleşmeleri; Fiziksel dinamik (sürüklenen bileşen diğerini iter); Hareket etüdü videosu (WebM).
 - v0.60: Orta tuşla döndürürken model imlecin altındaki nokta (köşe, yüz) etrafında döner; kenara orta tıklayıp sürükleyince o kenar etrafında döner (SolidWorks gibi).
+- v0.61: Teknik resimde ölçü ekleme / düzenleme / silme ve toleranslar; yüzey pürüzlülüğü, geometrik tolerans ve referans sembolleri; görünüşler sürüklenerek taşınır; kaynaklı yapı resminde kesim listesi, balonlar ve kaynak listesi.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

@@ -22,7 +22,7 @@ import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, sampleLoop, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
-import { techSheet, techSheet2, sheetDxf, circlesOf, type TechInfo, type FrontPlace } from "./drawing/techdraw";
+import { techSheet, techSheet2, sheetDxf, circlesOf, snapPoints, GDT_SYMS, type TechInfo, type FrontPlace, type UDim, type DimOvr, type Annot, type Tol } from "./drawing/techdraw";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, MECH, beamCalc, type BeamSupport, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
@@ -306,13 +306,25 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
 /** parça (ya da montaj: asm verilirse) için teknik resim penceresi: görünüş seçimi, ölçek, kağıt, antet; PDF / SVG / DXF */
 async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string; exploded?: any }) {
   const st = JSON.parse(localStorage.getItem("imajcad.techdraw") ?? "{}");
-  const o = { iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: (doc as any).material ?? st.material ?? "", drawnBy: st.drawnBy ?? "", no: "" };
+  const o = { cutTable: st.cutTable ?? true, iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: (doc as any).material ?? st.material ?? "", drawnBy: st.drawnBy ?? "", no: "" };
   let data: any = asmIn?.data ?? null;
+  let weldInfo: Pick<TechInfo, "cut" | "cutCenters" | "welds"> | null = null;
   const load = async () => {
     if (asmIn) return;
     setStatus("busy", "Teknik resim hazırlanıyor…");
     const kf = compile(viewFeatures().feats, doc.profiles ?? {}).kfeats;
     data = await kernel.pdraw(kf, { iso: o.iso, section: o.section });
+    // kaynaklı yapı: kesim listesi tablosu, balonlar, kaynak listesi
+    weldInfo = null;
+    if (doc.features.some((f) => f.type === "member" && !f.off)) {
+      await kernel.build(kf);
+      const rows = await cutRows();
+      weldInfo = {
+        cut: rows.map((r) => ({ no: r.no, name: rowDesc(r), len: r.length, a1: r.a1, a2: r.a2, qty: r.qty })),
+        cutCenters: rows.filter((r) => r.c).map((r) => ({ no: r.no, c: r.c! })),
+        welds: lastWelds.map((w) => ({ name: w.name, a: w.a, length: w.length, count: w.count })),
+      };
+    }
     setStatus("ok", "Hazır");
     rebuild();
   };
@@ -322,18 +334,26 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
   dlg.innerHTML = `<h2>Teknik resim — ${asmIn ? asmIn.name : doc.name}</h2>`;
   const opts = h("div", "pm-row td-opts");
   const fr = h("iframe", "draw-frame") as HTMLIFrameElement;
-  let cur: { svg: string; scale: number; front?: FrontPlace } = { svg: "", scale: 1 };
+  let cur: { svg: string; scale: number; front?: FrontPlace; places?: Record<string, FrontPlace> } = { svg: "", scale: 1 };
+  // açıklama araçları: seç / ölçü / pürüzlülük / geometrik tolerans / referans
+  let tool: "sel" | "dim" | "ra" | "gdt" | "datum" = "sel";
+  let dimDir: "auto" | "h" | "v" | "al" = "auto";
+  let pend: { view: string; p: [number, number] } | null = null;
+  let selKey: string | null = null;
+  const edit = h("div", "td-edit");
   let sheets: string[] = [];
   // sürüklenmiş ölçüler ve detay görünüşü parçayla saklanır (montajda yalnız bu pencere için)
-  const dr: { off: Record<string, [number, number]>; detail: { x: number; y: number; r: number; k: number } | null } = asmIn ? { off: {}, detail: null } : { off: { ...(doc.drawing?.off ?? {}) }, detail: doc.drawing?.detail ?? null };
+  const dr: { off: Record<string, [number, number]>; detail: { x: number; y: number; r: number; k: number } | null; user: UDim[]; ovr: Record<string, DimOvr>; notes: Annot[]; vOff: Record<string, [number, number]> } = asmIn
+    ? { off: {}, detail: null, user: [], ovr: {}, notes: [], vOff: {} }
+    : { off: { ...(doc.drawing?.off ?? {}) }, detail: doc.drawing?.detail ?? null, user: [...(doc.drawing?.user ?? [])], ovr: { ...(doc.drawing?.ovr ?? {}) }, notes: [...(doc.drawing?.notes ?? [])], vOff: { ...(doc.drawing?.vOff ?? {}) } };
   let page2 = !!st.page2 || !!asmIn?.exploded;
   const keepDr = () => {
     if (asmIn) return;
-    doc.drawing = { off: dr.off, detail: dr.detail };
+    doc.drawing = { off: dr.off, detail: dr.detail, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff };
     saveDoc();
   };
   const W = () => (o.paper === "A3" ? 420 : 297), H = () => (o.paper === "A3" ? 297 : 210);
-  const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg });
+  const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff, ...(weldInfo && o.cutTable ? weldInfo : {}) });
   const draw = () => {
     const n = page2 ? 2 : 1;
     cur = techSheet(data, info(n > 1 ? [1, n] : undefined));
@@ -342,13 +362,27 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     const y0 = fr.contentWindow?.scrollY ?? 0;
     fr.srcdoc = sheetsHtml(sheets, doc.name).replace("size:A4 landscape", `size:${o.paper} landscape`).replace(/297mm;height:210mm/g, `${W()}mm;height:${H()}mm`);
     fr.onload = () => (fr.contentWindow?.scrollTo(0, y0), wire());
-    localStorage.setItem("imajcad.techdraw", JSON.stringify({ iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy, page2 }));
+    localStorage.setItem("imajcad.techdraw", JSON.stringify({ cutTable: o.cutTable, iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy, page2 }));
     (dlg as any)._svg = cur.svg;
     (dlg as any)._sheets = sheets;
     (dlg as any)._dr = dr;
     (dlg as any)._front = cur.front;
   };
-  /** önizlemede: ölçüleri sürükle (bırakınca konum kaydedilir), detay açıkken ön görünüşe tıkla → detay merkezi */
+  /** görünüş anahtarından DrawView */
+  const viewOf = (k: string) => (k === "front" ? data.views[0] : k === "top" ? data.views[1] : k === "left" ? data.views[2] : k === "sec" ? data.sec : k === "iso" ? data.iso : null);
+  const VIEW_NAMES: Record<string, string> = { front: "Ön", top: "Üst", left: "Sol", sec: "Kesit A-A", iso: "İzometrik" };
+  /** kağıt noktası → görünüş + görünüş koordinatı */
+  const hitView = (x: number, y: number) => {
+    for (const [k, P] of Object.entries(cur.places ?? {})) {
+      if (k === "iso") continue;
+      const vx = P.min[0] + (x - P.ox) / P.s, vy = P.max[1] - (y - P.oy) / P.s;
+      const m = 3 / P.s;
+      if (vx >= P.min[0] - m && vx <= P.max[0] + m && vy >= P.min[1] - m && vy <= P.max[1] + m) return { k, P, vx, vy };
+    }
+    return null;
+  };
+  const uid2 = () => Math.random().toString(36).slice(2, 8);
+  /** önizlemede: seç aracıyla ölçü / açıklama / görünüş sürükle, tıkla → düzenle; ekleme araçlarıyla görünüşe dokun */
   const wire = () => {
     const d2 = fr.contentDocument;
     const sv = d2?.querySelector(".page svg") as SVGSVGElement | null;
@@ -359,38 +393,51 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
       const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
       return [p.x, p.y];
     };
-    let drag: { g: SVGGElement; key: string; ax: string; p0: number[]; moved: boolean } | null = null;
+    // seçili öğeyi vurgula
+    if (selKey) {
+      const q = selKey.startsWith("v:") ? `[data-view="${CSS.escape(selKey.slice(2))}"]` : `[data-dim="${CSS.escape(selKey)}"]`;
+      sv.querySelectorAll(q).forEach((g) => g.classList.add("td-sel"));
+    }
+    let drag: { g: SVGGElement; key: string; ax: string; p0: number[]; moved: boolean; view?: boolean } | null = null;
     sv.addEventListener("pointerdown", (e) => {
+      if (tool !== "sel") return;
       const g = (e.target as Element).closest?.("[data-dim]") as SVGGElement | null;
-      if (!g) return;
+      const gv = g ? null : ((e.target as Element).closest?.("[data-view]") as SVGGElement | null);
+      if (!g && !gv) return;
       e.preventDefault();
       sv.setPointerCapture(e.pointerId);
-      drag = { g, key: g.dataset.dim!, ax: g.dataset.ax!, p0: toSvg(e), moved: false };
+      drag = g ? { g, key: g.dataset.dim!, ax: g.dataset.ax!, p0: toSvg(e), moved: false } : { g: gv!, key: gv!.dataset.view!, ax: "xy", p0: toSvg(e), moved: false, view: true };
     });
     sv.addEventListener("pointermove", (e) => {
       if (!drag) return;
       const p = toSvg(e);
       const dx = drag.ax === "y" ? 0 : p[0] - drag.p0[0], dy = drag.ax === "x" ? 0 : p[1] - drag.p0[1];
-      if (Math.hypot(dx, dy) > 0.3) drag.moved = true;
-      drag.g.setAttribute("transform", `translate(${dx} ${dy})`);
+      if (Math.hypot(dx, dy) > 0.6) drag.moved = true;
+      if (drag.moved) drag.g.setAttribute("transform", `translate(${dx} ${dy})`);
     });
     sv.addEventListener("pointerup", (e) => {
+      const p = toSvg(e);
+      if (tool !== "sel") return void addAt(p[0], p[1]);
       if (drag) {
-        const p = toSvg(e), k = drag.key, ax = drag.ax;
+        const k = drag.key, ax = drag.ax, isView = drag.view;
         const dx = ax === "y" ? 0 : p[0] - drag.p0[0], dy = ax === "x" ? 0 : p[1] - drag.p0[1];
         const moved = drag.moved;
         drag = null;
         if (moved) {
-          const o0 = dr.off[k] ?? [0, 0];
-          dr.off[k] = [Math.round((o0[0] + dx) * 10) / 10, Math.round((o0[1] + dy) * 10) / 10];
+          const bag = isView ? dr.vOff : dr.off;
+          const o0 = bag[k] ?? [0, 0];
+          bag[k] = [Math.round((o0[0] + dx) * 10) / 10, Math.round((o0[1] + dy) * 10) / 10];
           keepDr();
           draw();
           return;
         }
+        if (!isView) return void ((selKey = k), renderEdit(), draw());
+        // görünüşe tıklama: detay açıksa merkez, değilse görünüşü seç (konumu sıfırlamak için)
+        if (!(dr.detail && k === "front")) return void ((selKey = "v:" + k), renderEdit(), draw());
       }
       // detay merkezi
       if (!dr.detail || !cur.front) return;
-      const [x, y] = toSvg(e), F = cur.front;
+      const [x, y] = p, F = cur.front;
       const vx = F.min[0] + (x - F.ox) / F.s, vy = F.max[1] - (y - F.oy) / F.s;
       if (vx < F.min[0] - 1 || vx > F.max[0] + 1 || vy < F.min[1] - 1 || vy > F.max[1] + 1) return;
       // delik merkezine yakınsa merkeze yakala
@@ -400,6 +447,153 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
       draw();
     });
   };
+  /** ekleme araçları: kağıt noktasında görünüşe ölçü / açıklama ekle */
+  const addAt = (x: number, y: number) => {
+    const hv = hitView(x, y);
+    if (!hv) return toast("Bir görünüşün üzerine dokunun", true);
+    const v = viewOf(hv.k)!;
+    const tolV = 3 / hv.P.s;
+    // en yakın yakalama noktası (çizgi ucu / daire merkezi)
+    let best: [number, number] | null = null, bd = tolV;
+    for (const q of snapPoints(v)) {
+      const d = Math.hypot(q[0] - hv.vx, q[1] - hv.vy);
+      if (d < bd) (bd = d), (best = q as [number, number]);
+    }
+    if (tool === "dim") {
+      // daire çevresine dokunuş: çap ölçüsü (ilk noktada; yay uçlarına yakalamadan önce)
+      if (!pend) {
+        const c = [...v.circles, ...(v.arcs ?? [])].find((c: any) => !c.hidden && Math.abs(Math.hypot(c.c[0] - hv.vx, c.c[1] - hv.vy) - c.r) < tolV);
+        if (c) {
+          const u: UDim = { id: uid2(), view: hv.k, a: c.c, b: [c.r, 0], dir: "d", off: 0 };
+          dr.user.push(u);
+          pend = null;
+          selKey = "u:" + u.id;
+          keepDr();
+          renderEdit();
+          return draw();
+        }
+      }
+      const pt: [number, number] = best ?? [Math.round(hv.vx * 100) / 100, Math.round(hv.vy * 100) / 100];
+      if (!pend || pend.view !== hv.k) {
+        pend = { view: hv.k, p: pt };
+        hintDr(`İkinci noktaya dokunun (${VIEW_NAMES[hv.k]} görünüş)`);
+        return;
+      }
+      const a = pend.p, b = pt;
+      pend = null;
+      if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6) return hintDr("Aynı nokta — başka bir noktaya dokunun");
+      const ddx = Math.abs(a[0] - b[0]), ddy = Math.abs(a[1] - b[1]);
+      const dir = dimDir !== "auto" ? dimDir : ddy < 1e-6 ? "h" : ddx < 1e-6 ? "v" : "al";
+      const u: UDim = { id: uid2(), view: hv.k, a, b, dir, off: 12 };
+      dr.user.push(u);
+      selKey = "u:" + u.id;
+      hintDr("");
+      keepDr();
+      renderEdit();
+      return draw();
+    }
+    // açıklama: en yakın kenar üzerindeki nokta
+    let at: [number, number] = best ?? [hv.vx, hv.vy], ed = Infinity;
+    if (!best)
+      for (let i = 0; i < v.vis.length; i += 4) {
+        const [x1, y1, x2, y2] = [v.vis[i], v.vis[i + 1], v.vis[i + 2], v.vis[i + 3]];
+        const L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+        const t = L2 ? Math.max(0, Math.min(1, ((hv.vx - x1) * (x2 - x1) + (hv.vy - y1) * (y2 - y1)) / L2)) : 0;
+        const cx = x1 + t * (x2 - x1), cy = y1 + t * (y2 - y1), d = Math.hypot(cx - hv.vx, cy - hv.vy);
+        if (d < ed) (ed = d), (at = [cx, cy]);
+      }
+    const used = new Set(dr.notes.filter((n) => n.kind === "datum").map((n) => n.letter));
+    const letter = "ABCDEFGH".split("").find((c) => !used.has(c)) ?? "A";
+    const n: Annot = tool === "ra" ? { id: uid2(), kind: "ra", view: hv.k, at, ra: "3,2", proc: "req" } : tool === "gdt" ? { id: uid2(), kind: "gdt", view: hv.k, at, sym: "⏥", tol: "0,05", dat: "" } : { id: uid2(), kind: "datum", view: hv.k, at, letter };
+    // aynı görünüşteki açıklamalar üst üste binmesin
+    const k0 = dr.notes.filter((x) => x.view === hv.k).length;
+    if (k0) dr.off["n:" + n.id] = [k0 * 16, -k0 * 4];
+    dr.notes.push(n);
+    selKey = "n:" + n.id;
+    keepDr();
+    renderEdit();
+    draw();
+  };
+  const hintDr = (t: string) => ((edit.dataset.hint = t), renderEdit());
+  /** seçili ölçü / açıklama / görünüş düzenleme alanı */
+  const renderEdit = () => {
+    edit.innerHTML = "";
+    if (edit.dataset.hint) edit.appendChild(h("div", "pm-hint", edit.dataset.hint));
+    if (!selKey) return;
+    const k = selKey;
+    const row = h("div", "pm-row td-edit-row");
+    const inp = (label: string, v: string, on: (x: string) => void, size = 7) => {
+      const l = h("label", "check", label + " ");
+      const i = h("input") as HTMLInputElement;
+      i.value = v;
+      i.size = size;
+      i.addEventListener("change", () => (on(i.value.trim()), keepDr(), draw()));
+      l.appendChild(i);
+      return l;
+    };
+    const num = (x: string) => parseFloat(x.replace(",", ".")) || 0;
+    const selEl = (label: string, vals: [string, string][], v: string, on: (x: string) => void) => {
+      const l = h("label", "check", label + " ");
+      const sl = h("select") as HTMLSelectElement;
+      for (const [a, t] of vals) sl.appendChild(Object.assign(document.createElement("option"), { value: a, textContent: t }));
+      sl.value = v;
+      sl.addEventListener("change", () => (on(sl.value), keepDr(), renderEdit(), draw()));
+      l.appendChild(sl);
+      return l;
+    };
+    const tolUi = (get: () => Tol | undefined, set: (t: Tol | undefined) => void) => {
+      const t = get() ?? { t: "none" as const };
+      const out: HTMLElement[] = [selEl("Tolerans", [["none", "Yok"], ["sym", "± simetrik"], ["dev", "Sapma +/−"], ["lim", "Sınır"], ["fit", "Uyum (H7…)"]], t.t, (x) => set(x === "none" ? undefined : { ...t, t: x as Tol["t"], up: t.up ?? 0.1, lo: t.lo ?? (x === "sym" ? undefined : -0.1), fit: t.fit ?? "H7" }))];
+      if (t.t === "sym") out.push(inp("±", String(t.up ?? 0.1), (x) => set({ ...t, up: num(x) })));
+      if (t.t === "dev" || t.t === "lim") out.push(inp("Üst", String(t.up ?? 0.1), (x) => set({ ...t, up: num(x) })), inp("Alt", String(t.lo ?? -0.1), (x) => set({ ...t, lo: num(x) })));
+      if (t.t === "fit") out.push(selEl("Uyum", ["H6", "H7", "H8", "H9", "H11", "g6", "h6", "h7", "js6", "k6", "m6", "n6", "p6", "f7", "e8"].map((x) => [x, x]), t.fit ?? "H7", (x) => set({ ...t, fit: x })));
+      return out;
+    };
+    if (k.startsWith("v:")) {
+      const vk = k.slice(2);
+      row.append(h("b", "", `Görünüş: ${VIEW_NAMES[vk] ?? vk}`), button("Konumu sıfırla", () => (delete dr.vOff[vk], keepDr(), draw()), "btn"));
+    } else if (k.startsWith("u:")) {
+      const u = dr.user.find((x) => "u:" + x.id === k);
+      if (!u) return;
+      row.append(h("b", "", "Ölçü"), inp("Metin", u.text ?? "", (x) => (u.text = x || undefined), 10), ...tolUi(() => u.tol, (t) => (u.tol = t)));
+      if (u.dir !== "d") row.append(selEl("Yön", [["h", "Yatay"], ["v", "Dikey"], ["al", "Hizalı"]], u.dir, (x) => (u.dir = x as UDim["dir"])), inp("Uzaklık", String(u.off), (x) => (u.off = num(x)), 4));
+      row.append(button("Sil", () => ((dr.user = dr.user.filter((x) => x !== u)), (selKey = null), keepDr(), renderEdit(), draw()), "btn danger"));
+    } else if (k.startsWith("n:")) {
+      const n = dr.notes.find((x) => "n:" + x.id === k);
+      if (!n) return;
+      if (n.kind === "ra") row.append(h("b", "", "Yüzey pürüzlülüğü"), selEl("Ra", ["0,4", "0,8", "1,6", "3,2", "6,3", "12,5", "25"].map((x) => [x, x]), n.ra ?? "3,2", (x) => (n.ra = x)), selEl("İşlem", [["any", "Her yöntem"], ["req", "Talaş kaldırma gerekli"], ["proh", "Talaş kaldırma yasak"]], n.proc ?? "any", (x) => (n.proc = x as Annot["proc"])));
+      else if (n.kind === "gdt") row.append(h("b", "", "Geometrik tolerans"), selEl("Özellik", GDT_SYMS.map(([a, t]) => [a, `${a} ${t}`]), n.sym ?? "⏥", (x) => (n.sym = x)), inp("Tolerans", n.tol ?? "0,05", (x) => (n.tol = x), 6), inp("Referanslar", n.dat ?? "", (x) => (n.dat = x.toUpperCase()), 6));
+      else row.append(h("b", "", "Referans (datum)"), inp("Harf", n.letter ?? "A", (x) => (n.letter = (x || "A").toUpperCase().slice(0, 2)), 2));
+      row.append(button("Sil", () => ((dr.notes = dr.notes.filter((x) => x !== n)), (selKey = null), keepDr(), renderEdit(), draw()), "btn danger"));
+    } else {
+      // otomatik ölçü
+      const o = (dr.ovr[k] = dr.ovr[k] ?? {});
+      row.append(h("b", "", "Ölçü"), inp("Metin", o.text ?? "", (x) => (o.text = x || undefined), 10), ...tolUi(() => o.tol, (t) => (o.tol = t)), button("Gizle", () => ((o.hide = true), (selKey = null), keepDr(), renderEdit(), draw()), "btn danger"));
+    }
+    row.append(button("✕", () => ((selKey = null), renderEdit(), draw()), "btn"));
+    edit.appendChild(row);
+  };
+  /** araç çubuğu */
+  const tools = h("div", "pm-row td-tools");
+  const renderTools = () => {
+    tools.innerHTML = "";
+    const T: [typeof tool, string][] = [["sel", "Seç / taşı"], ["dim", "Ölçü ekle"], ["ra", "Pürüzlülük"], ["gdt", "Geometrik tolerans"], ["datum", "Referans"]];
+    for (const [k, t] of T) {
+      const b = button(t, () => ((tool = k), (pend = null), (edit.dataset.hint = k === "sel" ? "" : k === "dim" ? "İki noktaya (köşe / delik merkezi) dokunun; çap için daire çevresine dokunun" : "Yüzey kenarına dokunun"), renderTools(), renderEdit()), "btn" + (tool === k ? " primary" : ""));
+      b.dataset.tool = k;
+      tools.appendChild(b);
+    }
+    if (tool === "dim") {
+      const sl = h("select") as HTMLSelectElement;
+      for (const [a, t] of [["auto", "Yön: otomatik"], ["h", "Yatay"], ["v", "Dikey"], ["al", "Hizalı"]]) sl.appendChild(Object.assign(document.createElement("option"), { value: a, textContent: t }));
+      sl.value = dimDir;
+      sl.addEventListener("change", () => (dimDir = sl.value as typeof dimDir));
+      tools.appendChild(sl);
+    }
+    if (Object.values(dr.ovr).some((o) => o.hide)) tools.appendChild(button("Gizli ölçüleri göster", () => (Object.values(dr.ovr).forEach((o) => delete o.hide), keepDr(), draw()), "btn"));
+  };
+  (dlg as any)._data = () => data;
+  (dlg as any)._td = { addAt, setTool: (t: typeof tool) => ((tool = t), renderTools()), dr, select: (k: string | null) => ((selKey = k), renderEdit(), draw()), get places() { return cur.places; } };
   const chk = (label: string, key: "iso" | "section" | "dims", reload: boolean) => {
     const l = h("label", "check");
     const c = h("input") as HTMLInputElement;
@@ -432,6 +626,7 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     return l;
   };
   if (!asmIn) opts.append(chk("İzometrik", "iso", true), chk("Kesit A-A", "section", true), chk("Ölçüler", "dims", false));
+  if (!asmIn && weldInfo) opts.append(chk("Kesim listesi + balonlar", "cutTable" as any, false));
   const cbox = (label: string, v: boolean, on: (x: boolean) => void) => {
     const l = h("label", "check");
     const c = h("input") as HTMLInputElement;
@@ -467,12 +662,13 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     txt("Çizen", o.drawnBy, (x) => (o.drawnBy = x)),
     txt("Resim no", o.no, (x) => (o.no = x)),
   );
-  dlg.append(opts, fr);
+  if (!asmIn) renderTools();
+  dlg.append(opts, ...(asmIn ? [] : [tools, edit]), fr);
   const bar = h("div", "cut-bar");
   const left = h("div", "pm-row");
   const base = (asmIn ? asmIn.name : doc.name).replace(/[\\/:*?"<>|]/g, "_");
   left.append(
-    button("Yazdır / PDF", () => fr.contentWindow?.print(), "btn primary"),
+    button("Yazdır / PDF", () => (selKey ? ((selKey = null), renderEdit(), draw(), setTimeout(() => fr.contentWindow?.print(), 400)) : fr.contentWindow?.print()), "btn primary"),
     button("SVG indir", () => sheets.forEach((s, i) => download(new Blob([s], { type: "image/svg+xml" }), `${base}_resim${i ? "_s" + (i + 1) : ""}.svg`)), "btn"),
     button("DXF indir", () => sheets.forEach((s, i) => download(new Blob([sheetDxf(s, H())], { type: "application/dxf" }), `${base}_resim${i ? "_s" + (i + 1) : ""}.dxf`)), "btn"),
   );
@@ -3784,7 +3980,7 @@ function snapCands(): Vec3[] {
 }
 
 // ---------- Kaynaklı yapı: kesim listesi ----------
-interface CutRow { no: number; qty: number; name: string; length: number; a1: number; a2: number; kg: number; bodies: number[]; kind: string; dims: [number, number, number] }
+interface CutRow { no: number; qty: number; name: string; length: number; a1: number; a2: number; kg: number; bodies: number[]; kind: string; dims: [number, number, number]; c?: Vec3 }
 let lastWelds: import("./doc/types").WeldItem[] = [];
 async function cutRows(): Promise<CutRow[]> {
   const { items, welds } = await kernel.cutListFull();
@@ -3798,7 +3994,7 @@ async function cutRows(): Promise<CutRow[]> {
     if (g) {
       g.qty++;
       g.bodies.push(it.body);
-    } else groups.set(key, { no: 0, qty: 1, name: it.name, length: it.length, a1: p, a2: q, kg: (it.vol * rho) / 1e6, bodies: [it.body], kind: it.kind, dims: it.dims });
+    } else groups.set(key, { no: 0, qty: 1, name: it.name, length: it.length, a1: p, a2: q, kg: (it.vol * rho) / 1e6, bodies: [it.body], kind: it.kind, dims: it.dims, c: it.c });
   }
   const rows = [...groups.values()].sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name, "tr") || b.length - a.length : a.kind === "member" ? -1 : 1));
   rows.forEach((r, i) => (r.no = i + 1));

@@ -469,3 +469,9 @@ dialog.exit-dialog .btn { min-height: 42px; padding: 8px 16px; font-size: 15px; 
 .ifc-list li.sel { background: #ffe3e3; color: #c92a2a; font-weight: 600; }
 .ifc-list li.ok { color: #2f9e44; cursor: default; }
 li.plane-tog { cursor: pointer; color: #5c6b7d; }
+
+/* teknik resim açıklama araçları */
+.td-tools { flex-wrap: wrap; gap: 4px; margin: 4px 0; display: flex; }
+.td-tools .btn, .td-edit-row .btn { flex: 0 0 auto; width: auto; min-width: 0; padding: 4px 10px; }
+.td-edit { min-height: 0; }
+.td-edit-row { flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }

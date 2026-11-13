@@ -236,7 +236,8 @@ export const sheetsHtml = (svgs: string[], title: string) =>
   html,body{margin:0;background:#e9ecef}
   .page{width:297mm;height:210mm;margin:8px auto;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2);page-break-after:always;overflow:hidden}
   .page svg{width:100%;height:100%;display:block}
-  @media print{html,body{background:#fff}.page{margin:0;box-shadow:none}}
+  .td-sel line,.td-sel text,.td-sel path{stroke:#1c7ed6!important;fill:#1c7ed6}
+  @media print{html,body{background:#fff}.page{margin:0;box-shadow:none}.td-sel line,.td-sel text,.td-sel path{stroke:inherit!important;fill:inherit}}
   @media (max-width:1100px){.page{width:96vw;height:calc(96vw*210/297)}}
   </style></head><body>${svgs.map((s) => `<div class="page">${s}</div>`).join("")}</body></html>`;
 

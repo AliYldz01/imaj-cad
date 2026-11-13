@@ -73,6 +73,8 @@ export function flatToDxf(outline: Flat2D[], bends: FlatBend[], w: number, h: nu
       }
     });
   if (opt.notes && opt.title) text(0, -th * 2, th, 0, opt.title);
+  // sınır kutusu ve büküm sayısı (abkant / lazer hazırlığı için)
+  if (opt.notes) text(0, -th * 3.6, th * 0.8, 0, `Sinir kutusu ${Math.round(w * 100) / 100} x ${Math.round(h * 100) / 100} mm - ${bends.length} bukum (${bends.filter((b) => b.up).length} yukari, ${bends.filter((b) => !b.up).length} asagi)`);
   p(0, "ENDSEC");
   p(0, "EOF");
   return o.join("\n") + "\n";
