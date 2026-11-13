@@ -49,6 +49,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.74: ekstrüzyon panelinde derinlik oku, dokunuşta üst üste adaylar, sihirbaz eskizleri tam tanımlı, fotoğraftan kenar izleme, sesle ölçü girişi (🎤).
 - v0.75: modele fotoğraf notu ekleme (📷), Bluetooth / klavye kumpasından ölçü girişi.
 - v0.76: Statik Analiz (sonlu eleman): yüz sabitle, kuvvet / basınç, gerilme ve şekil değiştirme renkleri, güvenlik katsayısı.
+- v0.77: gereksiz ölçüde 'Sürücü olarak bırak' seçeneği; eski testler ve belgeler temizlendi.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)
@@ -74,7 +75,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.20: **Akıllı profil birleşimleri**: ters yönde çizilmiş çizgilerde L/U kanatları artık köşede ters dönmüyor (gönye yüzleri tam oturur), **T birleşimleri**, **gruplar arası köşeler** ve **3+ elemanlı köşeler** (ayak + çerçeve) otomatik çözülür; tüm profillerde (L, U, IPE/HEA/HEB, kutu, boru, lama) girişimsiz
 - v0.19.1: "Profili konumlandır" penceresi telefonda ve bilgisayarda büyük (ekran genişliğine uyar), noktalar büyük ve parmakla dokunulabilir, geçerli delme noktası turuncu
 - v0.19: Yapı elemanı **grupları** (her grup ayrı delme noktası/döndürme/köşe işlemi), **Alignment** (profil eksenini X/Y/Z veya kenara hizala), **profili konumlandır** (profil resminde noktaya dokun), 3B eskizde **nokta sürükleme** + X/Y/Z boyunca ilişkisinin korunması, **Ctrl + yüz** ile 3B eksen hizalama
-- v0.18: **3B eskiz SolidWorks gibi**: grafik alanda tıklayarak çizim, Tab ile XY/YZ/ZX, uzay tutamacı, X/Y/Z eksen çıkarımı, rakamla uzunluk, çift tık/Esc bitir, çizgi uzunluğu düzenleme; **profil yönü düzeltildi** (dikey eksen yukarı / eskiz normali); yapı elemanında segmentlere grafik alanda tıklayarak seçim. Rapor: `docs/3B_ESKIZ_RAPORU.md`
+- v0.18: **3B eskiz SolidWorks gibi**: grafik alanda tıklayarak çizim, Tab ile XY/YZ/ZX, uzay tutamacı, X/Y/Z eksen çıkarımı, rakamla uzunluk, çift tık/Esc bitir, çizgi uzunluğu düzenleme; **profil yönü düzeltildi** (dikey eksen yukarı / eskiz normali); yapı elemanında segmentlere grafik alanda tıklayarak seçim. Rapor: `docs/arsiv/3B_ESKIZ_RAPORU.md`
 - v0.17: Montaj ekleri — teğet ve limit mesafe eşleşmesi, Ctrl ile iki yüz seçince eşleşme mini çubuğu, sürüklerken çarpışma algılama, doğrusal/dairesel bileşen çoğaltma
 - v0.16: **Montaj** — bileşen ekleme, eşleşmeler (çakışık, paralel, dik, mesafe, açı, eş merkezli, kilit), sürükleme, girişim, patlatma, malzeme listesi, STEP montaj, parça kütüphanesi
 - v0.15: büküm payı/düşümü, kalınlık tablosu, huni (geçiş parçası) ve açınımı, köşe kır, delme noktası ötelemesi

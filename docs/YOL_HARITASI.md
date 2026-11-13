@@ -3,7 +3,7 @@
 Çalışma mantığı SolidWorks'e göre kurulur: **düzlem/yüz seç → eskiz çiz → ilişki ve ölçüyle tam tanımla → özellik oluştur**.
 Model, FeatureManager ağacındaki özelliklerden her seferinde yeniden hesaplanır (parametrik geçmiş).
 
-Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı
+Durum: ✅ yapıldı · 🟡 kısmen · ⬜ planlandı. **Not (v0.77):** eski sürüm bölümlerindeki ⬜ "sonra / sıradaki" satırları o günün planıdır; hepsi sonraki sürümlerde yapıldı (güncel açık işler: `docs/YAPILACAKLAR.md`).
 
 ---
 
@@ -441,7 +441,7 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | "Önceki yapı elemanlarına göre kırp / uzat" seçeneği (varsayılan açık) | ✅ |
 | Özellikler arası gönye köşe seçeneği | ⬜ |
 
-## v0.32 — Montaj (SolidWorks mantığı) — ayrıntı: docs/MONTAJ_RAPORU.md
+## v0.32 — Montaj (SolidWorks mantığı) — ayrıntı: docs/arsiv/MONTAJ_RAPORU.md
 | Özellik | Durum |
 |---|---|
 | Eşzamanlı eşleşme çözücüsü, serbestlik (Jacobian sıfır uzayı), aşırı tanım reddi | ✅ |
@@ -656,3 +656,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.75 | Saha: modele fotoğraf notları, Bluetooth / klavye kumpası ile ölçü girişi | ✅ |
 
 | v0.76 | Sonlu eleman analizi (doğrusal statik, voksel ağ, kuvvet / basınç / öz ağırlık, von Mises / yer değiştirme, abartılı şekil) | ✅ |
+
+| v0.77 | Bakım: sürücü olarak bırak, eski testler onarıldı, belgeler arşivlendi | ✅ |

@@ -3,7 +3,7 @@
 Amaç: SolidWorks'ün uygulamamızda olması gereken özelliklerini **seçenek seviyesine kadar** listelemek ve her birinin İmaj CAD'deki durumunu işaretlemek.
 Kaynak: SolidWorks resmî yardım sitesi (help.solidworks.com, 2012–2025 sürümleri) ve uzman blogları — en altta kaynak listesi. Metin kendi sözlerimizle özetlenmiştir.
 
-Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) varsa yanında verilir → `docs/SOLIDWORKS_FARK_RAPORU.md`.
+Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) varsa yanında verilir → `docs/arsiv/SOLIDWORKS_FARK_RAPORU.md`.
 
 ---
 
@@ -47,10 +47,10 @@ Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) vars
 | **Eş yarıçaplı (coradial)** — aynı merkez ve yarıçap | yaylar | ⬜ E6 |
 | Eş merkezli, Teğet, Çakışık, Orta nokta, Kesişim, Simetrik | — | ✅ |
 | Sabit (fix), Sabit kanal | — | 🟡 (sabit kanal yok) |
-| **Birleştir (merge points)** — iki nokta tek noktaya | noktalar | ⬜ E6 |
-| **Delme (pierce)** — nokta, eğrinin eskiz düzlemini deldiği yerde (süpürme kılavuzu için) | nokta + eğri | ⬜ E6 |
+| **Birleştir (merge points)** — iki nokta tek noktaya | noktalar | ✅ v0.14 |
+| **Delme (pierce)** — nokta, eğrinin eskiz düzlemini deldiği yerde (süpürme kılavuzu için) | nokta + eğri | ✅ v0.62 |
 | **Eşit eğri uzunluğu** | iki eğri | ⬜ E6 |
-| **Eşit eğrilik**, düzgünlük (G2/G3) | spline | ⬜ |
+| **Eşit eğrilik**, düzgünlük (G2/G3) | spline | 🟡 G2 v0.64 |
 | Eşit kanallar, Kenar üzerinde (dönüştürmeden), Çift mesafe | — | ⬜ |
 | 3B'de: X/Y/Z boyunca, düzleme paralel (ParallelYZ/ZX), normal | 3B eskiz | 🟡 W4 |
 
@@ -59,7 +59,7 @@ Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) vars
 |---|---|
 | Akıllı ölçü (uzunluk, nokta-nokta, nokta-çizgi, açı, çap/yarıçap, yay uzunluğu) | ✅ |
 | Yatay / dikey / koordinat (ordinate) ölçü, zincir ölçü | 🟡 (zincir yok) |
-| Yay koşulu: merkez / min / maks (Shift ile) | ⬜ E5 |
+| Yay koşulu: merkez / min / maks (Shift ile) | ✅ v0.62 |
 | Ölçünün ok tarafına sürükleyerek çap ↔ yarıçap | ⬜ |
 | Sürülen (referans) ölçü, aşırı tanım uyarısı | ✅ |
 | Değiştir kutusu: ✓ ✗ **⟳ yeniden oluştur**, ± ters, tekerlek artımı, denklem girişi (=), "Çizimler için işaretle" | 🟡 E3 |
@@ -72,11 +72,11 @@ Durum: ✅ var · 🟡 kısmi · ⬜ yok. Fark raporu numarası (E/F/S/W/G) vars
 | Uç / orta / merkez / çeyrek / kesişim / üzerinde yakalama, imleç simgeleri | ✅ |
 | Uyandırma ve mavi/sarı hizalama çizgileri | ✅ |
 | Ctrl ile çıkarımı kapatma | ✅ |
-| **Hızlı yakalama (Quick Snaps) filtresi** (yalnız uç, yalnız orta, ızgaraya, açıya…) | ⬜ E7 |
+| **Hızlı yakalama (Quick Snaps) filtresi** (yalnız uç, yalnız orta, ızgaraya, açıya…) | ✅ v0.14 |
 | Izgara, ızgaraya yakalama, açı yakalama (15° adım) | 🟡 |
 
 ### 1.6 Eskiz durumu
-Renkler (mavi tanımsız / siyah tam / kırmızı aşırı) ✅ · açık uç gösterimi ✅ · **seçili konturlar** ✅ (v0.13) · **paylaşılan eskiz** ✅ (v0.13) · eskiz düzlemini değiştir 🟡 · türetilmiş eskiz ⬜.
+Renkler (mavi tanımsız / siyah tam / kırmızı aşırı) ✅ · açık uç gösterimi ✅ · **seçili konturlar** ✅ (v0.13) · **paylaşılan eskiz** ✅ (v0.13) · eskiz düzlemini değiştir 🟡 · türetilmiş eskiz ✅ v0.63.
 
 ---
 
@@ -92,10 +92,10 @@ Renkler (mavi tanımsız / siyah tam / kırmızı aşırı) ✅ · açık uç g�
 - **Seçili konturlar** ✅ (v0.13) · **Özellik kapsamı** (çok gövdede hangi gövdeler etkilenir) 🟡
 - Kesme: **kesme tarafını çevir** ✅ (v0.13), sacda **normal kesim** ⬜
 - Çıkıntı: **sonucu birleştir** aç/kapat ✅
-- Bitiş koşulunu modelde sağ tıkla değiştirme, sürükleme tutamağı (Instant3D) ⬜ F10
+- Bitiş koşulunu modelde sağ tıkla değiştirme, sürükleme tutamağı (Instant3D) ✅ v0.14 / v0.74 (sağ tıkla bitiş koşulu ⬜)
 
 ### 2.2 Döndürme
-Eksen, açı, iki yön, orta düzlem, ince özellik, seçili konturlar. İmaj: ✅ (seçili kontur ⬜ E1)
+Eksen, açı, iki yön, orta düzlem, ince özellik, seçili konturlar. İmaj: ✅ (seçili kontur ✅ v0.13)
 
 ### 2.3 Süpürme
 - Profil: eskiz profili · **dairesel profil** (yalnız çap ver, boru/çubuk) · **katı profil** (takım gövdesiyle kesme) — İmaj: yalnız eskiz 🟡 F3
@@ -103,10 +103,10 @@ Eksen, açı, iki yön, orta düzlem, ince özellik, seçili konturlar. İmaj: �
 - **Profil yönelimi:** yolu izle / normali sabit tut; **profil burulması:** yok, en az burulma (3B yol), yolu ve 1. kılavuzu izle, 1. ve 2. kılavuzu izle, **burulma açısı** (derece/radyan/tur), **teğet komşu yüzeyler**, yol hizalama türü
 - **Kılavuz eğriler** (sıra değiştirme, kesitleri göster)
 - **Başlangıç/bitiş teğetliği**, düzgün yüzleri birleştir, ince özellik
-- İmaj durumu: profil + yol ✅, geri kalanı ⬜ F3
+- İmaj durumu: profil + yol ✅, burulma / kılavuz ✅ v0.44, takım gövdesi ✅ v0.66
 
 ### 2.4 Loft
-Profiller (sıra), **başlangıç/bitiş kısıtı** (yok, yön vektörü, profile normal, komşu yüzlere teğet/eğrilik), kılavuz eğriler (etki türü), merkez çizgisi, **bağlayıcılar** (eşleme), kapalı loft, düzgün yüzleri birleştir, ince özellik. İmaj: profiller + kılavuz + merkez + ruled ✅ · teğetlik/bağlayıcı/kapalı/ince ⬜ F4
+Profiller (sıra), **başlangıç/bitiş kısıtı** (yok, yön vektörü, profile normal, komşu yüzlere teğet/eğrilik), kılavuz eğriler (etki türü), merkez çizgisi, **bağlayıcılar** (eşleme), kapalı loft, düzgün yüzleri birleştir, ince özellik. İmaj: profiller + kılavuz + merkez + ruled ✅ · teğetlik ✅ v0.41 / v0.67, bağlayıcı ✅ v0.67, kapalı / ince ⬜
 
 ### 2.5 Radyüs (fillet)
 - **Türler:** sabit boyut · **değişken boyut** (kontrol noktaları, düz/yumuşak geçiş) · **yüz radyüsü** (tutma çizgisi, sabit genişlik, yardım noktası) · **tam yuvarlak** (üç yüz takımı)
@@ -114,13 +114,13 @@ Profiller (sıra), **başlangıç/bitiş kısıtı** (yok, yön vektörü, profi
 - **Simetrik / asimetrik**; profil: dairesel, **konik rho / konik yarıçap, eğrilik sürekli**
 - Seçenekler: **teğet yayılımı**, yüzlerden seç, kenarı/yüzeyi koru, özellikleri koru, tam önizleme
 - FilletXpert (ekle/değiştir/köşe yönetimi)
-- İmaj: sabit ✅, asimetrik/r2 🟡, yüz radyüsü 🟡, değişken/tam yuvarlak/setback/konik/teğet yayılım ⬜ F5
+- İmaj: sabit ✅, asimetrik/r2 🟡, yüz radyüsü 🟡, çoklu yarıçap ✅ v0.14, yüz radyüsü ✅ v0.65; değişken / tam yuvarlak / setback / konik ⬜
 
 ### 2.6 Pah
-Açı–mesafe, mesafe–mesafe (eşit/farklı), köşe (vertex), **öteleme yüzü**, yüz–yüz; teğet yayılımı, özellikleri koru. İmaj: ✅ (öteleme yüzü/yüz–yüz ⬜)
+Açı–mesafe, mesafe–mesafe (eşit/farklı), köşe (vertex), **öteleme yüzü**, yüz–yüz; teğet yayılımı, özellikleri koru. İmaj: ✅ (yüz–yüz ✅ v0.65, köşe ✅ v0.65, öteleme yüzü ⬜)
 
 ### 2.7 Delik sihirbazı
-Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, boru dişi, **eski stil**, **yuva (slot) delik**; standartlar (ISO, DIN, ANSI…), bitiş koşulu, yakın/uzak taraf havşa, **kozmetik diş**, delik serisi (montajda). Konum sekmesi: yüze noktalarla. İmaj: temel türler ✅, yuva delik/seri ⬜ F16
+Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, boru dişi, **eski stil**, **yuva (slot) delik**; standartlar (ISO, DIN, ANSI…), bitiş koşulu, yakın/uzak taraf havşa, **kozmetik diş**, delik serisi (montajda). Konum sekmesi: yüze noktalarla. İmaj: temel türler ✅, yuva delik ✅ v0.67, yakın / uzak havşa ✅ v0.67, delik serisi ⬜
 
 ### 2.8 Diğer özellikler
 | Özellik | Seçenekler | Durum |
@@ -129,7 +129,7 @@ Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, bo
 | Koniklik | Nötr düzlem, **ayırma çizgisi**, **basamaklı**; DraftXpert | 🟡 F8 |
 | Kaburga, Kubbe, Sarma, Ölçekle, Esnet (flex), Girinti, Diş | — | ✅ |
 | Birleştir / Böl / Taşı-Kopyala / Sil gövde | — | ✅ |
-| **Yüz taşı / yüz sil / yüz değiştir** (doğrudan düzenleme) | — | ⬜ F12 |
+| **Yüz taşı / yüz sil / yüz değiştir** (doğrudan düzenleme) | — | ✅ v0.45 |
 | Kenarlık / delik / vent / kilit (plastik) | — | ⬜ |
 
 ### 2.9 Çoğaltma ve ayna
@@ -137,25 +137,25 @@ Türler: havşa başlı (counterbore), havşa (countersink), delik, kılavuz, bo
 - Dairesel: eksen, eşit aralık, toplam açı, iki yön, örnek atla
 - Eskiz / tablo / eğri / doldurma / **değişken (variable) çoğaltma**
 - Ayna: özellik, yüz, gövde
-- İmaj: türler ✅, örnek atla/vary/değişken ⬜ F6
+- İmaj: türler ✅, örnek atla ✅ v0.14, eskizi değiştir / referansa kadar ✅ v0.66
 
 ### 2.10 Referans geometri
-- **Düzlem:** 3 referanslı sihirbaz — çakışık, paralel, dik, **açılı** (adet), öteleme (adet), **orta düzlem**, **teğet** (silindire), **ekrana paralel**, 3 noktadan, çizgi+nokta, eğriye dik (eğri üzerinde nokta). İmaj: öteleme, açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel ✅ (v0.13); teğet ⬜
+- **Düzlem:** 3 referanslı sihirbaz — çakışık, paralel, dik, **açılı** (adet), öteleme (adet), **orta düzlem**, **teğet** (silindire), **ekrana paralel**, 3 noktadan, çizgi+nokta, eğriye dik (eğri üzerinde nokta). İmaj: öteleme, açılı, orta, 3 nokta, kenara dik, noktadan paralel, ekrana paralel ✅ (v0.13); teğet ⬜ (açılı / orta / 3 nokta / ekrana paralel ✅ v0.13)
 - Eksen: çizgi/kenar, iki düzlem, iki nokta, silindir yüzü, nokta+yüz. İmaj 🟡
 - Nokta (yay merkezi, yüz merkezi, kesişim, projeksiyon, eğri boyunca), Koordinat sistemi, Kütle merkezi. İmaj 🟡
 
-### 2.11 Yüzey modelleme (tamamı ⬜ F13)
+### 2.11 Yüzey modelleme (✅ v0.46–v0.53: ekstrüzyon, düzlemsel, loft, sınır doldur, kalınlaştır, yüzeyle kes, kırp, dik)
 Ekstrüzyon/döndürme/süpürme/loft yüzeyi, sınır yüzeyi, dolgu, düzlemsel yüzey, öteleme yüzeyi, **dikiş (knit)**, **kalınlaştır**, yüzeyle kes, kırp/uzat yüzey, yüzeyi sil/değiştir, cetvel yüzeyi.
 
 ### 2.12 Parça seviyesinde diğer
-Malzeme ✅ · kütle özellikleri ✅ · ölçüm ✅ · kesit görünüşü ✅ · girişim (gövdeler) ✅ · **konfigürasyonlar / tasarım tablosu** ⬜ F14 · denklemler ve global değişkenler ✅ · **görünüm (renk/doku)** ⬜ F15 · özellik bastır ✅ · sürükleyerek sırala ✅ · ebeveyn/çocuk ✅ · geri alma çubuğu ✅ · klasör ⬜ (F9) · ebeveyn–çocuk ⬜ · "Ne yanlış?" hata penceresi 🟡 G3.
+Malzeme ✅ · kütle özellikleri ✅ · ölçüm ✅ · kesit görünüşü ✅ · girişim (gövdeler) ✅ · **konfigürasyonlar / tasarım tablosu** ✅ v0.41 · denklemler ve global değişkenler ✅ · **görünüm (renk/doku)** ✅ v0.43 (renk) · özellik bastır ✅ · sürükleyerek sırala ✅ · ebeveyn/çocuk ✅ · geri alma çubuğu ✅ · klasör ✅ v0.68 · ebeveyn–çocuk ✅ v0.13 · "Ne yanlış?" hata penceresi 🟡 G3.
 
 ---
 
 ## 3. Sac metal
 
 ### 3.1 Sac parametreleri
-Kalınlık, büküm yarıçapı, **kalınlık tablosu (gauge table)**, **büküm payı yöntemi**: büküm tablosu, K-faktörü, büküm payı, büküm düşümü, büküm hesabı (tablo); **otomatik boşaltma**: dikdörtgen / yırtma / oval, boşaltma oranı. İmaj: K-faktörü ✅, diğerleri ⬜ S1/S7
+Kalınlık, büküm yarıçapı, **kalınlık tablosu (gauge table)**, **büküm payı yöntemi**: büküm tablosu, K-faktörü, büküm payı, büküm düşümü, büküm hesabı (tablo); **otomatik boşaltma**: dikdörtgen / yırtma / oval, boşaltma oranı. İmaj: K-faktörü ✅, büküm payı / düşümü / kalınlık tablosu ✅ v0.15, büküm tablosu ✅ v0.45
 
 ### 3.2 Sac özellikleri
 | Özellik | Önemli seçenekler | Durum |
@@ -166,8 +166,8 @@ Kalınlık, büküm yarıçapı, **kalınlık tablosu (gauge table)**, **büküm
 | Kenet (hem) | Kapalı, açık, gözyaşı, haddelenmiş; boy, boşluk, iç yarıçap | ✅ |
 | Çizgiden büküm (sketched bend) | Büküm konumu, açı | ✅ |
 | Kademe (jog) | — | ✅ |
-| **Loft büküm** (geçiş: kare→yuvarlak huni) | Bükülmüş / şekillendirilmiş, yüz sayısı | ⬜ S4 |
-| **Çapraz kırma**, **havalandırma (vent)**, **şekillendirme aletleri** (louver, kabartma, kılavuz) | — | ⬜ S4 |
+| **Loft büküm** (geçiş: kare→yuvarlak huni) | Bükülmüş / şekillendirilmiş, yüz sayısı | ✅ v0.15 |
+| **Çapraz kırma**, **havalandırma (vent)**, **şekillendirme aletleri** (louver, kabartma, kılavuz) | — | ✅ v0.70 |
 | **Tırnak ve yuva** | — | ⬜ S4 |
 | Köşe kapat, **köşe kırma/kesme** (radyüs/pah), **kaynaklı köşe**, köşe boşaltma | — | 🟡 S3 |
 | **Aç / Katla (unfold/fold)**, düzleştir, **normal kesim** | — | 🟡 S6 |
@@ -181,14 +181,14 @@ Kalınlık, büküm yarıçapı, **kalınlık tablosu (gauge table)**, **büküm
 | Özellik | Önemli seçenekler | Durum |
 |---|---|---|
 | **Yapı elemanı** | Standart / tip / boyut, profil kütüphanesi (indirilebilir), **gruplar** (paralel veya bitişik segmentler), **köşe işlemi**: uç gönye, uç alın 1, uç alın 2; **gönye kırpılmış gövdeleri birleştir**, **kaynak boşlukları**, **ayna profil** (yatay/dikey eksen), **döndürme açısı**, **profili konumlandır (delme noktası)**, **yay segmentlerini birleştir**, malzemeyi profilden aktar | 🟡 W1/W2 |
-| **Köşe işlemini köşe başına değiştirme** (köşeye tıkla → grup, işlem, kırpma sırası, köşeye özel boşluk) | — | ⬜ W1 |
-| Yapı sistemi (2018+): birincil/ikincil eleman, köşe yönetimi (otomatik/manuel, benzer köşeleri grupla) | — | ⬜ |
+| **Köşe işlemini köşe başına değiştirme** (köşeye tıkla → grup, işlem, kırpma sırası, köşeye özel boşluk) | — | ✅ v0.47 |
+| Yapı sistemi (2018+): birincil/ikincil eleman, köşe yönetimi (otomatik/manuel, benzer köşeleri grupla) | — | ✅ v0.71 |
 | Kırp/uzat | Uç kırpma, gövde ile / düzlemle kırp, **kırpma sınırı**, kaynak boşluğu | ✅ |
 | Uç kapağı | Kalınlık, ofset, iç/dış, köşe pahı | ✅ |
 | Köşe takviyesi | Üçgen / çokgen profil, kalınlık konumu, pah | ✅ |
 | Kaynak dikişi | Boyut, aralıklı, her yerde, teğet yayılımı, kaynak sembolü | 🟡 W6 |
 | **Kesim listesi** | Otomatik güncelleme, özellikler (UZUNLUK, AÇI1/2, MİKTAR, TOPLAM UZUNLUK, açıklama, malzeme), **özellik düzenleme**, sınır kutusu | 🟡 W3 |
-| Alt kaynaklı yapı, kaynaklı yapı resmi, kesim listesi tablosu, balon | — | ⬜ |
+| Alt kaynaklı yapı, kaynaklı yapı resmi, kesim listesi tablosu, balon | — | ✅ v0.61 |
 
 ## 5. 3B eskiz
 Çizgi, spline, nokta, **düzlem içinde çizim (Tab ile XY/YZ/ZX)**, 3B ilişkiler (X/Y/Z boyunca, ParallelYZ/ZX, çakışık), 3B akıllı ölçü, dönüştür/kesişim eğrisi, helis/spiral eğrisi, kompozit eğri, noktalardan eğri. İmaj: sayısal giriş + yakalama + köşe yarıçapı ✅, ilişki/ölçü/spline 🟡 W4/W5.
@@ -211,10 +211,10 @@ Kalınlık, büküm yarıçapı, **kalınlık tablosu (gauge table)**, **büküm
 Standart 3 görünüş, model görünüşü, izdüşüm, yardımcı, **kesit** (yarım, ofset, hizalı), **detay**, kesik, kırık görünüş; model öğelerini içe aktar, akıllı ölçü, koordinat ölçü, **delik açıklaması**, merkez işareti/çizgisi, **yüzey pürüzlülüğü**, **geometrik tolerans**, kaynak sembolü, not, **antet** (özellik bağlantılı), BOM ve kesim listesi tablosu, balon, **büküm tablosu**, PDF/DXF/DWG.
 
 ## 8. Arayüz ve genel
-- **CommandManager** (sekmeli komutlar), **S kısayol çubuğu**, **fare hareketleri**, bağlam araç çubukları (seçimde açılan mini menü), FeatureManager ağacı (filtre, klasör, geri alma çubuğu, ebeveyn/çocuk), **PropertyManager** (sabitleme pimi), **Heads-up görünüm çubuğu** (yönelim, görüntü stili: kenarlı gölgeli / gölgeli / gizli çizgi kaldır / gizli çizgi görünür / tel kafes; kesit; görünüm ayarları: perspektif, gölgeler), **görünüm küpü / yönelim penceresi**. İmaj: büyük kısmı ✅ (v0.9–v0.12); görüntü stilleri ⬜ F11, bağlam mini araç çubuğu ⬜.
+- **CommandManager** (sekmeli komutlar), **S kısayol çubuğu**, **fare hareketleri**, bağlam araç çubukları (seçimde açılan mini menü), FeatureManager ağacı (filtre, klasör, geri alma çubuğu, ebeveyn/çocuk), **PropertyManager** (sabitleme pimi), **Heads-up görünüm çubuğu** (yönelim, görüntü stili: kenarlı gölgeli / gölgeli / gizli çizgi kaldır / gizli çizgi görünür / tel kafes; kesit; görünüm ayarları: perspektif, gölgeler), **görünüm küpü / yönelim penceresi**. İmaj: büyük kısmı ✅ (v0.9–v0.12); görüntü stilleri ✅ v0.14, bağlam mini araç çubuğu ✅ v0.13.
 - **Seçim:** kutu / kement / kesişen, **diğerini seç** (arka yüz), seçim filtresi, döngü seç, teğet seç. İmaj 🟡 G2.
-- **Belge:** birim sistemi, ondalık, çizim standardı, malzeme/görünüm, özel özellikler (dosya özellikleri), çoklu belge ve pencereler. İmaj ⬜ G1/G4.
-- **Dışa/İçe aktarma:** STEP, IGES, Parasolid, STL, 3MF, DXF/DWG, PDF/3D PDF, eDrawings. İmaj: STEP/STL ✅, sac DXF ✅, diğerleri ⬜ G5.
+- **Belge:** birim sistemi, ondalık, çizim standardı, malzeme/görünüm, özel özellikler (dosya özellikleri), çoklu belge ve pencereler. İmaj ✅ v0.47 (birim) / v0.72 (ondalık, standart, özel özellikler, sekmeler).
+- **Dışa/İçe aktarma:** STEP, IGES, Parasolid, STL, 3MF, DXF/DWG, PDF/3D PDF, eDrawings. İmaj: STEP/STL ✅, sac DXF ✅, 3MF / PDF / eskiz ve yüz DXF ✅ v0.72; IGES / Parasolid / DWG yapılamaz (çekirdekte okuyucu-yazıcı yok).
 
 ---
 

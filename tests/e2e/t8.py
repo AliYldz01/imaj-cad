@@ -1,7 +1,7 @@
 import cmdpatch
 import sys, time, json
 from playwright.sync_api import sync_playwright
-URL=sys.argv[1]; out="/home/claude/tests/t8_"
+URL=sys.argv[1] if len(sys.argv)>1 else "http://localhost:4173/"; out="/tmp/t8_"
 def wait_ready(pg, t=90000):
     pg.wait_for_function("!document.querySelector('#status').classList.contains('busy') && !document.querySelector('#status-text').textContent.includes('yükleniyor')", timeout=t)
 with sync_playwright() as p:
@@ -52,9 +52,9 @@ with sync_playwright() as p:
     tool("Kesişim Eğr."); clk((0,0)); time.sleep(0.8); print("isect:", ents(), st())
     # ölçekle (taşı/kopyala)
     tool("Seç"); clk((0,-80))
-    pg.click("#cmds button[title='Taşı/Kopyala']")
+    pg.click("#cmds button[title='Ölçekle']")
     pg.fill("#pm-body .pm-field:has-text('Ölçek') input","2"); pg.dispatch_event("#pm-body .pm-field:has-text('Ölçek') input","input")
-    pg.fill("#pm-body .pm-field:has-text('X öteleme') input","0"); pg.dispatch_event("#pm-body .pm-field:has-text('X öteleme') input","input")
+    
     pg.click("#pm-body button:has-text('Uygula')"); time.sleep(0.3)
     print("scale op:", pg.inner_text("#toast") if pg.is_visible("#toast") else "", st())
     pg.click("#pm-cancel"); time.sleep(0.4)

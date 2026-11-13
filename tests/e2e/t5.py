@@ -1,7 +1,7 @@
 import cmdpatch
 import sys, time, json
 from playwright.sync_api import sync_playwright
-URL=sys.argv[1]; out="/home/claude/tests/t5_"
+URL=sys.argv[1] if len(sys.argv)>1 else "http://localhost:4173/"; out="/tmp/t5_"
 def wait_ready(pg, t=90000):
     pg.wait_for_function("!document.querySelector('#status').classList.contains('busy') && !document.querySelector('#status-text').textContent.includes('yükleniyor')", timeout=t)
 with sync_playwright() as p:

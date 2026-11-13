@@ -30,7 +30,7 @@ Yöntem: masaüstü (1400×900) ve telefon (390×844, dokunma) boyutunda gerçek
 | B12 ✅ v0.57 | Esc montajda montaj seçimini değil parça seçimini temizliyor. |
 
 ## C. SolidWorks'e göre eksik (bilinen)
-- Bileşen yapılandırmaları, yol / kam / yuva eşleşmeleri, fiziksel dinamik ve animasyon kaydı (`docs/MONTAJ_RAPORU.md` ⬜).
+- Bileşen yapılandırmaları, yol / kam / yuva eşleşmeleri, fiziksel dinamik ve animasyon kaydı (`docs/arsiv/MONTAJ_RAPORU.md` ✅ v0.59).
 - Montaj geri al / ileri al (A3), bileşen bağlam menüsü (B2), Girişim paneli (B7).
 
 ## Önerilen düzeltme sırası

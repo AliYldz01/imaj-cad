@@ -74,9 +74,15 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.76 10.1 Sonlu eleman analizi (doğrusal statik, voksel ağ, sabitleme / kuvvet / basınç / öz ağırlık, von Mises + yer değiştirme renkleri, abartılı şekil)
 
 ## 11. Bakım
-- ⬜ 11.1 `sk1` testini onar
-- ⬜ 11.2 Fazla ölçüde "sürücü olarak bırak"
-- ⬜ 11.3 Eskimiş plan belgelerini temizle
+- ✅ v0.77 11.1 `sk1` testini onar (sk2–sk5, t3–t10, m2 de varsayılan adresle çalışır; eskimiş `e2e.py` kaldırıldı)
+- ✅ v0.77 11.2 Fazla ölçüde "sürücü olarak bırak" (Sürülen yap / Sürücü olarak bırak / Vazgeç penceresi)
+- ✅ v0.77 11.3 Eskimiş plan belgelerini temizle (tamamlanan raporlar `docs/arsiv/`, başvuru listesi durumları güncel)
 - ⬜ (kullanıcı) Gerçek kalemle saha testi
+
+## 12. SolidWorks başvuru listesinde kalanlar (`docs/SOLIDWORKS_OZELLIKLERI.md` ⬜)
+- ⬜ 12.1 Eskiz ilişkileri: eş yarıçaplı, eşit eğri uzunluğu, eşit kanallar, çift mesafe; ölçüyü sürükleyerek çap ↔ yarıçap
+- ⬜ 12.2 İnce özellik: iki yön farklı kalınlık, köşeleri yuvarla, uçları kapat; sacda normal kesim; ekstrüzyonda sağ tıkla bitiş koşulu
+- ⬜ 12.3 Loft kapalı / ince; radyüs değişken / tam yuvarlak / setback / konik; pah öteleme yüzü; delik serisi; teğet düzlem
+- ⬜ 12.4 Sac tırnak ve yuva; plastik kenarlık / kilit
 
 Yapılamaz: IGES içe aktarma (OCC derlemesinde okuyucu yok).

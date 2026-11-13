@@ -32,13 +32,24 @@ with sync_playwright() as p:
     nd = pg.evaluate(f"{ed}.data.dims.length"); dof = pg.evaluate(f"{ed}.result.dof")
     chk("2 ölçü, tam tanımlı", nd==2 and dof==0, (nd,dof))
     dimline((25,40),(25,52))      # üst kenar → gereksiz
-    chk("gereksiz ölçü uyarısı çıktı", len(dlg)==1 and "Gereksiz" in dlg[0], dlg)
-    chk("İptal: ölçü eklenmedi, değer sorulmadı", pg.evaluate(f"{ed}.data.dims.length")==2 and pg.locator(".dim-prompt").count()==0)
-    mode["acc"]=True
+    txt = pg.inner_text("dialog.redund-dlg") if pg.locator("dialog.redund-dlg").count() else ""
+    chk("gereksiz ölçü penceresi (3 seçenek)", "Gereksiz" in txt and pg.locator("dialog.redund-dlg button").count()==3, txt)
+    pg.click("dialog.redund-dlg button:has-text('Vazgeç')"); time.sleep(0.2)
+    chk("Vazgeç: ölçü eklenmedi, değer sorulmadı", pg.evaluate(f"{ed}.data.dims.length")==2 and pg.locator(".dim-prompt").count()==0)
     dimline((25,40),(25,52))
+    pg.click("dialog.redund-dlg button:has-text('Sürülen')"); time.sleep(0.3)
     ds = pg.evaluate(f"{ed}.data.dims.map(d=>[!!d.ref, d.v])")
     chk("Tamam: sürülen ölçü 50", len(ds)==3 and ds[2][0] and abs(ds[2][1]-50)<1e-6, ds)
     chk("eskiz hâlâ çözülür ve tam tanımlı", pg.evaluate(f"{ed}.result.ok") and pg.evaluate(f"{ed}.result.dof")==0)
+    # sürücü olarak bırak: sağ kenar → aşırı tanımlı
+    dimline((50,20),(62,20))
+    pg.click("dialog.redund-dlg button:has-text('Sürücü olarak bırak')"); time.sleep(0.3)
+    ds = pg.evaluate(f"{ed}.data.dims.map(d=>[!!d.ref, d.v])")
+    chk("Sürücü olarak bırak: 4. ölçü sürücü 40", len(ds)==4 and not ds[3][0] and abs(ds[3][1]-40)<1e-6, ds)
+    chk("eskiz aşırı tanımlı (gereksiz kısıt işaretli)", pg.evaluate(f"{ed}.result.ok") and len(pg.evaluate(f"{ed}.result.redundant"))>0)
+    chk("aşırı tanımlı ölçü kırmızı", pg.locator(".dim.err, .dimlabel.err, .err").count()>0)
+    pg.keyboard.press("Control+z"); time.sleep(0.3)
+    chk("geri alınca 3 ölçü", pg.evaluate(f"{ed}.data.dims.length")==3)
     # programla eklenen fazla sürücü ölçü de op içinde reddedilir
     okop = pg.evaluate(f"""(()=>{{const e={ed}; const l=e.data.ents.filter(x=>x.t==='line')[1]; return e['op'](()=>e.data.dims.push({{id:'dz',t:'dist',sub:'a',refs:[l.p1,l.p2],v:40,lp:[0,0]}}))}})()""")
     chk("op: fazla sürücü ölçü reddedilir", okop is False and pg.evaluate(f"{ed}.data.dims.length")==3, okop)

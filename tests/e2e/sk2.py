@@ -1,7 +1,7 @@
 import cmdpatch
 import sys, time, json
 from playwright.sync_api import sync_playwright
-URL=sys.argv[1]; out="/home/claude/tests/t8_"
+URL=sys.argv[1] if len(sys.argv)>1 else "http://localhost:4173/"; out="/tmp/t8_"
 def wait_ready(pg, t=90000):
     pg.wait_for_function("!document.querySelector('#status').classList.contains('busy') && !document.querySelector('#status-text').textContent.includes('yükleniyor')", timeout=t)
 with sync_playwright() as p:
@@ -41,7 +41,9 @@ with sync_playwright() as p:
     print("dims:", pg.evaluate("window.__app.mode.editor.data.dims.map(d=>d.t+':'+d.v)"), st())
     with pg.expect_file_chooser() as fc:
         pg.click("#cmds button:has-text('Eskiz Resmi')")
-    fc.value.set_files("/home/claude/tests/pic.png"); time.sleep(1.2)
+    import base64
+    open("/tmp/pic.png","wb").write(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAuKetIAAAAYklEQVR4nO3PQQkAMAzAwAqrfyZrIvY4BoEIuMzZ/brhgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKABLWhACxrQgga0oAEtaEALGtCCBrSgAS1oQAsa0IIGtKABLWhACx67nJIA4m9ID9wAAAAASUVORK5CYII="))
+    fc.value.set_files("/tmp/pic.png"); time.sleep(1.2)
     print("pic:", pg.evaluate("(()=>{const p=window.__app.mode.editor.data.pic; return p&&[p.w,p.aspect,p.src.length]})()"))
     pg.click("#pm-body button:has-text('İki noktayla ölçekle')"); time.sleep(0.2)
     # resimde dikdörtgenin sol ve sağ kenarı: px 100 ve 300 -> eskizde -50 ve +50 (genişlik 200mm, 400px)

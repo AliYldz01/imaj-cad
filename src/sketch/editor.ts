@@ -317,6 +317,46 @@ export class SketchEditor implements InputHandler {
   }
   /** son op gereksiz (fazla) ölçü yüzünden reddedildi */
   redundantHit = false;
+  /** SolidWorks "sürücü olarak bırak": gereksiz sürücü ölçü kabul edilir (eskiz aşırı tanımlı gösterilir) */
+  private allowOver = false;
+  /** gereksiz ölçü penceresi: sürülen yap / sürücü olarak bırak / vazgeç */
+  askRedundant(msg: string, keepOk = true): Promise<"ref" | "keep" | null> {
+    document.querySelector("dialog.redund-dlg")?.remove();
+    const d = document.createElement("dialog");
+    d.className = "input-dialog redund-dlg";
+    const p = document.createElement("p");
+    p.textContent = "Gereksiz ölçü: " + msg;
+    d.appendChild(p);
+    const row = document.createElement("div");
+    row.className = "pm-buttons";
+    d.appendChild(row);
+    document.body.appendChild(d);
+    return new Promise((res) => {
+      const b = (t: string, v: "ref" | "keep" | null, cls = "btn") => {
+        const x = document.createElement("button");
+        x.className = cls;
+        x.textContent = t;
+        x.dataset.v = v ?? "";
+        x.addEventListener("click", () => (d.close(), d.remove(), res(v)));
+        row.appendChild(x);
+      };
+      b("Sürülen (referans) yap", "ref", "btn primary");
+      if (keepOk) b("Sürücü olarak bırak (aşırı tanımlı)", "keep");
+      b("Vazgeç", null);
+      d.addEventListener("cancel", () => (d.remove(), res(null)));
+      d.showModal();
+    });
+  }
+  private addOver(make: () => SDim, a: "ref" | "keep") {
+    this.allowOver = a === "keep";
+    try {
+      const ok = this.op(() => this.data.dims.push(make()));
+      if (ok && a === "keep") this.host.toast("Eskiz aşırı tanımlı: gereksiz ölçü kırmızı gösterilir", true);
+    } finally {
+      this.allowOver = false;
+    }
+    this.host.changed();
+  }
   private op(fn: () => void, failMsg = "Bu işlem eskizi çözülemez hale getiriyor (aşırı tanımlı)"): boolean {
     const before = JSON.stringify(this.data);
     const dimIds = new Set(this.data.dims.map((d) => d.id));
@@ -337,7 +377,7 @@ export class SketchEditor implements InputHandler {
     // SolidWorks gibi: yeni sürücü ölçü hiçbir serbestliği almıyorsa (değeri tutsa bile) gereksizdir → reddet
     const newDims = this.data.dims.filter((d) => !dimIds.has(d.id) && !d.ref);
     this.redundantHit = false;
-    if (r.ok && !r.conflicts.length && newDims.length && (r.redundant.some((x) => !prevRed.has(x)) || (prevDof !== undefined && r.dof >= prevDof && geo0 === Object.keys(this.data.pts).length + ":" + this.data.ents.length))) {
+    if (!this.allowOver && r.ok && !r.conflicts.length && newDims.length && (r.redundant.some((x) => !prevRed.has(x)) || (prevDof !== undefined && r.dof >= prevDof && geo0 === Object.keys(this.data.pts).length + ":" + this.data.ents.length))) {
       this.undoStack.pop();
       Object.assign(this.data, JSON.parse(before));
       this.redundantHit = true;
@@ -3710,13 +3750,10 @@ export class SketchEditor implements InputHandler {
     const cur = measure(this.data, spec);
     // SolidWorks: ölçü konur konmaz gereksizse sor — sürülen (referans) yap ya da vazgeç
     if (this.dimRedundant(spec, cur)) {
-      if (confirm("Gereksiz ölçü: bu ölçüyü eklemek eskizi aşırı tanımlar (değeri zaten diğer ölçü / ilişkilerle belirli).\n\nTamam = sürülen (referans) ölçü olarak ekle · İptal = ekleme")) {
-        this.op(() => {
-          const d: SDim = { id: nid(this.data, "d"), ...spec, v: Math.abs(cur), ref: true } as SDim;
-          this.data.dims.push(d);
-        });
-        this.host.changed();
-      }
+      void this.askRedundant("Bu ölçüyü eklemek eskizi aşırı tanımlar (değeri zaten diğer ölçü / ilişkilerle belirli).").then((a) => {
+        if (!a) return;
+        this.addOver(() => ({ id: nid(this.data, "d"), ...spec, v: Math.abs(cur), ...(a === "ref" ? { ref: true } : {}) }) as SDim, a);
+      });
       return;
     }
     this.promptValue(e.clientX, e.clientY, Math.abs(cur), spec.t === "angle" ? "°" : "mm", (v) => {
@@ -3735,16 +3772,19 @@ export class SketchEditor implements InputHandler {
       if (ok && spec.t === "dist" && (spec.sub === "h" || spec.sub === "v")) this.chainSt = { last: spec.refs[1], sub: spec.sub, lp: spec.lp };
       if (ok) return this.host.changed();
       // SolidWorks gibi: aşırı tanımlıyorsa referans ölçü olarak eklemeyi öner
-      if (confirm(this.redundantHit ? "Gereksiz ölçü: bu ölçü eskizi aşırı tanımlar (değeri zaten belirli). Sürülen (referans) ölçü olarak eklensin mi?" : "Bu ölçü eskizi aşırı tanımlar. Referans (sürülen) ölçü olarak eklensin mi?")) {
-        this.op(() => {
+      const red = this.redundantHit;
+      void this.askRedundant(red ? "Bu ölçü eskizi aşırı tanımlar (değeri zaten belirli)." : "Bu ölçü değeri diğer ölçü / ilişkilerle çelişiyor; eskiz aşırı tanımlı olur.", red).then((a) => {
+        if (!a) return;
+        this.addOver(() => {
           const d = make();
-          d.ref = true;
-          d.v = Math.abs(cur);
-          delete d.expr;
-          this.data.dims.push(d);
-        });
-        this.host.changed();
-      }
+          if (a === "ref") {
+            d.ref = true;
+            d.v = Math.abs(cur);
+            delete d.expr;
+          } else d.v = Math.abs(cur) * (d.v < 0 ? -1 : 1);
+          return d;
+        }, a);
+      });
     });
   }
 

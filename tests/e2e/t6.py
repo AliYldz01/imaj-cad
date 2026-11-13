@@ -1,7 +1,7 @@
 import cmdpatch
 import sys, time
 from playwright.sync_api import sync_playwright
-URL=sys.argv[1]; out="/home/claude/tests/t6_"
+URL=sys.argv[1] if len(sys.argv)>1 else "http://localhost:4173/"; out="/tmp/t6_"
 def wait_ready(pg, t=90000):
     pg.wait_for_function("!document.querySelector('#status').classList.contains('busy') && !document.querySelector('#status-text').textContent.includes('yükleniyor')", timeout=t)
 with sync_playwright() as p:
@@ -53,7 +53,7 @@ with sync_playwright() as p:
     print("cpattern ->", ents(), st())
     # taşı/kopyala
     tool("Daire"); clk((-60,20),(-52,20)); tool("Seç"); clk((-52,20))
-    tool("Taşı/Kopyala"); pg.check("#pm-body .pm-check:has-text('Kopyala') input"); apply()
+    tool("Kopyala"); apply()
     print("copy ->", ents(), st())
     # 3N dikdörtgen, paralelkenar, çevre dairesi
     tool("3N Dikdörtgen"); clk((100,0),(130,20),(120,40)); print("rect3 ->", ents(), st())

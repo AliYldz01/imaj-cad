@@ -1,7 +1,7 @@
 import cmdpatch
 import sys, time, json
 from playwright.sync_api import sync_playwright
-URL=sys.argv[1]
+URL=sys.argv[1] if len(sys.argv)>1 else "http://localhost:4173/"
 def wait_ready(pg, t=120000):
     pg.wait_for_function("!document.querySelector('#status').classList.contains('busy') && !document.querySelector('#status-text').textContent.includes('yükleniyor')", timeout=t)
 # --- yardımcılar: eskiz verisi
@@ -35,7 +35,7 @@ def run(pg, name, feats, extra=None):
     print(f"{name}: {m} {pg.inner_text('#status-text')} {errs if errs else ''}")
     if name in SHOTS:
         pg.click(".vcube .iso"); pg.click("#viewbar button[title='Ekrana sığdır']"); time.sleep(0.4)
-        pg.screenshot(path=f"/home/claude/tests/t10_{name.replace(' ','_')}.png", clip={"x":300,"y":62,"width":1100,"height":838})
+        pg.screenshot(path=f"/tmp/t10_{name.replace(' ','_')}.png", clip={"x":300,"y":62,"width":1100,"height":838})
     return m
 SHOTS={'rib parallel','dome','wrap text deboss','text extrude','loft center','curved up-to-surface'}
 with sync_playwright() as p:
