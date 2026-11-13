@@ -19,6 +19,7 @@ import {
   nearestOnSeg, niceStep, norm2, normAng, perp, pointInPoly, sub2, TAU,
 } from "./geom";
 
+import { lenTxt, units } from "../doc/math";
 import { recognize, hvOf, shapeName, rectCorners, outline, type Shape } from "./freehand";
 
 export type SkTool =
@@ -3276,7 +3277,7 @@ export class SketchEditor implements InputHandler {
     this.render();
     if (!spec) return this.host.toast("Bu seçim için ölçü yok");
     const cur = measure(this.data, spec);
-    this.promptValue(e.clientX, e.clientY, Math.abs(cur), spec.t === "angle" ? "°" : "", (v) => {
+    this.promptValue(e.clientX, e.clientY, Math.abs(cur), spec.t === "angle" ? "°" : "mm", (v) => {
       if (spec.t !== "angle" && v <= 0 && spec.t !== "dist") return this.host.toast("Değer sıfırdan büyük olmalı", true);
       const make = (): SDim => {
         const d: SDim = { id: nid(this.data, "d"), ...spec, v: spec.t === "dist" && spec.sub !== "a" ? v * Math.sign(cur || 1) : v };
@@ -3383,7 +3384,7 @@ export class SketchEditor implements InputHandler {
       this.resolve();
       this.render();
     };
-    this.promptValue(x, y, Math.abs(d.v), d.t === "angle" ? "°" : "", (v) => {
+    this.promptValue(x, y, Math.abs(d.v), d.t === "angle" ? "°" : "mm", (v) => {
       restore();
       const ex = this.lastExpr;
       if (v <= 0 && d.t !== "dist") return this.host.toast("Değer sıfırdan büyük olmalı", true);
@@ -3406,6 +3407,13 @@ export class SketchEditor implements InputHandler {
 
   private promptValue(x: number, y: number, cur: number, unit: string, done: (v: number) => void, extra?: { live: (v: number | null, flip?: boolean) => void; cancel: () => void; canFlip: boolean }) {
     document.querySelector(".dim-prompt")?.remove();
+    if (unit === "mm" && units === "in") {
+      const d0 = done, ex = extra;
+      cur = cur / 25.4;
+      unit = "in";
+      done = (v) => d0(v * 25.4);
+      if (ex) extra = { ...ex, live: (v, fl) => ex.live(v === null ? null : v * 25.4, fl) };
+    }
     const box = document.createElement("div");
     box.className = "dim-prompt";
     box.innerHTML = `<button class="dec" aria-label="Azalt">−</button><input inputmode="decimal" autocomplete="off" /><button class="inc" aria-label="Artır">+</button><span>${unit}</span><button class="ok" aria-label="Tamam">✓</button><button class="no" aria-label="İptal">✕</button>${extra ? `<button class="rb" title="Yeniden oluştur (canlı)">⟳</button>${extra.canFlip ? `<button class="fl" title="Yönü ters çevir">±</button>` : ""}` : ""}`;
@@ -3901,7 +3909,7 @@ export class SketchEditor implements InputHandler {
       const dirAB = norm2(sub2(B2, A2));
       this.arrow(A2, mul2(dirAB, -1), color);
       this.arrow(B2, dirAB, color);
-      text = fmtNum(Math.abs(d.v), 2);
+      text = lenTxt(Math.abs(d.v), 2);
     } else if (d.t === "dia" || d.t === "rad") {
       const e = getEnt(sk, d.refs[0]) as SCircle | SArc;
       if (!e) return;
@@ -3915,12 +3923,12 @@ export class SketchEditor implements InputHandler {
         this.addLines([rim2, far], color, 1);
         this.arrow(rim, u, color);
         this.arrow(rim2, mul2(u, -1), color);
-        text = "Ø" + fmtNum(Math.abs(d.v), 2);
+        text = "Ø" + lenTxt(Math.abs(d.v), 2);
       } else {
         const far = len2(sub2(L, c)) > r ? L : rim;
         this.addLines([c, far], color, 1);
         this.arrow(rim, u, color);
-        text = "R" + fmtNum(Math.abs(d.v), 2);
+        text = "R" + lenTxt(Math.abs(d.v), 2);
       }
     } else if (d.t === "angle") {
       const l1 = getEnt(sk, d.refs[0]) as SLine, l2 = getEnt(sk, d.refs[1]) as SLine;
@@ -3949,7 +3957,7 @@ export class SketchEditor implements InputHandler {
       this.addLines(pts, color, 1);
       this.addLines([a0, pts[0]], color, 1);
       this.addLines([a1, pts[32]], color, 1);
-      text = "⌒" + fmtNum(Math.abs(d.v), 2);
+      text = "⌒" + lenTxt(Math.abs(d.v), 2);
     } else if (d.t === "cl" || d.t === "cc") {
       const c1 = getEnt(sk, d.refs[0]) as SCircle;
       const o = getEnt(sk, d.refs[1]) as any;
@@ -3973,7 +3981,7 @@ export class SketchEditor implements InputHandler {
       const dir = norm2(sub2(B, A));
       this.arrow(B, dir, color);
       this.arrow(A, mul2(dir, -1), color);
-      text = fmtNum(Math.abs(d.v), 2);
+      text = lenTxt(Math.abs(d.v), 2);
     } else if (d.t === "pldist") {
       const ea = getEnt(sk, d.refs[0]), eb = getEnt(sk, d.refs[1]);
       let p: Vec2, l: SLine;
@@ -3992,7 +4000,7 @@ export class SketchEditor implements InputHandler {
       const dir = norm2(sub2(F2, p2));
       this.arrow(F2, dir, color);
       this.arrow(p2, mul2(dir, -1), color);
-      text = fmtNum(Math.abs(d.v), 2);
+      text = lenTxt(Math.abs(d.v), 2);
     }
     const el = document.createElement("div");
     el.className = "dim" + (preview ? " preview" : "") + (color === C.over ? " err" : color === C.sel ? " sel" : "") + (d.ref ? " ref" : "");

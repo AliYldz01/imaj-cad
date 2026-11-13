@@ -589,3 +589,9 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | Yüzey ekstrüzyon (açık / kapalı eskiz), düzlemsel yüzey | ✅ |
 | Kalınlaştır (yüzey → katı), Yüzeyle kes | ✅ |
 | Yüzey loft / sınır / doldurma, dikiş, kırp | ⬜ |
+
+## v0.47 — Köşe başına işlem ve birim sistemi
+| Özellik | Durum |
+|---|---|
+| Kaynaklı yapı: köşe başına işlem (gönye / alın 1 / alın 2 / yok + köşeye özel boşluk) | ✅ |
+| Birim sistemi mm ↔ inç (görüntü ve giriş) | ✅ |

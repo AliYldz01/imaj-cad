@@ -7,7 +7,10 @@ import { SketchEditor, TOOL_NAMES, type SkTool } from "./sketch/editor";
 import { newSketch, nid, addPt } from "./sketch/model";
 import { pointPos } from "./sketch/profile";
 import { compile, resolveFrame, sketchUsers, contourRegions, planeFrame } from "./doc/compile";
-import { STD_FRAMES, STD_NAMES, dist3, fmtNum, frameFromNormal, toWorld, toLocal, evalNum, setVarResolver, AXES } from "./doc/math";
+import { STD_FRAMES, STD_NAMES, dist3, fmtNum, frameFromNormal, toWorld, toLocal, evalNum, setVarResolver, AXES, setUnits, units as unitsVar } from "./doc/math";
+import * as MathMod from "./doc/math";
+const unitsNow = () => MathMod.units;
+void unitsVar;
 import { solve as solveSketch } from "./sketch/solver";
 import type {
   EdgeRef, Feature, FaceRef, PartDoc, PlaneRef, SketchFeature, StdPlane, Vec3, ExtrudeFeature, RevolveFeature, HoleFeature, MeasureItem, Vec2,
@@ -2291,6 +2294,39 @@ function renderFeaturePM(kind: string) {
       if (d.ori === 2) gc.appendChild(checkField("Önceki yapı elemanlarına göre kırp / uzat", d.trimPrev !== false, (v) => ((d.trimPrev = v), upd())));
       gc.appendChild(h("p", "pm-hint", "Uç uca birleşen iki eleman köşede kesilir. T birleşimleri, gruplar arası köşeler ve 3+ elemanlı köşeler (ör. ayak + çerçeve) otomatik çözülür: sürekli eleman uzar, diğerleri onun yüzünde biter. Bağlı çizgiler aynı yöne çevrilir, L/U kanatları köşede ters dönmez."));
       body.appendChild(gc);
+      // SolidWorks köşe başına işlem: iki elemanın uç uca buluştuğu köşeler
+      try {
+        const kf = compile(viewFeatures().feats, doc.profiles ?? {}).kfeats.find((x) => x.id === d.id) as any;
+        const pts = new Map<string, { p: Vec3; n: number }>();
+        for (const it of kf?.items ?? []) for (const q of [it.a, it.b] as Vec3[]) {
+          const k = q.map((v) => v.toFixed(3)).join(",");
+          const e = pts.get(k) ?? { p: q, n: 0 };
+          e.n++;
+          pts.set(k, e);
+        }
+        const corners = [...pts.values()].filter((x) => x.n === 2);
+        if (corners.length) {
+          const gk = group("Köşe başına işlem");
+          d.cornerOv = d.cornerOv ?? [];
+          corners.forEach((c, i) => {
+            let ov = d.cornerOv.find((o: any) => dist3(o.p, c.p) < 1e-3);
+            const row = h("div", "pm-row");
+            row.append(
+              selectField(`Köşe ${i + 1} (${c.p.map((v) => fmtNum(v, 0)).join(", ")})`, [{ v: "default", t: "Varsayılan" }, { v: "miter", t: "Gönye" }, { v: "butt1", t: "Alın 1" }, { v: "butt2", t: "Alın 2" }, { v: "none", t: "Yok" }], ov?.kind ?? "default", (v) => {
+                if (!ov) d.cornerOv.push((ov = { p: c.p, kind: v }));
+                else ov.kind = v;
+                if (v === "default" && ov.gap === undefined) d.cornerOv = d.cornerOv.filter((o: any) => o !== ov);
+                renderFeaturePM(kind);
+                upd();
+              }),
+            );
+            if (ov && ov.kind !== "none") row.appendChild(numField("Boşluk", ov.gap ?? g.gap, (v) => ((ov.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }));
+            gk.appendChild(row);
+          });
+          gk.appendChild(h("p", "pm-hint", "Her köşe için ayrı işlem ve kaynak boşluğu (SolidWorks: köşeye tıklayıp işlem seçme)."));
+          body.appendChild(gk);
+        }
+      } catch {}
       // segmentler
       const segBox = h("div", "pm-feats");
       for (const sk of sketches) {
@@ -5087,6 +5123,13 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
         localStorage.setItem("imajcad.wheelReverse", v ? "1" : "0");
       } catch {}
       return toast(v ? "Tekerlek: ileri = yakınlaş" : "Tekerlek: ileri = uzaklaş (SolidWorks varsayılanı)");
+    }
+    if (act === "units") {
+      setUnits(unitsNow() === "mm" ? "in" : "mm");
+      toast(`Birim: ${unitsNow() === "mm" ? "milimetre (mm)" : "inç (in) — model mm olarak saklanır"}`);
+      if (mode.k === "sketch") mode.editor.render();
+      if (mode.k === "pm") renderFeaturePM(kindOf(mode.draft));
+      return;
     }
     if (act === "keys") return ($("#help") as HTMLDialogElement).showModal();
     if (act === "input") return openInputSettings();

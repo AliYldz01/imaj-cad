@@ -454,7 +454,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           for (const it of gItems) items.push({ ...it, g: gk });
           });
           const pr = pr0!;
-          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: P0.name, R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, tp: f.trimPrev !== false, ...(groups.length > 1 ? { gl } : {}) });
+          kfeats.push({ id: f.id, type: "member", items, loops: pr.loops, name: P0.name, R: pr.R, corner: f.corner, gap: f.gap, ori: f.ori, auto: gl[0].auto, tp: f.trimPrev !== false, ...(groups.length > 1 ? { gl } : {}), cornerOv: (f as any).cornerOv } as any);
           break;
         }
         case "trim": {

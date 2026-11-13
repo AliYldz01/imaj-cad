@@ -10,7 +10,7 @@ import {
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
-  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData,
+  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData, CornerKind,
 } from "./doc/types";
 import { thinRegion, segPoints, revSeg } from "./sketch/profile";
 import { sheetOpenRegion, tableK } from "./sheet/sheet";
@@ -1970,8 +1970,9 @@ function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, 
     });
   });
   type Tr = { V: Vec3; A: { i: number; end: 0 | 1 }; B: { i: number; end: 0 | 1 }; da: Vec3; db: Vec3 };
-  const treat: Tr[] = [];
-  if (f.corner !== "none")
+  const treat: (Tr & { kind: CornerKind; gap: number })[] = [];
+  const ovs: { p: Vec3; kind: CornerKind | "default"; gap?: number }[] = (f as any).cornerOv ?? [];
+  if (f.corner !== "none" || ovs.length)
     for (const list of joints.values()) {
       if (list.length !== 2) continue;
       const [A, B] = list;
@@ -1986,7 +1987,12 @@ function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, 
       const M = f.R * (1 + 1 / Math.tan(Math.max(th, 0.35) / 2)) + f.gap + 1;
       ext[A.i][A.end] = M;
       ext[B.i][B.end] = M;
-      treat.push({ V, A, B, da, db });
+      {
+        // SolidWorks köşe başına işlem: bu köşeye özel tür / boşluk
+        const ov = ovs.find((o) => vlen(vsub(o.p, V)) < 1e-3);
+        const kind = (ov && ov.kind !== "default" ? ov.kind : f.corner) as CornerKind;
+        if (kind !== "none") treat.push({ V, A, B, da, db, kind, gap: ov?.gap ?? f.gap });
+      }
     }
   // teğet zincirler: iki öğenin teğet buluştuğu uçlar birleştirilir
   const tanAt = (it: MemberItem, end: 0 | 1): Vec3 => {
@@ -2093,20 +2099,21 @@ function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, 
   });
   for (const tr of treat) {
     const { V, A, B, da, db } = tr;
+    const gap = tr.gap;
     if (chained.has(A.i) || chained.has(B.i) || !solids[A.i] || !solids[B.i]) continue;
-    if (f.corner === "miter") {
+    if (tr.kind === "miter") {
       const nA = vnorm(vsub(da, db));
-      solids[A.i] = solids[A.i]!.cut(halfSpace(vadd(V, vmul(nA, f.gap / 2)), nA));
-      solids[B.i] = solids[B.i]!.cut(halfSpace(vsub(V, vmul(nA, f.gap / 2)), vmul(nA, -1)));
+      solids[A.i] = solids[A.i]!.cut(halfSpace(vadd(V, vmul(nA, gap / 2)), nA));
+      solids[B.i] = solids[B.i]!.cut(halfSpace(vsub(V, vmul(nA, gap / 2)), vmul(nA, -1)));
     } else {
-      const [R, T] = f.corner === "butt1" ? [A, B] : [B, A];
+      const [R, T] = tr.kind === "butt1" ? [A, B] : [B, A];
       const dR = R === A ? da : db, dT = R === A ? db : da;
       const lt = lines[T.i]!, lr = lines[R.i]!;
       const sT = profileSupport(f.loops, lt.x, lt.d, vmul(dR, -1));
       const sR = profileSupport(f.loops, lr.x, lr.d, dT);
       solids[R.i] = solids[R.i]!.cut(halfSpace(vsub(V, vmul(dR, sT)), dR));
       // düz kesim: kesilen eleman, sürekli elemanın yüzeyinde biter
-      solids[T.i] = keepFar(solids[T.i]!.cut(halfSpace(vadd(V, vmul(dT, sR + f.gap)), dT)), V, dT);
+      solids[T.i] = keepFar(solids[T.i]!.cut(halfSpace(vadd(V, vmul(dT, sR + gap)), dT)), V, dT);
     }
   }
   return { keys: items.map((it) => it.key), solids, lines, chained, loops: f.loops, treated: new Set() };

@@ -1,5 +1,5 @@
 // Panel formları için küçük DOM yardımcıları.
-import { evalNum, fmtNum, hasVars } from "../doc/math";
+import { evalNum, fmtNum, hasVars, units } from "../doc/math";
 
 /** Denklem bağlantısı: alan anahtarına ifade kaydeder */
 let eqHook: { get(key: string): string | undefined; set(key: string, expr: string | null): void } | null = null;
@@ -14,7 +14,14 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text 
   return el;
 }
 
-export function numField(label: string, val: number, onChange: (v: number) => void, opts: { min?: number; unit?: string; int?: boolean; key?: string } = {}) {
+export function numField(label: string, val: number, onChange0: (v: number) => void, opts: { min?: number; unit?: string; int?: boolean; key?: string } = {}) {
+  // inç biriminde mm alanları dönüştürülerek gösterilir / girilir (model mm)
+  let onChange = onChange0;
+  if (opts.unit === "mm" && units === "in") {
+    val = val / 25.4;
+    opts = { ...opts, unit: "in", min: opts.min !== undefined ? opts.min / 25.4 : undefined };
+    onChange = (v) => onChange0(v * 25.4);
+  }
   const l = h("label", "pm-field", label + (opts.unit ? ` (${opts.unit})` : ""));
   const inp = h("input");
   inp.autocomplete = "off";

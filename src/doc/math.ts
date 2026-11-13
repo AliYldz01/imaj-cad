@@ -101,3 +101,21 @@ export function evalNum(s: string, extra?: (name: string) => number | undefined)
 
 /** İfade değişken içeriyor mu? */
 export const hasVars = (s: string) => /[A-Za-zçğıöşüÇĞİÖŞÜ_]/.test(s.replace(/^=/, "").replace(/\b(sin|cos|tan|sqrt|abs|round|pi|PI|karekök)\b/g, ""));
+
+// ---------- Birim sistemi (görüntü / giriş): model her zaman mm ----------
+export let units: "mm" | "in" = ((): "mm" | "in" => {
+  try {
+    return localStorage.getItem("imajcad.units") === "in" ? "in" : "mm";
+  } catch {
+    return "mm";
+  }
+})();
+export function setUnits(u: "mm" | "in") {
+  units = u;
+  try {
+    localStorage.setItem("imajcad.units", u);
+  } catch {}
+}
+export const lenOut = (v: number) => (units === "in" ? v / 25.4 : v);
+export const lenIn = (v: number) => (units === "in" ? v * 25.4 : v);
+export const lenTxt = (v: number, dec = 2) => (units === "in" ? fmtNum(v / 25.4, dec + 2) + '"' : fmtNum(v, dec));
