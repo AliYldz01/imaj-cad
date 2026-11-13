@@ -228,7 +228,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         case "thread":
           if (!f.face) throw new Error("Diş açılacak silindirik yüzü seçin");
           if (!(f.pitch > 0)) throw new Error("Hatve sıfırdan büyük olmalı");
-          kfeats.push({ id: f.id, type: "thread", face: f.face, pitch: f.pitch, length: f.length, left: f.left, fromEnd: f.fromEnd });
+          kfeats.push({ id: f.id, type: "thread", face: f.face, pitch: f.pitch, length: f.length, left: f.left, fromEnd: f.fromEnd, cos: f.cos });
           break;
         case "flex":
           if (!f.body) throw new Error("Esnetilecek gövdeyi seçin");

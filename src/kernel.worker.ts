@@ -1086,6 +1086,11 @@ function fillPattern(f: Extract<KFeature, { type: "fpattern" }>) {
 // (helis boyunca profil süpürmeye göre Boolean işlemlerinde çok daha sağlamdır).
 function threadTool(f: Extract<KFeature, { type: "thread" }>) {
   const pf = planarFace(f.face);
+  if (f.cos) {
+    // kozmetik diş: geometri yok (yalnız yüz rengi ve resimde gösterim)
+    if (!pf || String(pf.face.geomType) !== "CYLINDRE") throw new Error("Diş için silindirik bir yüz seçin");
+    return;
+  }
   if (!pf || String(pf.face.geomType) !== "CYLINDRE") throw new Error("Diş için silindirik bir yüz seçin");
   const cy = cylinderParams(pf.face);
   const a = cy.a;
@@ -1136,7 +1141,8 @@ function threadTool(f: Extract<KFeature, { type: "thread" }>) {
       const keep = b.intersect(makeCylinder(R + m, len, base, a));
       // diş bölgesinde gövde silindir dışında malzeme varsa (ör. omuz) korunur
       const outside = keep.cut(makeCylinder(R + 1e-3, len, base, a));
-      r = volOf(rest) > 1e-6 ? rest.fuse(core) : core;
+      // gövdenin kalanı burulmuş çubuğa yalnız uç düzleminde değer: yapıştırma (glue) seçeneği yüz–yüz kesişimini atlar (~10× hızlı)
+      r = volOf(rest) > 1e-6 ? glueFuse(rest, core) : core;
       if (volOf(outside) > 1e-6) r = r.fuse(outside);
     } else {
       // iç diş: deliği doldur, burulmuş çekirdeği çıkar
@@ -1146,6 +1152,28 @@ function threadTool(f: Extract<KFeature, { type: "thread" }>) {
     if (Math.abs(volOf(r) - v0) < 1e-6) throw new Error("Diş gövdeye uygulanamadı");
     return r;
   });
+}
+
+/** Yalnız yüzeyde değen gövdeleri birleştir (BOPAlgo_GlueShift); başarısızsa olağan birleştirme */
+function glueFuse(a: Shape, b: Shape): Shape {
+  const oc = getOC() as any;
+  try {
+    const op = new oc.BRepAlgoAPI_Fuse();
+    const args = new oc.NCollection_List_TopoDS_Shape();
+    args.Append(a.wrapped);
+    const tl = new oc.NCollection_List_TopoDS_Shape();
+    tl.Append(b.wrapped);
+    op.SetArguments(args);
+    op.SetTools(tl);
+    op.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueShift);
+    op.SetNonDestructive?.(true);
+    op.Build(new oc.Message_ProgressRange());
+    const ok = !op.HasErrors();
+    const r = ok ? cast(op.Shape()) : null;
+    op.delete();
+    if (r && solidsOf(r).length === 1) return r;
+  } catch { /* olağan yola düş */ }
+  return a.fuse(b);
 }
 
 /** Toleranslı (bulanık) Boolean kesme: helis gibi zor geometrilerde sağlam sonuç verir */

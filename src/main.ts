@@ -404,6 +404,18 @@ function applyLook() {
       if (bi >= 0 && (bd < 2 || (bb && bd < 0.2 * dist3(bb.min, bb.max)))) faces.set(bi, parseInt(it.color.slice(1), 16));
     }
   }
+  // kozmetik dişler: silindir yüzü koyu tonla gösterilir
+  if (m)
+    for (const f of doc.features as any[]) {
+      if (f.type !== "thread" || !f.cos || f.off || !f.face) continue;
+      let bi = -1, bd = Infinity;
+      m.faces.forEach((x, i) => {
+        if (!x.r || (f.face.r && Math.abs(x.r - f.face.r) > 0.05)) return;
+        const d = dist3(x.c, f.face.c);
+        if (d < bd) (bd = d), (bi = i);
+      });
+      if (bi >= 0 && !faces.has(bi)) faces.set(bi, 0x6b7380);
+    }
   viewer.setColors(L?.part ? parseInt(L.part.slice(1), 16) : null, faces);
 }
 function pickColor(init: string, done: (c: string) => void) {
@@ -2717,6 +2729,7 @@ function renderFeaturePM(kind: string) {
           numField("Diş boyu (0 = tüm yüz)", d.length, (v) => ((d.length = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.length` }),
           checkField("Diğer uçtan başla", d.fromEnd, (v) => ((d.fromEnd = v), upd())),
           checkField("Sol diş", d.left, (v) => ((d.left = v), upd())),
+          checkField("Kozmetik diş (hızlı: geometri yok, yüz renklenir)", !!d.cos, (v) => ((d.cos = v || undefined), upd())),
           h("p", "pm-hint", "Metrik ISO 60° profil. Dış/iç diş yüzeye göre otomatik belirlenir. Gerçek diş geometrisi ağır bir işlemdir; uzun dişlerde hesaplama birkaç saniye sürebilir. Yalnızca imalat resmi için Delik Sihirbazı'ndaki görsel diş yeterlidir."),
         ),
       );

@@ -604,3 +604,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.49 | Basit mukavemet analizi (kiriş: σ, sehim, güvenlik katsayısı) | ✅ |
 
 | v0.50 | Flanş profili (yamuk), aç/katla ile kesme (bükümü geçen kontur dahil) | ✅ |
+
+| v0.51 | Diş hızlandırma (yapıştırmalı birleştirme), kozmetik diş | ✅ |

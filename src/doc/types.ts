@@ -396,7 +396,7 @@ export interface CurvePatternFeature extends FeatBase { type: "cvpattern"; feats
 /** Doldurma çoğaltması: düz yüz içinde ızgara */
 export interface FillPatternFeature extends FeatBase { type: "fpattern"; feats: string[]; face: FaceRef | null; spacing: number; layout: "square" | "stagger"; margin: number; angle: number }
 /** Helisel diş */
-export interface ThreadFeature extends FeatBase { type: "thread"; face: FaceRef | null; pitch: number; length: number; left: boolean; fromEnd: boolean }
+export interface ThreadFeature extends FeatBase { type: "thread"; face: FaceRef | null; pitch: number; length: number; left: boolean; fromEnd: boolean; /** kozmetik diş: geometri oluşturulmaz (hızlı) */ cos?: boolean }
 /** Esnet: bük / bur / daralt / uzat (kesitlerden yeniden örme) */
 export interface FlexFeature extends FeatBase { type: "flex"; body: FaceRef | null; mode: "bend" | "twist" | "taper" | "stretch"; axis: "x" | "y" | "z"; value: number; dir: "x" | "y" | "z" }
 /** Köşe pahı: köşe noktasında üç kenarı keser */
@@ -723,7 +723,7 @@ export type KFeature =
   | { id: string; type: "tpattern"; feats: string[]; rows: Vec3[] }
   | { id: string; type: "cvpattern"; feats: string[]; path: Vec3[]; n: Vec3; count: number; spacing: number; equal: boolean; align: boolean }
   | { id: string; type: "fpattern"; feats: string[]; face: FaceRef; spacing: number; layout: "square" | "stagger"; margin: number; angle: number }
-  | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean }
+  | { id: string; type: "thread"; face: FaceRef; pitch: number; length: number; left: boolean; fromEnd: boolean; cos?: boolean }
   | { id: string; type: "flex"; body: FaceRef; mode: "bend" | "twist" | "taper" | "stretch"; axis: Vec3; value: number; dir: Vec3 }
   | { id: string; type: "vchamfer"; v: Vec3; d: number }
   | { id: string; type: "member"; items: MemberItem[]; loops: Loop[]; name: string; R: number; corner: CornerKind; gap: number; ori?: 2; auto?: boolean; gl?: { loops: Loop[]; R: number; corner: CornerKind; gap: number; auto?: boolean; prio?: number; name?: string }[]; tp?: boolean }
