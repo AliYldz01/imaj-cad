@@ -984,6 +984,7 @@ function refreshHighlight() {
     if (m && d.type === "tosheet") sel.edges = [...d.bends, ...d.rips].map((r) => nearestEdge(r)).filter((i) => i >= 0);
     if (m && d.type === "closecorner") sel.faces = d.faces.map((r) => nearestFace(r)).filter((i) => i >= 0);
     if (m && d.type === "miterflange" && !(d as any)._preview) sel.edges = d.edges.map((r) => nearestEdge(r)).filter((i) => i >= 0);
+    if (m && d.type === "draft" && d.mode === "parting") sel.edges = (d.edges ?? []).map((r) => nearestEdge(r)).filter((i) => i >= 0);
     if (m && d.type === "surface" && d.mode === "fill") sel.edges = (d.edges ?? []).map((r) => nearestEdge(r)).filter((i) => i >= 0);
     if (m && (d.type === "edgeflange" || d.type === "hem") && !(d as any)._preview) sel.edges = d.edges.map((r) => nearestEdge(r)).filter((i) => i >= 0);
     if (m && d.type === "weld") sel.faces = [...d.pairs.flatMap((p) => [p.f1, p.f2]), ...((d as any)._p1 ? [(d as any)._p1] : [])].map((r) => nearestFace(r)).filter((i) => i >= 0);
@@ -1181,6 +1182,7 @@ function pickWant() {
     if (t === "edgeflange" || t === "hem" || t === "miterflange") return (mode.draft as any)._preview ? {} : { edge: true };
     if (t === "tosheet") return { edge: true };
     if (t === "closecorner") return { face: true };
+    if (t === "draft" && (mode.draft as any).mode === "parting") return { edge: true };
     if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap") return { face: true };
     if (t === "axis") return { edge: true };
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
@@ -1839,14 +1841,17 @@ function cancelFeature() {
 function commitFeature(kind: string) {
   if (mode.k !== "pm") return;
   const { draft, editingId } = mode;
-  if ((draft.type === "fillet" || draft.type === "chamfer") && !draft.edges.length) return toast("En az bir kenar seçin", true);
+  if (draft.type === "fillet" || draft.type === "chamfer") {
+    const dd = draft as any;
+    if (dd.kind === "vtx" ? !dd.verts?.length : dd.faces2 ? !dd.faces?.length || !dd.faces2.length : !draft.edges.length && !dd.faces?.length) return toast(dd.kind === "vtx" ? "En az bir köşe seçin" : dd.faces2 ? "İki yüz grubunu da seçin" : "En az bir kenar seçin", true);
+  }
+  if (draft.type === "draft" && ((draft as any).mode === "parting" ? !(draft as any).edges?.length : !draft.faces.length)) return toast((draft as any).mode === "parting" ? "Ayırma çizgisi kenarlarını seçin" : "Koniklik verilecek yüzleri seçin", true);
   if (draft.type === "shell" && !draft.faces.length) return toast("Kaldırılacak en az bir yüz seçin", true);
   if ((draft as any).type === "dface" && !(draft as any).faces.length) return toast("En az bir yüz seçin", true);
   if ((draft.type === "lpattern" || draft.type === "cpattern") && !draft.feats.length) return toast("Çoğaltılacak özelliği seçin", true);
   if (draft.type === "mirror" && !draft.body && !draft.feats.length) return toast("Aynalanacak özelliği seçin veya 'Tüm gövde'yi işaretleyin", true);
   if (draft.type === "revolve" && !draft.axis) return toast("Döndürme ekseni için eskize bir merkez çizgisi çizin", true);
   if (draft.type === "hole" && (!draft.plane || !draft.pts.length)) return toast("Deliğin konumunu seçin: yüze dokunun", true);
-  if (draft.type === "draft" && !draft.faces.length) return toast("Koniklik verilecek yüzleri seçin", true);
   if ((draft.type === "dome" || draft.type === "wrap") && !draft.face) return toast("Yüzü seçin", true);
   if (draft.type === "sketch3d" && !draft.lines.length) return toast("3B eskizde en az bir çizgi olmalı", true);
   if (draft.type === "sketch3d") ["_link", "_len", "_d", "_act", "_abs"].forEach((k) => delete (draft as any)[k]);
@@ -2110,9 +2115,10 @@ function renderFeaturePM(kind: string) {
               { v: "const", t: "Sabit boyutlu" },
               { v: "var", t: "Değişken boyutlu (başlangıç → bitiş)" },
               { v: "full", t: "Tam yuvarlak (orta yüz)" },
+              { v: "face", t: "Yüz radyüsü (yüz grubu 1 ↔ 2)" },
             ],
             d.kind ?? "const",
-            (v) => ((d.kind = v), renderFeaturePM(kind), refreshHighlight()),
+            (v) => ((d.kind = v), (d.faces2 = v === "face" ? [] : undefined), (d._fg = 1), renderFeaturePM(kind), refreshHighlight()),
           ),
         );
       else
@@ -2123,9 +2129,10 @@ function renderFeaturePM(kind: string) {
               { v: "equal", t: "Eşit mesafe" },
               { v: "dd", t: "Mesafe – mesafe" },
               { v: "da", t: "Mesafe – açı" },
+              { v: "vtx", t: "Köşe pahı (üç kenar)" },
             ],
             d.kind ?? "equal",
-            (v) => ((d.kind = v), renderFeaturePM(kind)),
+            (v) => ((d.kind = v), (d.verts = v === "vtx" ? d.verts ?? [] : undefined), renderFeaturePM(kind), refreshHighlight()),
           ),
         );
       if (isF && d.kind === "full") {
@@ -2146,6 +2153,23 @@ function renderFeaturePM(kind: string) {
         if (multi) d.edges.forEach((_: any, i: number) => gm.appendChild(numField(`Kenar ${i + 1}`, d.radii[i] ?? d.r, (v) => ((d.radii[i] = v), schedulePreview()), { min: 0.001, unit: "mm" })));
         body.appendChild(gm);
       }
+      if (!isF && d.kind === "vtx") {
+        body.appendChild(numField("Mesafe 2", d.d2 ?? d.d, (v) => (d.d2 = v), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
+        body.appendChild(numField("Mesafe 3", d.d3 ?? d.d2 ?? d.d, (v) => (d.d3 = v), { min: 0.001, unit: "mm", key: `${d.id}.d3` }));
+        const g = group("Köşeler", h("div", "pm-picks", d.verts?.length ? `${d.verts.length} köşe seçili` : "Pah kırılacak köşelere dokunun"), h("p", "pm-hint", "Köşeden çıkan üç doğrusal kenarda verilen mesafelerden geçen düzlemle köşe kesilir."));
+        if (d.verts?.length) g.appendChild(button("Seçimi temizle", () => ((d.verts = []), renderFeaturePM(kind))));
+        body.appendChild(g);
+        hint("Pah kırılacak köşelere dokunun");
+        break;
+      }
+      if (isF ? d.kind === "face" : !!d.faces2) {
+        const fg = d._fg ?? 1;
+        body.appendChild(group(isF ? "Yüz radyüsü" : "Yüz – yüz pah", segField([{ v: "1", t: `Yüz grubu 1 (${(d.faces ?? []).length})` }, { v: "2", t: `Yüz grubu 2 (${(d.faces2 ?? []).length})` }], String(fg), (v) => ((d._fg = +v), renderFeaturePM(kind))), h("p", "pm-hint", "İki yüz grubunun birleştiği kenarlar işlenir. Etkin gruba dokunarak yüz ekleyin / çıkarın."), button("Seçimi temizle", () => ((d.faces = []), (d.faces2 = []), renderFeaturePM(kind), refreshHighlight()))));
+        if (!isF) body.appendChild(checkField("Yüz – yüz pah", true, () => ((d.faces2 = undefined), renderFeaturePM(kind))));
+        hint(`Yüz grubu ${fg} için yüzlere dokunun`);
+        break;
+      }
+      if (!isF && (d.kind ?? "equal") !== "vtx") body.appendChild(checkField("Yüz – yüz pah (iki yüz grubu)", false, () => ((d.faces2 = []), (d.faces = []), (d.edges = []), (d._fg = 1), renderFeaturePM(kind), refreshHighlight())));
       if (!isF && d.kind === "dd") body.appendChild(numField("İkinci mesafe", d.d2 ?? d.d, (v) => (d.d2 = v), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
       if (!isF && d.kind === "da") body.appendChild(numField("Açı", d.angle ?? 45, (v) => (d.angle = v), { min: 0.1, unit: "°", key: `${d.id}.angle` }));
       if (!isF && d.kind && d.kind !== "equal") body.appendChild(checkField("Yönü ters çevir", !!d.flip, (v) => (d.flip = v)));
@@ -2208,11 +2232,24 @@ function renderFeaturePM(kind: string) {
     }
     case "shell": {
       body.appendChild(group("Parametreler", numField("Kalınlık", d.t, (v) => (d.t = v), { min: 0.001, unit: "mm", key: `${d.id}.t` }), checkField("Dışa kabuk (kalınlık dışa eklenir)", !!d.out, (v) => (d.out = v))));
-      const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Kaldırılacak yüzlere dokunun");
-      const g = group("Kaldırılacak yüzler", picks);
-      if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
-      body.appendChild(g);
-      hint("Açık kalacak (kaldırılacak) yüzlere dokunun");
+      const pm2 = d._pick === "multi";
+      body.appendChild(segField([{ v: "rm", t: `Kaldırılacak yüzler (${d.faces.length})` }, { v: "multi", t: `Farklı kalınlık (${(d.multi ?? []).length})` }], pm2 ? "multi" : "rm", (v) => ((d._pick = v === "multi" ? "multi" : undefined), renderFeaturePM(kind))));
+      if (!pm2) {
+        const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Kaldırılacak yüzlere dokunun");
+        const g = group("Kaldırılacak yüzler", picks);
+        if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
+        body.appendChild(g);
+        hint("Açık kalacak (kaldırılacak) yüzlere dokunun");
+      } else {
+        const g = group("Yüz başına kalınlık", h("p", "pm-hint", "Farklı kalınlıkta olacak düz yüzlere dokunun (yalnız içe kabuk)."));
+        (d.multi ?? []).forEach((mm: any, i: number) => {
+          const row = h("div", "pm-row");
+          row.append(numField(`Yüz ${i + 1}`, mm.t, (v) => ((mm.t = v), schedulePreview()), { min: 0.001, unit: "mm" }), button("✕", () => (d.multi.splice(i, 1), renderFeaturePM(kind), schedulePreview())));
+          g.appendChild(row);
+        });
+        body.appendChild(g);
+        hint("Farklı kalınlıktaki yüzlere dokunun");
+      }
       break;
     }
     case "lpattern": {
@@ -2481,7 +2518,17 @@ function renderFeaturePM(kind: string) {
       break;
     }
     case "draft": {
+      const pt = d.mode === "parting";
+      body.appendChild(segField([{ v: "neutral", t: "Nötr düzlem" }, { v: "parting", t: "Ayırma çizgisi" }], pt ? "parting" : "neutral", (v) => ((d.mode = v === "parting" ? "parting" : undefined), (d.edges = v === "parting" ? d.edges ?? [] : undefined), renderFeaturePM(kind), refreshHighlight(), upd())));
       body.appendChild(group("Koniklik", numField("Açı", d.angle, (v) => ((d.angle = v), upd()), { min: 0.01, unit: "°" }), checkField("Yönü ters çevir", d.rev, (v) => ((d.rev = v), upd()))));
+      if (pt) {
+        body.appendChild(group("Çekme yönü", planeField("Düzlem (normali çekme yönü)", () => d.plane, (r) => (d.plane = r))));
+        const g = group("Ayırma çizgisi", h("div", "pm-picks", d.edges?.length ? `${d.edges.length} kenar seçili` : "Ayırma çizgisi kenarlarına dokunun"), checkField("Öbür taraftaki yüzler", !!d.other, (v) => ((d.other = v || undefined), upd())), h("p", "pm-hint", "Kenarlara komşu yüzler kendi kenarları etrafında döner; kenarlar farklı yükseklikteyse basamaklı koniklik olur."));
+        if (d.edges?.length) g.appendChild(button("Seçimi temizle", () => ((d.edges = []), renderFeaturePM(kind), refreshHighlight())));
+        body.appendChild(g);
+        hint("Ayırma çizgisi kenarlarına dokunun");
+        break;
+      }
       body.appendChild(group("Nötr düzlem", planeField("Düzlem", () => d.plane, (r) => (d.plane = r))));
       const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Koniklik verilecek yüzlere dokunun");
       const g = group("Yüzler", picks);
@@ -4200,6 +4247,22 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const i = d.edges.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
     if (i >= 0) d.edges.splice(i, 1);
     else d.edges.push({ m: e.m, d: e.d });
+  } else if (d.type === "chamfer" && d.kind === "vtx" && m && hit.point) {
+    const tol = viewer.worldPerPixel() * 16;
+    let best: Vec3 | null = null, bd = tol;
+    for (const e of m.edges) for (const q of [e.s, e.e]) if (dist3(q, hit.point) < bd) [bd, best] = [dist3(q, hit.point), q];
+    if (!best) return toast("Bir köşeye dokunun", true);
+    d.verts = d.verts ?? [];
+    const i = d.verts.findIndex((v: Vec3) => dist3(v, best!) < 1e-3);
+    if (i >= 0) d.verts.splice(i, 1);
+    else d.verts.push([...best]);
+  } else if ((d.type === "fillet" || d.type === "chamfer") && d.faces2 && hit.kind === "face" && m) {
+    const f = m.faces[hit.index];
+    const key = (d._fg ?? 1) === 2 ? "faces2" : "faces";
+    d[key] = d[key] ?? [];
+    const i = d[key].findIndex((r: FaceRef) => dist3(r.c, f.c) < 1e-3);
+    if (i >= 0) d[key].splice(i, 1);
+    else d[key].push({ c: f.c, n: f.n });
   } else if ((d.type === "fillet" || d.type === "chamfer") && hit.kind === "edge" && m) {
     const e = m.edges[hit.index];
     const i = d.edges.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
@@ -4462,11 +4525,23 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else if (d.type === "fillet" && d.kind === "full" && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     d.faces = [{ c: f.c, n: f.n }];
+  } else if (d.type === "draft" && d.mode === "parting" && hit.kind === "edge" && m) {
+    const e = m.edges[hit.index];
+    d.edges = d.edges ?? [];
+    const i = d.edges.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
+    if (i >= 0) d.edges.splice(i, 1);
+    else d.edges.push({ m: e.m, d: e.d });
   } else if (d.type === "draft" && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     const i = d.faces.findIndex((r: FaceRef) => dist3(r.c, f.c) < 1e-3);
     if (i >= 0) d.faces.splice(i, 1);
     else d.faces.push({ c: f.c, n: f.n });
+  } else if (d.type === "shell" && d._pick === "multi" && hit.kind === "face" && m) {
+    const f = m.faces[hit.index];
+    d.multi = d.multi ?? [];
+    const i = d.multi.findIndex((x: any) => dist3(x.ref.c, f.c) < 1e-3);
+    if (i >= 0) d.multi.splice(i, 1);
+    else d.multi.push({ ref: { c: f.c, n: f.n }, t: +(d.t * 2).toFixed(3) });
   } else if ((d.type === "shell" || d.type === "dface") && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     const i = d.faces.findIndex((r: FaceRef) => dist3(r.c, f.c) < 1e-3);
@@ -4543,6 +4618,43 @@ function renderMeasurePanel(lines: string[]) {
 
 /** Basit mukavemet analizi (SimulationXpress benzeri, kiriş teorisi): en uzun eksen boyunca kiriş kabulü */
 let anaSt: { sup: BeamSupport; load: "point" | "udl"; F: number; dir: number; self: boolean; ax: number } = { sup: "cant", load: "point", F: 1000, dir: -1, self: false, ax: -1 };
+/** Koniklik analizi (SolidWorks): çekme yönüne göre yüzleri renklendirir — yeşil pozitif, kırmızı negatif, sarı koniklik gerekli */
+let draftAna: { ax: number; sgn: number; ang: number; el: HTMLElement } | null = null;
+function draftClass(n: [number, number, number]) {
+  if (!draftAna) return 0;
+  const d = n[draftAna.ax] * draftAna.sgn, s = Math.sin((draftAna.ang * Math.PI) / 180);
+  return d >= s - 1e-6 ? 1 : d <= -s + 1e-6 ? -1 : 0;
+}
+function applyDraftAnalysis() {
+  if (!draftAna) return viewer.setAnalysis(null);
+  viewer.setAnalysis((n) => [0xf2c12e, 0x2fb344, 0xe03131][(draftClass(n) + 3) % 3]);
+  const m = viewer.mesh;
+  const cnt = [0, 0, 0];
+  if (m) for (const f of m.faces) cnt[draftClass(f.n as any) + 1]++;
+  const st = draftAna.el.querySelector(".da-stat");
+  if (st) st.textContent = `Pozitif ${cnt[2]} · Negatif ${cnt[0]} · Koniklik gerekli ${cnt[1]} yüz`;
+}
+function toggleDraftAnalysis() {
+  if (draftAna) {
+    draftAna.el.remove();
+    draftAna = null;
+    applyDraftAnalysis();
+    return renderCommands();
+  }
+  const el = h("div", "draft-ana");
+  draftAna = { ax: 1, sgn: 1, ang: 1, el };
+  const head = h("div", "pm-sub", "Koniklik Analizi");
+  const dirSel = selectField("Çekme yönü", ["+X", "−X", "+Y", "−Y", "+Z", "−Z"].map((t, i) => ({ v: String(i), t })), "2", (v) => ((draftAna!.ax = Math.floor(+v / 2)), (draftAna!.sgn = +v % 2 ? -1 : 1), applyDraftAnalysis()));
+  const angF = numField("Koniklik açısı", 1, (v) => ((draftAna!.ang = Math.max(0, v)), applyDraftAnalysis()), { min: 0, unit: "°" });
+  const leg = h("div", "da-leg");
+  leg.innerHTML = `<span style="color:#2fb344">■ Pozitif</span> <span style="color:#e03131">■ Negatif</span> <span style="color:#c99a00">■ Koniklik gerekli</span>`;
+  el.append(head, dirSel, angF, leg, h("div", "da-stat small"), button("Kapat", () => toggleDraftAnalysis()));
+  $("#view").appendChild(el);
+  applyDraftAnalysis();
+  renderCommands();
+}
+(window as any).__draftAna = () => draftAna && { ...draftAna, el: undefined };
+
 async function openAnalysis() {
   if (mode.k === "sketch") exitSketch(true);
   let b = await kernel.beam(anaSt.ax);
@@ -5228,6 +5340,7 @@ function commands(): Cmd[] {
       { id: "mass", label: "Kütle Özell.", icon: "mass", run: () => showMassProps() },
       { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
       { id: "analysis", label: "Mukavemet", icon: "measure", run: () => void openAnalysis() },
+      { id: "draftana", label: "Koniklik Analizi", icon: "draftf", run: () => toggleDraftAnalysis(), active: () => !!draftAna },
       { id: "section", label: "Kesit", icon: "section", run: () => openSection(), active: () => !!section },
       { id: "material", label: "Malzeme", icon: "material", run: () => chooseMaterial() },
       { id: "equations", label: "Denklemler", icon: "equations", run: () => openEquations() },

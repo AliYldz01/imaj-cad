@@ -24,10 +24,10 @@ Yeni sohbette buradan devam et: ilk ⬜ maddeden başla.
 - ✅ v0.63 2.10 Eskiz düzlemini değiştir; türetilmiş eskiz (kopya); ızgara adımı + açı yakalama ayarları
 
 ## 3. Parça özellikleri
-- ⬜ 3.1 Değişken radyüs, tam yuvarlak radyüs, yüz radyüsü
-- ⬜ 3.2 Pah: öteleme yüzü, yüz–yüz
-- ⬜ 3.3 Kabukta yüz başına kalınlık
-- ⬜ 3.4 Koniklik: ayırma çizgisi, basamaklı, koniklik analizi
+- ✅ v0.65 3.1 Değişken radyüs, tam yuvarlak radyüs (önceden), yüz radyüsü (iki yüz grubu)
+- ✅ v0.65 3.2 Pah: yüz seçimi (öteleme yüzü), yüz–yüz, köşe pahı (üç mesafe, çok köşe)
+- ✅ v0.65 3.3 Kabukta yüz başına kalınlık (düz yüzler, içe kabuk)
+- ✅ v0.65 3.4 Koniklik: ayırma çizgisi (yüz başına menteşe → basamaklı da), koniklik analizi (renkli)
 - ⬜ 3.5 Çoğaltma: referansa kadar, eskizi değiştir
 - ⬜ 3.6 Katı gövdeyle süpürme
 - ⬜ 3.7 Loft: bağlayıcılar, komşu yüze teğet

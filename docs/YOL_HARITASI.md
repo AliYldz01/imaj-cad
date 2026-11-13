@@ -632,3 +632,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.63 | Eskiz: kanal ölçü tipi, zincir ölçü, ızgara / açı yakalama ayarı, eğrilik tarağı, metin yazı tipi, eskiz düzlemini değiştir, türetilmiş eskiz | ✅ |
 
 | v0.64 | Eskiz: blok düzenleme / dağıtma, eğri üzerinde metin, spline tutamakları, eşit eğrilik; metin konumu düzeltmesi | ✅ |
+
+| v0.65 | Parça: yüz radyüsü, yüz–yüz pah, köşe pahı (3 mesafe), kabukta yüz başına kalınlık, ayırma çizgisi / basamaklı koniklik, koniklik analizi | ✅ |

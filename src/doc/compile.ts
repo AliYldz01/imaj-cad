@@ -581,14 +581,14 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
         case "draft": {
           const frame = resolveFrame(f.plane, feats);
           if (!frame) throw new Error("Nötr düzlem bulunamadı");
-          kfeats.push({ id: f.id, type: "draft", angle: f.angle, frame, faces: f.faces, rev: f.rev });
+          kfeats.push({ id: f.id, type: "draft", angle: f.angle, frame, faces: f.faces, rev: f.rev, mode: f.mode, edges: f.edges, other: f.other });
           break;
         }
         case "fillet":
-          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, r2: f.r2, radii: f.radii });
+          kfeats.push({ id: f.id, type: "fillet", r: f.r, edges: f.edges, faces: f.faces, kind: f.kind, r2: f.r2, radii: f.radii, faces2: f.faces2 });
           break;
         case "chamfer":
-          kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, angle: f.angle, flip: f.flip });
+          kfeats.push({ id: f.id, type: "chamfer", d: f.d, edges: f.edges, faces: f.faces, kind: f.kind, d2: f.d2, d3: f.d3, angle: f.angle, flip: f.flip, faces2: f.faces2, verts: f.verts });
           break;
         case "surface": {
           const sec = (id: string) => {
@@ -649,7 +649,7 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           kfeats.push({ id: f.id, type: "dface", mode: f.mode, d: f.d, faces: f.faces });
           break;
         case "shell":
-          kfeats.push({ id: f.id, type: "shell", t: f.t, faces: f.faces, out: f.out });
+          kfeats.push({ id: f.id, type: "shell", t: f.t, faces: f.faces, out: f.out, multi: f.multi });
           break;
         case "lpattern": {
           const v = (a: "x" | "y" | "z", rev: boolean): Vec3 => AXES[a].map((c) => (rev ? -c : c)) as Vec3;

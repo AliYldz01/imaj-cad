@@ -905,6 +905,77 @@ function edgesOfFaces(set: Set<number>) {
   return out;
 }
 
+/** Ayırma çizgisi konikliği: ayırma kenarına komşu, çekme yönü tarafındaki her yüz kendi kenarı etrafında döner
+ *  (nötr düzlem = kenardan geçen, çekme yönüne dik düzlem → basamaklı ayırma çizgisinde de çalışır) */
+function partingDraft(f: Extract<KFeature, { type: "draft" }>) {
+  const set = matchEdges(f.edges ?? []);
+  if (!set.size) throw new Error("Ayırma çizgisi kenarlarını seçin");
+  const pull = vnorm(f.frame.n);
+  const bi = bodies.findIndex((b) => (b.edges as any[]).some((e) => set.has(e.hashCode)));
+  if (bi < 0) throw new Error("Ayırma çizgisi modelde bulunamadı");
+  const body = bodies[bi];
+  const oc = getOC() as any;
+  const builder = new oc.BRepOffsetAPI_DraftAngle(body.wrapped);
+  const dir = new oc.gp_Dir(...pull);
+  const rad = (((f.rev ? -1 : 1) * f.angle) * Math.PI) / 180;
+  const used = new Set<number>();
+  let n = 0;
+  for (const e of body.edges as any[]) {
+    if (!set.has(e.hashCode)) continue;
+    const M = tup(e.pointAt(0.5));
+    for (const face of facesOfEdge(body, e.hashCode)) {
+      if (used.has(face.hashCode)) continue;
+      const fc = tup(face.center), fn = vnorm(tup(face.normalAt(fc)));
+      if (Math.abs(vdot(fn, pull)) > 0.999) continue; // çekme yönüne dik yüz konik olmaz
+      const side = vdot(vsub(fc, M), pull);
+      if ((side > 0) === !!f.other) continue;
+      used.add(face.hashCode);
+      const pln = new oc.gp_Pln(new oc.gp_Pnt(...M), dir);
+      builder.Add(face.wrapped, dir, rad, pln, false);
+      n++;
+    }
+  }
+  if (!n) throw new Error("Ayırma çizgisinin bu tarafında konik yapılacak yüz yok");
+  builder.Build();
+  if (!builder.IsDone()) throw new Error("Koniklik uygulanamadı (açıyı küçültün ya da kenarları kontrol edin)");
+  const out = cast(builder.ModifiedShape(body.wrapped)) as Shape;
+  bodies[bi] = out;
+}
+
+/** İki yüz kümesinin ortak kenarları */
+function commonEdges(a: Set<number>, b: Set<number>) {
+  const ea = edgesOfFaces(a), eb = edgesOfFaces(b), out = new Set<number>();
+  ea.forEach((h) => eb.has(h) && out.add(h));
+  return out;
+}
+
+/** Köşe pahı (SolidWorks köşe pahı): köşeden çıkan üç doğrusal kenarda d1, d2, d3 noktalarından geçen düzlemle köşe kesilir */
+function vertexChamfer(f: Extract<KFeature, { type: "chamfer" }>) {
+  if (!f.verts?.length) throw new Error("Köşe seçin");
+  const ds = [f.d, f.d2 ?? f.d, f.d3 ?? f.d2 ?? f.d];
+  if (ds.some((x) => !(x > 0))) throw new Error("Mesafeler sıfırdan büyük olmalı");
+  for (const V of f.verts) {
+    const bi = bodies.findIndex((b) => (b.edges as any[]).some((e) => [0, 1].some((q) => vlen(vsub(tup(e.pointAt(q)), V)) < 1e-3)));
+    if (bi < 0) throw new Error("Köşe modelde bulunamadı");
+    const dirs: Vec3[] = [];
+    for (const e of bodies[bi].edges as any[]) {
+      if (String(e.geomType) !== "LINE") continue;
+      const A = tup(e.pointAt(0)), B = tup(e.pointAt(1));
+      if (vlen(vsub(A, V)) < 1e-3) dirs.push(vnorm(vsub(B, A)));
+      else if (vlen(vsub(B, V)) < 1e-3) dirs.push(vnorm(vsub(A, B)));
+    }
+    if (dirs.length !== 3) throw new Error("Köşe pahı yalnız üç doğrusal kenarın birleştiği köşede");
+    const P = dirs.map((d, i) => vadd(V, vmul(d, ds[i])));
+    const G = vmul(vadd(vadd(P[0], P[1]), P[2]), 1 / 3);
+    const A = vadd(V, vmul(vsub(V, G), 2));
+    const Q = P.map((p) => vadd(G, vmul(vsub(p, G), 3)));
+    const tri = (a: Vec3, b: Vec3, c: Vec3) => makePolygon([a, b, c] as any);
+    let tet: any = makeSolid([tri(A, Q[0], Q[1]), tri(A, Q[1], Q[2]), tri(A, Q[2], Q[0]), tri(Q[0], Q[2], Q[1])] as any);
+    if (volOf(tet) < 0) tet = cast(tet.wrapped.Reversed());
+    bodies[bi] = bodies[bi].cut(tet);
+  }
+}
+
 /** Kenara komşu yüzler */
 function facesOfEdge(body: Shape, edgeHash: number) {
   return (body.faces as any[]).filter((f) => (f.edges as any[]).some((e) => e.hashCode === edgeHash));
@@ -3183,8 +3254,14 @@ async function buildFeature(f: KFeature) {
         onOwner(edges, "edges", (b) => b.fillet((e: any) => (edges.has(e.hashCode) ? r : null)));
         return;
       }
+      if (f.type === "chamfer" && f.kind === "vtx") return vertexChamfer(f);
       const set = matchEdges(f.edges);
-      if (f.faces?.length) edgesOfFaces(matchFaces(f.faces)).forEach((h) => set.add(h));
+      if (f.faces2?.length) {
+        // yüz radyüsü / yüz–yüz pah: iki yüz grubunun ortak kenarları
+        const ce = commonEdges(matchFaces(f.faces ?? []), matchFaces(f.faces2));
+        if (!ce.size) throw new Error("Seçilen iki yüz grubu komşu değil (ortak kenar yok)");
+        ce.forEach((h) => set.add(h));
+      } else if (f.faces?.length) edgesOfFaces(matchFaces(f.faces)).forEach((h) => set.add(h));
       if (!set.size) throw new Error("Seçili kenarlar modelde bulunamadı");
       const v = f.type === "fillet" ? f.r : f.d;
       if (!(v > 0)) throw new Error("Değer sıfırdan büyük olmalı");
@@ -3197,7 +3274,7 @@ async function buildFeature(f: KFeature) {
             const rr = f.radii![i];
             if (rr > 0) matchEdges([ref]).forEach((hh) => per.set(hh, rr));
           });
-        const simple = typeof rad === "number" && !per.size && !f.faces?.length;
+        const simple = typeof rad === "number" && !per.size && !f.faces?.length && !f.faces2?.length;
         const hist = filletHist;
         try {
           onOwner(set, "edges", (b) => {
@@ -3405,11 +3482,31 @@ async function buildFeature(f: KFeature) {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       const set = matchFaces(f.faces);
       if (!set.size) throw new Error("Kaldırılacak yüz seçin");
+      // yüz başına kalınlık: önce düzlemlerini kaydet
+      const multi = (f.multi ?? [])
+        .map((m) => ({ pf: planarFace(m.ref), t: m.t }))
+        .filter((m) => m.pf && m.t > 0 && Math.abs(m.t - Math.abs(f.t)) > 1e-9) as { pf: { c: Vec3; n: Vec3 }; t: number }[];
+      if ((f.multi?.length ?? 0) > multi.length && f.multi!.some((m) => m.t > 0 && Math.abs(m.t - Math.abs(f.t)) > 1e-9)) throw new Error("Farklı kalınlık yalnız düz yüzlerde: yüz bulunamadı");
       onOwner(set, "faces", (b) => b.shell((f.out ? -1 : 1) * Math.abs(f.t), (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode))));
+      if (multi.length && f.out) throw new Error("Yüz başına kalınlık yalnız içe kabukta");
+      for (const m of multi) {
+        // iç duvar: normali −n, düzlemi orijinal yüzden t içeride
+        const t0 = Math.abs(f.t);
+        const inner = allFaces().find((x) => {
+          if (String(x.geomType) !== "PLANE") return false;
+          const c = tup(x.center), n = vnorm(tup(x.normalAt(c)));
+          return vdot(n, m.pf.n) < -0.999 && Math.abs(vdot(vsub(c, m.pf.c), m.pf.n) + t0) < 1e-4;
+        });
+        if (!inner) throw new Error("Kabuk iç duvarı bulunamadı (yüz başına kalınlık)");
+        const dt = m.t - t0;
+        const pr = basicFaceExtrusion(inner.clone() as any, new Vector(vmul(m.pf.n, -dt) as any)) as any;
+        applyTool(pr, dt < 0);
+      }
       return;
     }
     case "draft": {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
+      if (f.mode === "parting") return partingDraft(f);
       const set = matchFaces(f.faces);
       if (!set.size) throw new Error("Koniklik verilecek yüzleri seçin");
       onOwner(set, "faces", (b) => b.draft((f.rev ? -1 : 1) * f.angle, (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode)), makePlane(f.frame)));

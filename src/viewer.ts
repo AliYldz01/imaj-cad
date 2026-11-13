@@ -842,9 +842,26 @@ export class Viewer {
     this.applyColors();
     this.applyStyle();
   }
+  /** Analiz renklendirmesi (koniklik analizi vb.): köşe normaline göre renk; null = kapalı */
+  analysis: ((n: [number, number, number]) => number) | null = null;
+  setAnalysis(fn: ((n: [number, number, number]) => number) | null) {
+    this.analysis = fn;
+    this.applyColors();
+    this.applyStyle();
+  }
+  private colorsOn() {
+    return this.faceColors.size > 0 || !!this.analysis;
+  }
   private applyColors() {
     if (!this.modelMesh || !this.mesh) return;
     const g = this.modelMesh.geometry as THREE.BufferGeometry;
+    if (this.analysis) {
+      const nr = this.mesh.normals as ArrayLike<number>, n = nr.length / 3, col = new Float32Array(n * 3), c = new THREE.Color();
+      for (let i = 0; i < n; i++) c.setHex(this.analysis([nr[i * 3], nr[i * 3 + 1], nr[i * 3 + 2]])).toArray(col, i * 3);
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      (this.modelMesh.material as THREE.MeshStandardMaterial).vertexColors = true;
+      return;
+    }
     if (!this.faceColors.size) {
       g.deleteAttribute("color");
       (this.modelMesh.material as THREE.MeshStandardMaterial).vertexColors = false;
@@ -882,7 +899,7 @@ export class Viewer {
     if (hid && st === "wire") ((hid as THREE.LineSegments).material as THREE.LineDashedMaterial).depthFunc = THREE.AlwaysDepth;
     else if (hid) ((hid as THREE.LineSegments).material as THREE.LineDashedMaterial).depthFunc = THREE.GreaterDepth;
     // gizli çizgi stillerinde yüzler arka plan rengiyle (yalnız derinlik için)
-    const vc = this.faceColors.size > 0 && st !== "hlr" && st !== "hlv";
+    const vc = this.colorsOn() && st !== "hlr" && st !== "hlv";
     m.vertexColors = vc;
     m.color.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : vc ? 0xffffff : this.partColor ?? COL.face);
     m.emissive.setHex(st === "hlr" || st === "hlv" ? 0xf3f5f8 : 0x000000);

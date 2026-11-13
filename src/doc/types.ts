@@ -201,21 +201,28 @@ export interface FilletFeature extends FeatBase {
   edges: EdgeRef[];
   faces?: FaceRef[];
   /** sabit / değişken (başlangıç r, bitiş r2) / tam yuvarlak (seçili orta yüz) */
-  kind?: "const" | "var" | "full";
+  kind?: "const" | "var" | "full" | "face";
   r2?: number;
   /** çoklu yarıçap: kenar başına yarıçap (edges ile aynı sırada) */
   radii?: number[];
+  /** yüz radyüsü: ikinci yüz grubu (faces ile ortak kenarlar radyüslenir) */
+  faces2?: FaceRef[];
 }
 export interface ChamferFeature extends FeatBase {
   type: "chamfer";
   d: number;
   edges: EdgeRef[];
   faces?: FaceRef[];
-  /** eşit mesafe / iki mesafe / mesafe-açı */
-  kind?: "equal" | "dd" | "da";
+  /** eşit mesafe / iki mesafe / mesafe-açı / köşe (köşe noktasından üç kenarda d, d2, d3) */
+  kind?: "equal" | "dd" | "da" | "vtx";
   d2?: number;
+  d3?: number;
   angle?: number;
   flip?: boolean;
+  /** yüz–yüz pah: ikinci yüz grubu */
+  faces2?: FaceRef[];
+  /** köşe pahı: köşe noktaları */
+  verts?: Vec3[];
 }
 
 export interface SweepFeature extends FeatBase {
@@ -318,6 +325,12 @@ export interface DraftFeature extends FeatBase {
   plane: PlaneRef;
   faces: FaceRef[];
   rev: boolean;
+  /** nötr düzlem / ayırma çizgisi (yüzler her biri kendi ayırma kenarı etrafında döner; basamaklı ayırma çizgisinde de) */
+  mode?: "neutral" | "parting";
+  /** ayırma çizgisi kenarları (mode parting); çekme yönü = plane normali */
+  edges?: EdgeRef[];
+  /** ayırma çizgisinin öbür tarafındaki yüzler */
+  other?: boolean;
 }
 /** yüzey modelleme: yüzey ekstrüzyon (açık / kapalı eskiz, kapaksız) ve düzlemsel yüzey (kapalı eskiz) */
 export interface SurfaceFeature extends FeatBase {
@@ -337,7 +350,7 @@ export interface SurfaceUseFeature extends FeatBase { type: "thicken" | "surfcut
 export interface SurfaceEditFeature extends FeatBase { type: "surftrim" | "knit"; surf: string; /** kırpma aracı: yüzey özelliği kimliği ya da "std:front|top|right" */ tool?: string; side: 1 | -1; surfs?: string[]; solid?: boolean }
 /** doğrudan düzenleme (SolidWorks Yüz Taşı / Yüz Sil–doldur): düz yüzü normali boyunca ötele, silindirik deliği doldur */
 export interface DirectFaceFeature extends FeatBase { type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
-export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[]; /** dışa kabuk */ out?: boolean }
+export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[]; /** dışa kabuk */ out?: boolean; /** yüz başına farklı kalınlık (düz yüzler) */ multi?: { ref: FaceRef; t: number }[] }
 
 export type AxisName = "x" | "y" | "z";
 export interface LPatternFeature extends FeatBase {
@@ -709,8 +722,8 @@ export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 export type KFeature =
   | { id: string; type: "extrude"; fromFace?: FaceRef | null; fromVtx?: Vec3 | null; vtx?: Vec3 | null; bodyRef?: FaceRef | null; dirVec?: Vec3 | null; flipCut?: boolean; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
   | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
-  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full"; r2?: number; radii?: number[] }
-  | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da"; d2?: number; angle?: number; flip?: boolean }
+  | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full" | "face"; r2?: number; radii?: number[]; faces2?: FaceRef[] }
+  | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da" | "vtx"; d2?: number; d3?: number; angle?: number; flip?: boolean; faces2?: FaceRef[]; verts?: Vec3[] }
   | { id: string; type: "rib"; pl: KPlane; chain: Seg[]; normal: boolean; flip: boolean; t: number; side: "mid" | "one" | "rev" }
   | { id: string; type: "dome"; face: FaceRef; h: number }
   | { id: string; type: "wrap"; pl: KPlane; loops: Loop[]; texts?: TextItem[]; face: FaceRef; mode: "emboss" | "deboss"; depth: number }
@@ -719,8 +732,8 @@ export type KFeature =
   | { id: string; type: "sweep"; cut: boolean; pl: KPlane | null; loops: Loop[]; path: { pl: KPlane; segs: Seg[]; closed: boolean }; circ?: number; circIn?: number; orient?: "follow" | "normal"; helix?: { pitch: number; turns: number; left?: boolean; taper?: number; c: Vec2; r: number }; twist?: number; guide?: { pl: KPlane; segs: Seg[]; closed: boolean } }
   | { id: string; type: "loft"; sheetT?: number; cut: boolean; ruled: boolean; profiles: { pl: KPlane; loops: Loop[] }[]; center?: { pl: KPlane; segs: Seg[]; closed: boolean }; guides?: Vec3[][]; tanStart?: number; tanEnd?: number }
   | { id: string; type: "hole"; pl: KPlane; pts: Vec2[]; htype: HoleType; d: number; depth: number; through: boolean; cd: number; cdepth: number; cangle: number }
-  | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean }
-  | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean }
+  | { id: string; type: "draft"; angle: number; frame: Frame; faces: FaceRef[]; rev: boolean; mode?: "neutral" | "parting"; edges?: EdgeRef[]; other?: boolean }
+  | { id: string; type: "shell"; t: number; faces: FaceRef[]; out?: boolean; multi?: { ref: FaceRef; t: number }[] }
   | { id: string; type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
   | { id: string; type: "surface"; mode: "extrude" | "planar" | "loft" | "fill"; pl: KPlane | null; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null; d: number; mid?: boolean; secs?: { pl: KPlane; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null }[]; edges?: EdgeRef[] }
   | { id: string; type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }

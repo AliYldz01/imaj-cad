@@ -37,6 +37,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.62: Eskizde radyüs/pah sonrası köşe ölçüsü korunur; daire ölçüsünde merkez / en yakın / en uzak; ayrı Taşı, Kopyala, Döndür, Ölçekle, Esnet; yüzden döngü ve silindir silüeti dönüştürme; delme ilişkisi; SketchXpert çözüm önerileri.
 - v0.63: kanal ölçüleri, zincir ölçü, açı yakalama, eğrilik tarağı, metin yazı tipleri, eskiz düzlemini değiştir / türetilmiş eskiz.
 - v0.64: blok düzenleme modu, eğri üzerinde metin, spline tutamakları, eşit eğrilik (spline–yay); eskiz metni artık konduğu noktada (önceden −x'e kayıyordu).
+- v0.65: yüz radyüsü, yüz–yüz ve köşe pahı, kabukta farklı yüz kalınlığı, ayırma çizgisi konikliği, koniklik analizi.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)
