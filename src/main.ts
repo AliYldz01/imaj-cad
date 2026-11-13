@@ -131,6 +131,8 @@ const FEAT_NAMES: Record<string, string> = {
   planarSurface: "Düzlemsel Yüzey",
   loftSurface: "Yüzey Loft",
   fillSurface: "Sınır Doldur",
+  surftrim: "Yüzey Kırp",
+  knit: "Yüzey Dik",
   thicken: "Kalınlaştır",
   surfcut: "Yüzeyle Kes",
   lpattern: "DoğrusalÇoğaltma",
@@ -390,6 +392,10 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
 (window as any).__openTechDrawing = openTechDrawing;
 
 /** parça / yüz renklerini görünüme uygula (yüz: en yakın merkez + aynı normal, 2 mm; yoksa göreli konum) */
+/** yüzey üreten özellikler (kalınlaştır / kırp / dik listeleri için) */
+function surfaceFeats() {
+  return doc.features.filter((x: any) => !x.off && (x.type === "surface" || x.type === "surftrim" || (x.type === "knit" && !x.solid)));
+}
 function applyLook() {
   const L = doc.look, m = viewer.mesh;
   const faces = new Map<number, number>();
@@ -1250,10 +1256,18 @@ function newFeature(kind: string) {
       break;
     case "thicken":
     case "surfcut": {
-      const sf = [...doc.features].reverse().find((x) => x.type === "surface");
+      const sf = surfaceFeats().reverse()[0];
       draft = { id, type: kind, name: "", surf: sf?.id ?? "", t: 2, side: 1 } as any;
       break;
     }
+    case "surftrim": {
+      const sf = surfaceFeats().reverse();
+      draft = { id, type: "surftrim", name: "", surf: sf[0]?.id ?? "", tool: sf[1] ? sf[1].id : "std:right", side: 1 } as any;
+      break;
+    }
+    case "knit":
+      draft = { id, type: "knit", name: "", surf: "", side: 1, surfs: surfaceFeats().map((x) => x.id), solid: false } as any;
+      break;
     case "dface":
       draft = { id, type: "dface", name: "", mode: "move", d: 5, faces: [...psel.faces].map((i) => faceRef(i)) } as any;
       break;
@@ -1860,8 +1874,20 @@ function renderFeaturePM(kind: string) {
     }
     case "thicken":
     case "surfcut": {
-      const sfs = doc.features.filter((x) => x.type === "surface").map((x) => ({ v: x.id, t: x.name }));
+      const sfs = surfaceFeats().map((x) => ({ v: x.id, t: x.name }));
       body.appendChild(group(d.type === "thicken" ? "Kalınlaştır" : "Yüzeyle kes", selectField("Yüzey", sfs, d.surf, (v) => ((d.surf = v), upd())), ...(d.type === "thicken" ? [numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm" })] : []), segField(d.type === "thicken" ? [{ v: "1", t: "Taraf 1" }, { v: "-1", t: "Taraf 2" }, { v: "0", t: "İki taraf" }] : [{ v: "1", t: "Taraf 1'i kaldır" }, { v: "-1", t: "Taraf 2'yi kaldır" }], String(d.side), (v) => ((d.side = +v), upd()))));
+      break;
+    }
+    case "surftrim": {
+      const sfs = surfaceFeats().filter((x) => x.id !== d.id).map((x) => ({ v: x.id, t: x.name }));
+      body.appendChild(group("Yüzey kırp", selectField("Kırpılacak yüzey", sfs, d.surf, (v) => ((d.surf = v), upd())), selectField("Kırpma aracı", [{ v: "std:front", t: "Ön Düzlem" }, { v: "std:top", t: "Üst Düzlem" }, { v: "std:right", t: "Sağ Düzlem" }, ...sfs.filter((x) => x.v !== d.surf)], d.tool ?? "std:right", (v) => ((d.tool = v), upd())), segField([{ v: "1", t: "Taraf 1 kalsın" }, { v: "-1", t: "Taraf 2 kalsın" }], String(d.side), (v) => ((d.side = +v), upd()))));
+      break;
+    }
+    case "knit": {
+      const box = h("div", "pm-feats");
+      for (const s of surfaceFeats().filter((x) => x.id !== d.id))
+        box.appendChild(checkField(s.name, d.surfs.includes(s.id), (on) => ((d.surfs = on ? [...d.surfs, s.id] : d.surfs.filter((x: string) => x !== s.id)), upd())));
+      body.appendChild(group("Yüzey dik", box, checkField("Kapalıysa katı oluştur", !!d.solid, (v) => ((d.solid = v), upd())), h("p", "pm-hint", "Kenarları çakışan yüzeyler tek kabukta birleştirilir; kapalı hacim katıya çevrilebilir.")));
       break;
     }
     case "dface": {
@@ -4803,6 +4829,8 @@ function commands(): Cmd[] {
       { id: "planarSurface", label: "Düzlemsel Yüzey", icon: "plane", run: () => newFeature("planarSurface") },
       { id: "loftSurface", label: "Yüzey Loft", icon: "loft", run: () => newFeature("loftSurface") },
       { id: "fillSurface", label: "Sınır Doldur", icon: "plane", run: () => newFeature("fillSurface") },
+      { id: "surftrim", label: "Yüzey Kırp", icon: "trimm", run: () => newFeature("surftrim") },
+      { id: "knit", label: "Yüzey Dik", icon: "combine", run: () => newFeature("knit") },
       { id: "thicken", label: "Kalınlaştır", icon: "shell", run: () => newFeature("thicken") },
       { id: "surfcut", label: "Yüzeyle Kes", icon: "cutExtrude", run: () => newFeature("surfcut") },
       { id: "draft", label: "Koniklik", icon: "draftf", run: () => newFeature("draft") },

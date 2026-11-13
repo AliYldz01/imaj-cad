@@ -634,6 +634,17 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           if (!f.surf) throw new Error("Yüzey özelliğini seçin");
           kfeats.push({ id: f.id, type: f.type, surf: f.surf, t: f.t, side: f.side });
           break;
+        case "surftrim": {
+          if (!f.surf) throw new Error("Kırpılacak yüzeyi seçin");
+          if (!f.tool) throw new Error("Kırpma aracını (düzlem ya da yüzey) seçin");
+          const std = f.tool.startsWith("std:") ? kplane({ k: "std", n: f.tool.slice(4) } as any, feats, f.id) : undefined;
+          kfeats.push({ id: f.id, type: "surftrim", surf: f.surf, tool: std ? undefined : f.tool, tpl: std ?? undefined, side: f.side });
+          break;
+        }
+        case "knit":
+          if ((f.surfs ?? []).length < 1) throw new Error("Dikilecek yüzeyleri seçin");
+          kfeats.push({ id: f.id, type: "knit", surfs: f.surfs!, solid: !!f.solid });
+          break;
         case "dface":
           kfeats.push({ id: f.id, type: "dface", mode: f.mode, d: f.d, faces: f.faces });
           break;

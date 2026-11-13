@@ -84,7 +84,7 @@ function all(): Shape | null {
 }
 const freeAll = (a: Shape) => { if (bodies.length + welds.length + surfs.length > 1) try { a.delete(); } catch {} };
 const allFaces = () => bodies.flatMap((b) => b.faces as any[]);
-const allEdges = () => bodies.flatMap((b) => b.edges as any[]);
+const allEdges = () => [...bodies, ...surfs.map((x) => x.s)].flatMap((b) => b.edges as any[]);
 
 /** Yüz üzerindeki eskizler: modeldeki yüzü bul, çerçeveyi yüzün güncel konumuna taşı */
 function resolvePlane(pl: KPlane): Frame {
@@ -3308,6 +3308,63 @@ async function buildFeature(f: KFeature) {
         applyTool(thick(S.clone(), (f.side || 1) * big), true);
         surfs.splice(i, 1);
       }
+      return;
+    }
+    case "surftrim": {
+      const i = surfs.findIndex((x) => x.id === f.surf);
+      if (i < 0) throw new Error("Yüzey bulunamadı");
+      const S = surfs[i].s;
+      const big = bodySize() * 2 + 100;
+      let tool: Shape;
+      if (f.tpl) {
+        const fr = resolvePlane(f.tpl);
+        const y = vcross(fr.n, fr.x);
+        // kalan taraf: side; kaldırılan yarı uzay kutusu
+        tool = boxIn(fr.o, fr.x, y, fr.n, -big, big, -big, big, f.side > 0 ? -big : 0, f.side > 0 ? 0 : big);
+      } else {
+        const j = surfs.findIndex((x) => x.id === f.tool);
+        if (j < 0) throw new Error("Kırpma yüzeyi bulunamadı");
+        const oc = getOC() as any;
+        const mk = new oc.BRepOffsetAPI_MakeThickSolid();
+        mk.MakeThickSolidBySimple(surfs[j].s.wrapped, -f.side * big);
+        mk.Build(new oc.Message_ProgressRange());
+        if (!mk.IsDone()) throw new Error("Kırpma yüzeyi genişletilemedi");
+        tool = cast(mk.Shape()) as Shape;
+        if (volOf(tool) < 0) tool = cast(tool.wrapped.Reversed()) as Shape;
+      }
+      const oc2 = getOC() as any;
+      const op = new oc2.BRepAlgoAPI_Cut(S.wrapped, tool.wrapped, new oc2.Message_ProgressRange());
+      if (op.HasErrors()) throw new Error("Yüzey kırpılamadı");
+      const r = cast(op.Shape()) as Shape;
+      op.delete();
+      if (!(r.faces as any[]).length) throw new Error("Kırpma tüm yüzeyi kaldırdı");
+      surfs[i] = { id: f.id, s: r };
+      return;
+    }
+    case "knit": {
+      const oc = getOC() as any;
+      const idx = f.surfs.map((id) => surfs.findIndex((x) => x.id === id));
+      if (idx.some((i) => i < 0)) throw new Error("Dikilecek yüzeylerden biri bulunamadı");
+      const sew = new oc.BRepBuilderAPI_Sewing(1e-3, true, true, true, false);
+      for (const i of idx) sew.Add(surfs[i].s.wrapped);
+      sew.Perform(new oc.Message_ProgressRange());
+      let r = cast(sew.SewedShape()) as Shape;
+      sew.delete();
+      const keep = surfs.filter((_, i) => !idx.includes(i));
+      if (f.solid) {
+        let solid: Shape;
+        try {
+          solid = makeSolid([r] as any) as any;
+        } catch {
+          throw new Error("Yüzeyler kapalı bir hacim oluşturmuyor (katı yapılamadı)");
+        }
+        if (volOf(solid) < 0) solid = cast(solid.wrapped.Reversed()) as Shape;
+        if (Math.abs(volOf(solid)) < 1e-6) throw new Error("Yüzeyler kapalı bir hacim oluşturmuyor (katı yapılamadı)");
+        surfs = keep;
+        applyTool(solid, false);
+        return;
+      }
+      surfs = [...keep, { id: f.id, s: r }];
       return;
     }
     case "dface": {

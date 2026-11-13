@@ -329,6 +329,8 @@ export interface SurfaceFeature extends FeatBase {
 }
 /** yüzeyi kalınlaştır (katıya) / yüzeyle kes (bir taraf kaldırılır) */
 export interface SurfaceUseFeature extends FeatBase { type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }
+/** yüzey kırp (düzlem ya da başka yüzeyle, bir taraf kalır) / yüzey dik (birleştir; kapalıysa katı) */
+export interface SurfaceEditFeature extends FeatBase { type: "surftrim" | "knit"; surf: string; /** kırpma aracı: yüzey özelliği kimliği ya da "std:front|top|right" */ tool?: string; side: 1 | -1; surfs?: string[]; solid?: boolean }
 /** doğrudan düzenleme (SolidWorks Yüz Taşı / Yüz Sil–doldur): düz yüzü normali boyunca ötele, silindirik deliği doldur */
 export interface DirectFaceFeature extends FeatBase { type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
 export interface ShellFeature extends FeatBase { type: "shell"; t: number; faces: FaceRef[]; /** dışa kabuk */ out?: boolean }
@@ -654,7 +656,8 @@ export type Feature =
   | CoordSysFeature
   | DirectFaceFeature
   | SurfaceFeature
-  | SurfaceUseFeature;
+  | SurfaceUseFeature
+  | SurfaceEditFeature;
 
 export type FeatureType = Feature["type"];
 
@@ -715,6 +718,8 @@ export type KFeature =
   | { id: string; type: "dface"; mode: "move" | "fill"; d: number; faces: FaceRef[] }
   | { id: string; type: "surface"; mode: "extrude" | "planar" | "loft" | "fill"; pl: KPlane | null; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null; d: number; mid?: boolean; secs?: { pl: KPlane; loops: Loop[]; path: { segs: Seg[]; closed: boolean } | null }[]; edges?: EdgeRef[] }
   | { id: string; type: "thicken" | "surfcut"; surf: string; t: number; side: 1 | -1 | 0 }
+  | { id: string; type: "surftrim"; surf: string; tool?: string; tpl?: KPlane; side: 1 | -1 }
+  | { id: string; type: "knit"; surfs: string[]; solid: boolean }
   | { id: string; type: "lpattern"; feats: string[]; dirs: { v: Vec3; count: number; spacing: number }[]; skip?: string[] }
   | { id: string; type: "cpattern"; feats: string[]; axis: Vec3; origin?: Vec3; count: number; angle: number; skip?: string[] }
   | { id: string; type: "mirror"; feats: string[]; body: boolean; frame: Frame; only?: boolean }

@@ -23,7 +23,10 @@ Yöntem: 77 e2e test + 6 deneme senaryosu + kod taraması (`SOLIDWORKS_OZELLIKLE
 - v0.40: Paket 5 artımlı yapı, delik konum eskizi, aynı dosyaya kaydet / son belgeler ✅ (`inc1`, `fs1`)
 - v0.41: Paket 6 kısmi — helis/yay, loft profile dik, ref. eksen türleri, yapılandırmalar ✅ (`md1`)
 - v0.42–v0.43: Paket 7 kısmi — DXF içe aktarma, renkler, STL içe aktarma ✅ (`dx1`, `lk1`)
-- Kalan: "yeniden seç" penceresi, süpürme burulma/kılavuz, sac aç/katla + flanş profili + açıya göre büküm tablosu, köşe başına kaynak işlemi, diş hızı, perspektif, birim sistemi, yüzey modelleme, doğrudan düzenleme, analiz.
+- v0.44: "yeniden seç" penceresi, süpürme burulma + kılavuz ✅ (`ss1`) · v0.45: açıya göre büküm tablosu, doğrudan düzenleme ✅ (`dd1`) · v0.46: yüzey modelleme ✅ (`sf1`)
+- v0.47: köşe başına kaynak işlemi, birim sistemi ✅ (`wc1`) · v0.48: perspektif ✅ (`pv1`) · v0.49: basit mukavemet analizi ✅ (`an1`)
+- v0.50: flanş profili (yamuk), aç/katla ile kesme ✅ (`fp1`, `fc1`) · v0.51: diş hızı (~2×) + kozmetik diş ✅ (`th2`) · v0.52–v0.53: yüzey loft / sınır doldur / kırp / dik ✅ (`sf2`, `sf3`)
+- **Tüm paketler tamamlandı.** Yapılamayan: IGES içe aktarma (kullanılan OpenCascade WASM derlemesinde IGES okuyucu yok). Sınırlı: flanş profili yalnız yamuk daraltma (serbest eskizli profil yok), analiz kiriş teorisiyle (sonlu eleman değil).
 
 ## Önerilen sıra
 0. Esc gerilemesi + 4 eski test + kayıt düzeltmesi

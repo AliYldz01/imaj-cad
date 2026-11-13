@@ -608,3 +608,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.51 | Diş hızlandırma (yapıştırmalı birleştirme), kozmetik diş | ✅ |
 
 | v0.52 | Yüzey loft, sınır doldurma yüzeyi; kalınlaştırma yön düzeltmesi | ✅ |
+
+| v0.53 | Yüzey kırp (düzlem / yüzey), yüzey dik (kapalıysa katı) | ✅ |
