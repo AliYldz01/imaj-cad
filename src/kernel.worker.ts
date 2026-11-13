@@ -235,7 +235,7 @@ function planarFace(ref: FaceRef): { c: Vec3; n: Vec3; face: any } | null {
     }
   }
   if (best && bd < 2) {
-    if (!(ref as any).s) heals.f[refKey(ref.c)] = faceSig(best.face, bbAll());
+    if (!(ref as any).s) heals.f[refKey(ref.c)] = { s: faceSig(best.face, bbAll()).s };
     return best;
   }
   const B = bbAll();
@@ -695,7 +695,7 @@ function matchEdges(refs: EdgeRef[]): Set<number> {
       out.add(best.h);
       if (!(r as any).s) {
         B ??= bbAll();
-        heals.e[refKey(r.m)] = edgeSig(best.e, B);
+        heals.e[refKey(r.m)] = { s: edgeSig(best.e, B).s };
       }
       continue;
     }
@@ -787,7 +787,7 @@ function matchFaces(refs: FaceRef[]): Set<number> {
       out.add(best.h);
       if (!(r as any).s) {
         B ??= bbAll();
-        heals.f[refKey(r.c)] = faceSig(best.f, B);
+        heals.f[refKey(r.c)] = { s: faceSig(best.f, B).s };
       }
       continue;
     }
@@ -3092,8 +3092,45 @@ async function rebuildAll(features: KFeature[]) {
     } catch {}
   }
 }
+// ---------- Artımlı yeniden oluşturma ----------
+// Her özellikten sonraki durum (gövdeler, araçlar, çerçeveler, kayıtlar) anlık görüntü olarak saklanır; anahtar = o ana
+// kadarki özelliklerin özeti. Yeni yapıda en uzun eşleşen önek geri yüklenir, yalnız değişen özellikten sonrası kurulur.
+type Snap = { key: string; bodies: Shape[]; welds: Shape[]; weldInfo: WeldItem[]; frames: Record<string, Frame>; tools: [string, { solid: Shape; cut: boolean; merge: boolean }][]; memberReg: [string, MemberReg][]; xSplits: typeof xSplits; fh: { before: Shape; after: Shape; refs: EdgeRef[]; rad: number } | null; errors: { featureId: string; message: string }[] };
+let chains: Snap[][] = [];
+const cloneS = (x: Shape) => (x ? x.clone() : x);
+function hashStr(str: string, h = 2166136261) {
+  for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0;
+  return h;
+}
+function takeSnap(key: string, errors: { featureId: string; message: string }[]): Snap {
+  return {
+    key,
+    bodies: bodies.map(cloneS),
+    welds: welds.map(cloneS),
+    weldInfo: JSON.parse(JSON.stringify(weldInfo)),
+    frames: JSON.parse(JSON.stringify(frames)),
+    tools: [...tools].map(([k, v]) => [k, { ...v, solid: cloneS(v.solid) }]),
+    memberReg: JSON.parse(JSON.stringify([...memberReg])),
+    xSplits: JSON.parse(JSON.stringify(xSplits)),
+    fh: filletHist && bodies.indexOf(filletHist.after) >= 0 ? { ...filletHist, before: cloneS(filletHist.before), after: bodies.indexOf(filletHist.after) as any } : null,
+    errors: errors.slice(),
+  };
+}
+function restoreSnap(sn: Snap) {
+  bodies = sn.bodies.map(cloneS);
+  welds = sn.welds.map(cloneS);
+  weldInfo = JSON.parse(JSON.stringify(sn.weldInfo));
+  frames = JSON.parse(JSON.stringify(sn.frames));
+  tools.clear();
+  for (const [k, v] of sn.tools) tools.set(k, { ...v, solid: cloneS(v.solid) });
+  memberReg = new Map(JSON.parse(JSON.stringify(sn.memberReg)));
+  xSplits = JSON.parse(JSON.stringify(sn.xSplits));
+  // radyüs geçmişi: 'after' gövde sırası olarak saklanır (kimlik karşılaştırması geri yüklenen gövdeyle yapılır)
+  filletHist = sn.fh ? { ...(sn.fh as any), before: cloneS(sn.fh.before), after: bodies[sn.fh.after as any] } : null;
+}
+let lastReuse = 0;
 async function build(id: number, features: KFeature[]) {
-  const errors: { featureId: string; message: string }[] = [];
+  let errors: { featureId: string; message: string }[] = [];
   bodies = [];
   frames = {};
   heals = { e: {}, f: {} };
@@ -3101,13 +3138,39 @@ async function build(id: number, features: KFeature[]) {
   memberReg = new Map();
   welds = [];
   weldInfo = [];
-  for (const f of features) {
+  xSplits = [];
+  filletHist = null;
+  const keys: string[] = [];
+  let h = 2166136261;
+  // referans imzası (s) sonucu değiştirmez: anahtara girmez (ilk yapıdan sonraki onarım önbelleği bozmasın)
+  const noSig = (k: string, v: any) => (k === "s" && v && typeof v === "object" && "u" in v ? undefined : v);
+  for (const f of features) keys.push(String((h = hashStr(JSON.stringify(f, noSig), h))));
+  // en uzun eşleşen önek (radyüs geçmişi gibi önceki gövdeye dönen özelliklerde ilk özelliğe kadar güvenli)
+  let best: Snap[] | null = null, k = -1;
+  for (const ch of chains) {
+    let i = -1;
+    while (i + 1 < keys.length && ch[i + 1]?.key === keys[i + 1]) i++;
+    if (i > k) (k = i), (best = ch);
+  }
+  // son özellik değişmedi ama ondan önceki aynıysa yine de son özelliği yeniden kur (görünüm/eşleme için gerek yok, ama güvenli)
+  if (k >= 0 && k === keys.length - 1) k--;
+  const chain: Snap[] = [];
+  if (best && k >= 0) {
+    restoreSnap(best[k]);
+    errors = best[k].errors.slice();
+    for (let i = 0; i <= k; i++) chain.push(best[i]);
+  }
+  lastReuse = k + 1;
+  for (let i = k + 1; i < features.length; i++) {
+    const f = features[i];
     try {
       await buildFeature(f);
     } catch (e) {
       errors.push({ featureId: f.id, message: errMsg(e) });
     }
+    chain.push(takeSnap(keys[i], errors));
   }
+  chains = [chain, ...chains.filter((c) => c !== best)].slice(0, 4);
   const a = all();
   if (!a) return post({ id, type: "built", mesh: null, errors, frames, heals });
   try {
@@ -3343,6 +3406,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);
+    else if ((req as any).type === "reuse") post({ id: req.id, type: "reuse", n: lastReuse } as any);
     else if ((req as any).type === "pdraw") await partDrawing(req.id, (req as any).features, (req as any).opts ?? {});
     else if (req.type === "interfere") interfere(req.id);
     else if (req.type === "asm") await asmOp(req.id, req.op, req.parts);

@@ -4,7 +4,7 @@ import { Kernel } from "./kernel";
 import type { RefHeals } from "./doc/types";
 import { initSolver } from "./sketch/solver";
 import { SketchEditor, TOOL_NAMES, type SkTool } from "./sketch/editor";
-import { newSketch } from "./sketch/model";
+import { newSketch, nid, addPt } from "./sketch/model";
 import { pointPos } from "./sketch/profile";
 import { compile, resolveFrame, sketchUsers, contourRegions, planeFrame } from "./doc/compile";
 import { STD_FRAMES, STD_NAMES, dist3, fmtNum, frameFromNormal, toWorld, toLocal, evalNum, setVarResolver, AXES } from "./doc/math";
@@ -1911,7 +1911,26 @@ function renderFeaturePM(kind: string) {
       }
       body.appendChild(g);
       const pos = group("Konumlar", h("p", "pm-hint", hf.plane ? "Yüze dokunarak delik ekleyin. Konumları aşağıdan düzenleyebilirsiniz." : "Önce deliğin açılacağı düz yüze dokunun."));
-      hf.pts.forEach((pt: Vec2, i: number) => {
+      if (hf.sketch) {
+        const sk = getFeat(hf.sketch) as SketchFeature | undefined;
+        pos.append(h("p", "pm-hint", `Konum eskizi: ${sk?.name ?? "?"} — eskizdeki noktalar delik merkezleridir. Konumları ağaçtan eskizi açıp kenarlara ölçülendirerek değiştirin.`), button("Eskizden ayır (sabit konumlar)", () => {
+          (hf.sketch = undefined), renderFeaturePM(kind), upd();
+        }, "btn"));
+      } else if (hf.plane && hf.pts.length)
+        pos.appendChild(button("Konumları eskize aktar (ölçülendirmek için)", () => {
+          const data = newSketch();
+          for (const pt of hf.pts as Vec2[]) data.ents.push({ id: nid(data, "n"), t: "point", p: addPt(data, pt) } as any);
+          const sk: SketchFeature = { id: uid(), type: "sketch", name: nextName("sketch") + " (delik konumu)", plane: JSON.parse(JSON.stringify(hf.plane)), data };
+          const at = mode.k === "pm" && mode.editingId ? featIndex(mode.editingId) : insertAt();
+          doc.features.splice(at, 0, sk);
+          if (doc.rollback != null && at < doc.rollback) doc.rollback++;
+          hf.sketch = sk.id;
+          renderTree();
+          renderFeaturePM(kind);
+          upd();
+          toast("Konum eskizi oluşturuldu: deliği kaydedin, sonra eskizi açıp noktaları kenarlara ölçülendirin");
+        }, "btn"));
+      if (!hf.sketch) hf.pts.forEach((pt: Vec2, i: number) => {
         const row = h("div", "pm-row");
         row.append(
           numField(`${i + 1}. X`, pt[0], (v) => ((pt[0] = v), upd()), {}),
@@ -4721,17 +4740,22 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
     if (mode.k === "pm") cancelFeature();
     if (act === "new") {
       if (doc.features.length && !confirm("Yeni parça açılsın mı? (Geri al ile dönebilirsiniz)")) return;
+      fileHandle = null;
       treeSel = null;
       commitDoc(() => (doc = emptyDoc()));
       viewer.viewStd("iso");
       firstBuild = true;
-    } else if (act === "save") {
-      const name = (prompt("Dosya adı", doc.name) || doc.name).replace(/[\\/:*?"<>|]/g, "_");
-      doc.name = name;
-      saveDoc();
-      renderTree();
-      download(new Blob([JSON.stringify(doc, null, 1)], { type: "application/json" }), `${name}.icad`);
-    } else if (act === "open") ($("#file-input") as HTMLInputElement).click();
+    } else if (act === "save" || act === "saveas") await saveFile(act === "saveas");
+    else if (act === "recent") openRecent();
+    else if (act === "open") {
+      const w = window as any;
+      if (w.showOpenFilePicker) {
+        try {
+          const [hd] = await w.showOpenFilePicker({ types: [{ description: "İmaj CAD parçası", accept: { "application/json": [".icad", ".json"] } }] });
+          openDocText(await (await hd.getFile()).text(), hd);
+        } catch {}
+      } else ($("#file-input") as HTMLInputElement).click();
+    }
     else if (act === "import") importStep();
     else if (act === "dxf") exportDxf();
     else if (act === "cutlist") openCutList();
@@ -4750,17 +4774,83 @@ $("#file-input").addEventListener("change", async () => {
   const file = inp.files?.[0];
   inp.value = "";
   if (!file) return;
+  openDocText(await file.text(), null);
+});
+
+// ---------- Dosya: aynı dosyaya kaydet (masaüstü dosya erişimi), farklı kaydet, son belgeler ----------
+let fileHandle: any = null;
+function openDocText(text: string, handle: any) {
   try {
-    const d = JSON.parse(await file.text());
+    const d = JSON.parse(text);
     if (d?.version !== 2 || !Array.isArray(d.features)) throw new Error("Geçersiz dosya");
     treeSel = null;
     commitDoc(() => (doc = d));
+    fileHandle = handle;
     firstBuild = true;
+    pushRecent();
     toast(`${d.name} açıldı`);
   } catch (e) {
     toast("Dosya açılamadı: " + (e as Error).message, true);
   }
-});
+}
+async function saveFile(asNew: boolean) {
+  const w = window as any;
+  const text = () => JSON.stringify(doc, null, 1);
+  if (w.showSaveFilePicker) {
+    try {
+      if (!fileHandle || asNew) {
+        fileHandle = await w.showSaveFilePicker({ suggestedName: `${doc.name}.icad`, types: [{ description: "İmaj CAD parçası", accept: { "application/json": [".icad"] } }] });
+        const nm = String(fileHandle.name ?? "").replace(/\.icad$|\.json$/i, "");
+        if (nm) doc.name = nm;
+      }
+      const ws = await fileHandle.createWritable();
+      await ws.write(text());
+      await ws.close();
+      saveDoc();
+      renderTree();
+      pushRecent();
+      return toast(`Kaydedildi: ${fileHandle.name ?? doc.name}`);
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+    }
+  }
+  if (asNew || !(doc as any)._named) {
+    const name = (prompt("Dosya adı", doc.name) || doc.name).replace(/[\\/:*?"<>|]/g, "_");
+    doc.name = name;
+    (doc as any)._named = true;
+  }
+  saveDoc();
+  renderTree();
+  pushRecent();
+  download(new Blob([text()], { type: "application/json" }), `${doc.name}.icad`);
+}
+/** son belgeler: tarayıcıda en fazla 8 belgenin kopyası (toplam ~2 MB) */
+function pushRecent() {
+  try {
+    const list: { name: string; uid?: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+    const uid = (doc as any).uid;
+    const json = JSON.stringify(doc);
+    const rest = list.filter((x) => !(uid ? x.uid === uid : x.name === doc.name));
+    const out = [{ name: doc.name, uid, t: Date.now(), json }, ...rest];
+    while (out.length > 8 || out.reduce((a, x) => a + x.json.length, 0) > 2_000_000) out.pop();
+    localStorage.setItem("imajcad.recent", JSON.stringify(out));
+  } catch {}
+}
+function openRecent() {
+  const list: { name: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+  const dlg = h("dialog", "input-dialog") as HTMLDialogElement;
+  dlg.appendChild(h("h2", "", "Son belgeler"));
+  if (!list.length) dlg.appendChild(h("p", "", "Henüz kaydedilmiş ya da açılmış belge yok."));
+  for (const it of list) {
+    const row = h("div", "pm-row");
+    row.append(h("span", "", `${it.name} — ${new Date(it.t).toLocaleString("tr-TR")}`), button("Aç", () => (dlg.close(), openDocText(it.json, null)), "btn primary"));
+    dlg.appendChild(row);
+  }
+  dlg.appendChild(button("Kapat", () => dlg.close(), "btn"));
+  document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  dlg.showModal();
+}
 
 async function download(blob: Blob, name: string) {
   const file = new File([blob], name, { type: "application/octet-stream" });
@@ -5802,6 +5892,8 @@ function fixedActs(): Act[] {
     F("f.new", "Yeni parça", "Ctrl+N", () => fileAct("new"), "file"),
     F("f.open", "Aç…", "Ctrl+O", () => fileAct("open")),
     F("f.save", "Kaydet", "Ctrl+S", () => fileAct("save")),
+    F("f.saveas", "Farklı kaydet…", "", () => fileAct("saveas")),
+    F("f.recent", "Son belgeler…", "", () => fileAct("recent")),
     F("f.wizard", "Şekil sihirbazı…", "", () => fileAct("wizard")),
     F("f.import", "STEP içe aktar…", "", () => fileAct("import"), "importf"),
     F("f.step", "STEP dışa aktar", "", () => fileAct("step")),
@@ -5890,7 +5982,7 @@ function openCust() {
 // ---------- menü çubuğu ----------
 type MI = string | "-" | { sub: string; items: () => Act[] };
 const MENUS: [string, MI[]][] = [
-  ["Dosya", ["f.new", "f.open", "f.save", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist", "f.techdraw"]],
+  ["Dosya", ["f.new", "f.open", "f.recent", "f.save", "f.saveas", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist", "f.techdraw"]],
   ["Düzen", ["e.undo", "e.redo", "-", "e.rebuild", "e.redraw", "-", "e.copy", "e.paste", "e.delete", "e.selall", "e.rename", "-", "e.repeat"]],
   ["Görünüm", ["v.front", "v.back", "v.left", "v.right", "v.top", "v.bottom", "v.iso", "v.normal", "-", "v.fit", "v.zin", "v.zout", "v.zarea", "v.prev", "v.mag", "-", { sub: "Görüntü stili", items: () => allActs().filter((a) => a.id.startsWith("v.st")) }, "v.planes", "v.tree", "-", "v.full", "v.lock"]],
   [

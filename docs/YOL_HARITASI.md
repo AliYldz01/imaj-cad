@@ -539,3 +539,11 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | PDF (yazdır), SVG, DXF (katmanlı) | ✅ |
 | Montaj resmi: izometrik + balonlar + malzeme listesi | ✅ |
 | Detay görünüşü, ölçü düzenleme, çok sayfa | ⬜ |
+
+## v0.40 — Hız ve dosya
+| Özellik | Durum |
+|---|---|
+| Artımlı yeniden oluşturma (değişmeyen özellikler önbellekten) | ✅ |
+| Delik konumlarını eskizle ölçülendirme (konum eskizi) | ✅ |
+| Aynı dosyaya kaydet (masaüstü Chrome/Edge), Farklı kaydet, Son belgeler | ✅ |
+| Diş özelliğinin kendisini hızlandırma | ⬜ |

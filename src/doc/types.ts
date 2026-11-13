@@ -253,6 +253,8 @@ export interface HoleFeature extends FeatBase {
   std?: HoleStd;
   /** kozmetik diş göster */
   cosmetic?: boolean;
+  /** konum eskizi: eskizdeki noktalar delik merkezleri (SolidWorks: delik konumu eskizi, kenarlara ölçülendirilir) */
+  sketch?: string;
   /** delik çapı (özel boyutta veya standarttan hesaplanır) */
   d: number;
   depth: number;

@@ -5,7 +5,7 @@ import { extractLoops, extractPath, extractChains, pointPos, thinRegion, segPoin
 import { sheetOpenRegion, sheetParamsBefore } from "../sheet/sheet";
 import { placedProfile, profileName, PROFILES, type Align, type ProfileStd } from "../weld/profiles";
 import type { MemberItem, Sketch3DFeature, CornerKind } from "./types";
-import { toWorld } from "./math";
+import { toWorld, toLocal } from "./math";
 
 /** Konturun örnek noktaları (içerme testi için) */
 export function loopSamples(l: Loop): Vec2[] {
@@ -544,7 +544,15 @@ export function compile(feats: Feature[], profiles: Record<string, { name: strin
           if (!f.plane) throw new Error("Deliğin açılacağı yüzü seçin");
           const pl = kplane(f.plane, feats);
           if (!pl) throw new Error("Yüz bulunamadı");
-          kfeats.push({ id: f.id, type: "hole", pl, pts: f.pts, htype: f.htype, d: f.d, depth: f.depth, through: f.through, cd: f.cd, cdepth: f.cdepth, cangle: f.cangle });
+          let pts = f.pts;
+          if (f.sketch) {
+            const sf = feats.find((x) => x.id === f.sketch) as SketchFeature | undefined;
+            const fr = sf && resolveFrame(sf.plane, feats);
+            if (!sf || !fr) throw new Error("Delik konum eskizi bulunamadı");
+            pts = sf.data.ents.filter((e: any) => e.t === "point" && !e.cons).map((e: any) => toLocal(pl.frame, toWorld(fr, pointPos(sf.data, e.p))));
+            if (!pts.length) throw new Error("Konum eskizinde nokta yok");
+          }
+          kfeats.push({ id: f.id, type: "hole", pl, pts, htype: f.htype, d: f.d, depth: f.depth, through: f.through, cd: f.cd, cdepth: f.cdepth, cangle: f.cangle });
           break;
         }
         case "draft": {
