@@ -1,10 +1,10 @@
 # d9 — Teknik resim 2: Montaj Resmi (balonlar, malzeme listesi, 2. sayfa patlatılmış) + parça değişince montaj resmi,
 #      kaynaklı resim (kesim listesi tablosu), sac parça resmi.
-import sys, math; sys.path.insert(0, '/home/claude/imaj-cad/tests/e2e/denetim2')
+import sys, math; sys.path.insert(0, '/tmp/tC/denetim2')
 from d9h import *
 from d8h import frame_sk, mem
 from h import sketch as hsketch
-src = open('/home/claude/imaj-cad/tests/e2e/denetim2/d9_resim.py').read()
+src = open('/tmp/tC/denetim2/d9_resim.py').read()
 exec(src[src.index("class TD:"):src.index("with sync_playwright() as p:")])
 
 with sync_playwright() as p:
@@ -83,6 +83,9 @@ with sync_playwright() as p:
         ts = T.texts()
         chk("SM1 sac parça resmi açılır, ölçüler (100 / 60)", "100" in ts and "60" in ts, numtexts(ts)[:10])
         chk("SM1 sac resminde açınım görünüşü / büküm notu (SW: düz desen görünüşü)", any("açınım" in t.lower() or "büküm" in t.lower() for t in ts), "yok")
+        n = T.nsheets(); ft = T.texts(n - 1) if n else []
+        print("SM1 sayfa", n, [t for t in ft if "B1" in t or "AÇINIM" in t][:4])
+        chk("SM1 açınım sayfası: dış hat + büküm notu (D9-24)", n >= 2 and any("AÇINIM" in t for t in ft) and any(t.startswith("B1 ") for t in ft), ft[:12])
         T.close()
         A.close()
 finish()

@@ -240,7 +240,8 @@ export function mateRes(m: Mate, cm: Map<string, AsmComp>): { r: number[]; lim?:
       // simetri düzlemine paralel bileşenler eşit (aynı hizada)
       const w = d.clone().addScaledVector(S.N, -dot(d, S.N));
       if (!pl(ka)) r.push(...v3(w));
-      if (pl(ka)) r.push(...v3(sub(B.N, refl)).map((x) => x * K));
+      // D9-26: flip = ters hizalı (b normali yansımanın tersi) — yüzler zaten aynı yöne bakıyorsa dönmeden sağlanır
+      if (pl(ka)) r.push(...v3(sub(B.N, same ? refl.clone().negate() : refl)).map((x) => x * K));
       else if (ka !== "point") r.push(...cr(B.N, refl));
       return { r };
     }
@@ -311,6 +312,7 @@ export interface SolveResult {
 /** bileşen ölçeği (dönme değişkenini mm birimine çevirir) */
 const sizeOf = (c: AsmComp) => (c as any)._L ?? 50;
 
+
 /** eşzamanlı çözüm */
 export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
   const cm = compMap(doc);
@@ -360,7 +362,7 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
     }
     return out;
   };
-  const run = (withDrag: boolean, iters: number) => {
+  const run = (withDrag: boolean, iters: number, rotOn = true) => {
     if (!n) return;
     let lam = 1e-3;
     for (let it = 0; it < iters; it++) {
@@ -374,6 +376,7 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
       const J: number[][] = Array.from({ length: m }, () => new Array(n).fill(0));
       const h = 1e-6;
       for (let j = 0; j < n; j++) {
+        if (!rotOn && j % 6 >= 3) continue; // yalnız öteleme turu: dönme sütunları sıfır → adımı da sıfır
         const x = zero.slice();
         x[j] = h;
         apply(x, base);
@@ -420,6 +423,12 @@ export function solveAll(doc: AsmDoc, o: SolveOpts = {}): SolveResult {
     }
   };
   if (o.drag) run(true, o.iters ?? 25);
+  else if (n) {
+    // D9-26 / D9-27: önce yalnız ötelemeyle dene (SolidWorks gibi en kısa hareket) — eksik tanımlı eşleşmelerde
+    // (kam, yol, simetrik…) dönme kol uzunluğu kadar ucuz olduğundan bileşenler gereksiz yatıyordu; olmazsa tam çözüm
+    run(false, 60, false);
+    if (resid(false).reduce((s, v) => s + v * v, 0) > 1e-12) apply(new Array(n).fill(0));
+  }
   run(false, o.iters ? Math.max(o.iters, 40) : 150);
   const bad: string[] = [];
   for (const m of mates) {

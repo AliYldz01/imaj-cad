@@ -906,6 +906,8 @@ export class Viewer {
       geo.setAttribute("normal", new THREE.BufferAttribute(mesh.normals, 3));
       geo.setIndex(new THREE.BufferAttribute(mesh.triangles, 1));
       const mat = new THREE.MeshStandardMaterial({ color: COL.face, metalness: 0.1, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      // D7-19: yüzey gövdesi (açık kabuk) varsa arka yüzü de çizilir ve seçilir (rengi verilebilir)
+      if (mesh.faces.some((f) => f.srf)) mat.side = THREE.DoubleSide;
       this.modelMesh = new THREE.Mesh(geo, mat);
       const eg = new THREE.BufferGeometry();
       eg.setAttribute("position", new THREE.BufferAttribute(mesh.lines, 3));
@@ -1126,7 +1128,7 @@ export class Viewer {
           geo.setAttribute("position", this.modelMesh!.geometry.getAttribute("position"));
           geo.setAttribute("normal", this.modelMesh!.geometry.getAttribute("normal"));
           geo.setIndex(new THREE.BufferAttribute(this.mesh!.triangles.slice(g[k], g[k] + g[k + 1]), 1));
-          const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+          const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: this.mesh!.faces[i]?.srf ? THREE.DoubleSide : THREE.FrontSide }));
           this.hl.add(m);
         }
       };

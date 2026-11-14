@@ -937,7 +937,7 @@ En önemli bulgular:
 
 #### M — Montaj
 
-**M-1 · Montaj ayrı bir belge değil; Ctrl+S montajı kaydetmiyor**
+**✅ M-1 · Montaj ayrı bir belge değil; Ctrl+S montajı kaydetmiyor** (v0.91: montajda Ctrl+S / Dosya › Kaydet montajı .icasm olarak kaydeder; montajın belge sekmesi olarak açılması ayrıca ele alınmadı)
 - Önem: **Orta** · Tür: SolidWorks'ten farklı
 - SolidWorks: Montaj ayrı bir belgedir (.sldasm). Kendi penceresinde/sekmesinde açılır. Ctrl+S etkin montajı kaydeder, Dosya › Aç montaj da açar.
 - Bizde:

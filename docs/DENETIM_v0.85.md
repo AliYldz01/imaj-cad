@@ -2092,7 +2092,7 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde:** Yalnız Yüzey1 → Kütle Özell. → "Kütle: 0 g · Hacim: 0 mm³ · Yüzey alanı: 0 mm²". SolidWorks yüzey gövdesinde alan verir / "katı yok" uyarır. Kod: `src/main.ts:5835` (`props` yalnız `bodies`).
 
-#### D7-19 · Yüzey gövdesinin yüzüne renk verilemiyor
+#### ✅ D7-19 · Yüzey gövdesinin yüzüne renk verilemiyor
 - **Önem:** Düşük · **Tür:** Eksik
 - **Bizde:** Yüzey1'e sağ tık → menüde "Görünüm: yüz rengi…" yok (yalnız parça rengi); katı yüzlerde var. `d7_genel.py` RN.
 
@@ -2743,13 +2743,13 @@ Telefon 390×844 (CDP dokunma):
 - Bizde (`d9_resim.py` R12): Dosya menüsünde yok; yalnız komut arama ya da ☰ dosya menüsünden açılıyor. Komut tanımlı (`F("f.docprops")`) ama menü listesine eklenmemiş.
 - Kod: `src/main.ts:8695` `MENUS` Dosya listesinde `f.docprops` yok.
 
-#### D9-23 · Montaj resminde ölçü / açıklama araçları ve ayar kalıcılığı yok
+#### ✅ D9-23 · Montaj resminde ölçü / açıklama araçları ve ayar kalıcılığı yok
 - Önem: Düşük · Tür: Eksik
 - SolidWorks'te: Montaj çiziminde ölçü, not, balon düzenleme yapılabilir.
 - Bizde (`d9_resim2.py` M1): Montaj Resmi penceresinde araç çubuğu ve düzenleme alanı yok. Balon / görünüş sürüklemeleri saklanmıyor (`dr` her açılışta boş).
 - Kod: `src/main.ts:809` `if (!asmIn) renderTools()`; `:487` `asmIn ? { off: {}, … }`.
 
-#### D9-24 · Sac parça resminde açınım (düz desen) görünüşü / büküm notu yok
+#### ✅ D9-24 · Sac parça resminde açınım (düz desen) görünüşü / büküm notu yok
 - Önem: Düşük · Tür: Eksik
 - Bizde (`d9_resim2.py` SM1): flanşlı sacın resmi yalnız katlı görünüşler (100 / 60 / 30); açınım görünüşü, büküm çizgileri / notları yok (ayrı "Sac açınımı (DXF)" var).
 
@@ -2758,12 +2758,12 @@ Telefon 390×844 (CDP dokunma):
 - Bizde (`d9_tur.py` pcenter): delikli üst yüzlerde merkezler ~0,5 mm kayık (yüz merkezi delik yüzünden 50,27). Panel varsayılanı "Öteleme 10" olduğundan yüzler 10 mm aralıklı. SolidWorks'te profil merkezi dış sınırın merkezidir, öteleme 0.
 - Kod: `src/asm/asmui.ts:1117` (`v: 10` varsayılan), çözücü `profileCenter` artığı `f.c`.
 
-#### D9-26 · Simetrik eşleşme iki bileşeni gereksiz yere 90° yatırıyor
+#### ✅ D9-26 · Simetrik eşleşme iki bileşeni gereksiz yere 90° yatırıyor
 - Önem: Düşük · Tür: SolidWorks'ten farklı
 - Bizde (`d9_tur.py` sym): pim üst yüzü + Plaka2 üst yüzü, simetri = montaj Üst düzlemi. Sonuçta konumlar simetrik (5,13 / −5,14), ama iki bileşenin normali +X'e dönmüş. Beklenen: birinin 180° ters dönmesi.
 - Kök: Doğrulanmadı (çözücü ayna normali koşulu).
 
-#### D9-27 · Kam eşleşmesinde ~%5 hata
+#### ✅ D9-27 · Kam eşleşmesinde ~%5 hata
 - Önem: Düşük · Tür: Hata (doğruluk)
 - Bizde (`d9_tur.py` cam): takipçi = Plaka2 Ø10 delik kenarı, kam = pim üst Ø10 çemberi. Eksenler arası beklenen 10; ölçülen 10,49.
 - Kök: Doğrulanmadı (çember zincirinin çokgen yaklaşımı / takipçi yarıçapı).

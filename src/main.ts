@@ -23,7 +23,7 @@ import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, sampleLoop, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
-import { techSheet, techSheet2, sheetDxf, circlesOf, snapPoints, relOf, reloc, GDT_SYMS, type TechInfo, type FrontPlace, type UDim, type DimOvr, type Annot, type Tol } from "./drawing/techdraw";
+import { techSheet, techSheet2, flatSheet, sheetDxf, circlesOf, snapPoints, relOf, reloc, GDT_SYMS, type TechInfo, type FrontPlace, type UDim, type DimOvr, type Annot, type Tol } from "./drawing/techdraw";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, MECH, beamCalc, type BeamSupport, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
@@ -603,13 +603,17 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
 
 // ---------- Teknik resim (SolidWorks Drawing) ----------
 /** parça (ya da montaj: asm verilirse) için teknik resim penceresi: görünüş seçimi, ölçek, kağıt, antet; PDF / SVG / DXF */
-async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string; exploded?: any }) {
+async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string; exploded?: any; drawing?: PartDoc["drawing"]; saveDrawing?: (d: PartDoc["drawing"]) => void }) {
   const st = readLS<any>("imajcad.techdraw", {});
   const o = { cutTable: st.cutTable ?? true, iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: ((doc as any).material ? MATERIALS[(doc as any).material]?.name ?? (doc as any).material : undefined) ?? st.material ?? "" /* D9-20 */, drawnBy: st.drawnBy ?? "", no: "" };
   let data: any = asmIn?.data ?? null;
+  // D9-24: sac parçada açınım (düz desen) sayfası
+  const sheetBase = asmIn ? null : lastSheetBase(viewFeatures().feats);
+  let flat: FlatResult | null = null;
   let weldInfo: Pick<TechInfo, "cut" | "cutCenters" | "welds"> | null = null;
   const load = async () => {
     if (asmIn) return;
+    if (sheetBase && st.flat !== false) flat = await computeFlat(0).catch(() => null);
     setStatus("busy", "Teknik resim hazırlanıyor…");
     const kf = compile(viewFeatures().feats, doc.profiles ?? {}).kfeats;
     data = await kernel.pdraw(kf, { iso: o.iso, section: o.section, third: doc.props?.std === "ANSI" });
@@ -641,22 +645,23 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
   let selKey: string | null = null;
   const edit = h("div", "td-edit");
   let sheets: string[] = [];
-  // sürüklenmiş ölçüler ve detay görünüşü parçayla saklanır (montajda yalnız bu pencere için)
-  const dr: { off: Record<string, [number, number]>; detail: { x: number; y: number; r: number; k: number } | null; user: UDim[]; ovr: Record<string, DimOvr>; notes: Annot[]; vOff: Record<string, [number, number]> } = asmIn
-    ? { off: {}, detail: null, user: [], ovr: {}, notes: [], vOff: {} }
-    : { off: { ...(doc.drawing?.off ?? {}) }, detail: doc.drawing?.detail ?? null, user: [...(doc.drawing?.user ?? [])], ovr: { ...(doc.drawing?.ovr ?? {}) }, notes: [...(doc.drawing?.notes ?? [])], vOff: { ...(doc.drawing?.vOff ?? {}) } };
+  // sürüklenmiş ölçüler, açıklamalar ve detay görünüşü belgeyle saklanır (D9-23: montaj resminde montaj belgesinde)
+  const src = asmIn ? asmIn.drawing : doc.drawing;
+  const dr: { off: Record<string, [number, number]>; detail: { x: number; y: number; r: number; k: number } | null; user: UDim[]; ovr: Record<string, DimOvr>; notes: Annot[]; vOff: Record<string, [number, number]> } = { off: { ...(src?.off ?? {}) }, detail: src?.detail ?? null, user: [...(src?.user ?? [])], ovr: { ...(src?.ovr ?? {}) }, notes: [...(src?.notes ?? [])], vOff: { ...(src?.vOff ?? {}) } };
   let page2 = !!st.page2 || !!asmIn?.exploded;
   const keepDr = () => {
-    if (asmIn) return;
+    if (asmIn) return void asmIn.saveDrawing?.(JSON.parse(JSON.stringify(dr)));
     doc.drawing = { off: dr.off, detail: dr.detail, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff };
     saveDoc();
   };
   const W = () => (o.paper === "A3" ? 420 : 297), H = () => (o.paper === "A3" ? 297 : 210);
   const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, third: doc.props?.std === "ANSI", dec: doc.props?.dec, props: [doc.props?.author ? `Yazar: ${doc.props.author}` : "", ...(doc.props?.custom ?? []).map((c) => `${c.k}: ${c.v}`)].filter(Boolean).join(" · ") || undefined, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff, ...(weldInfo && o.cutTable ? weldInfo : {}) });
+  let flatPage = !!sheetBase && st.flat !== false;
   const draw = () => {
-    const n = page2 ? 2 : 1;
+    const showFlat = flatPage && !!flat && flat.outline.length > 0;
+    const n = 1 + (page2 ? 1 : 0) + (showFlat ? 1 : 0);
     // D9-6: açıklamaların görünüş kutusuna göre göreli konumu (ilk kez) — model değişince buna göre yeniden oturur
-    if (!asmIn) {
+    {
       let add = false;
       for (const u of dr.user) {
         const v = viewOf(u.view);
@@ -678,13 +683,16 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
       }
       if (add) keepDr();
     }
-    cur = techSheet(data, info(n > 1 ? [1, n] : undefined));
+    const i1 = info(n > 1 ? [1, n] : undefined);
+    if (showFlat) i1.flatNote = `AÇINIM (DÜZ DESEN): sayfa ${n} · levha ${(Math.round(flat!.w * 10) / 10)} × ${(Math.round(flat!.h * 10) / 10)} · ${flat!.bends.length} büküm`;
+    cur = techSheet(data, i1);
     sheets = [cur.svg];
     if (page2) sheets.push(techSheet2(data, info([2, n]), cur.scale, asmIn?.exploded ?? null).svg);
+    if (showFlat) sheets.push(flatSheet(flat!, info([n, n]), sheetBase?.t).svg);
     const y0 = fr.contentWindow?.scrollY ?? 0;
     fr.srcdoc = sheetsHtml(sheets, doc.name).replace("size:A4 landscape", `size:${o.paper} landscape`).replace(/297mm;height:210mm/g, `${W()}mm;height:${H()}mm`);
     fr.onload = () => (fr.contentWindow?.scrollTo(0, y0), wire());
-    localStorage.setItem("imajcad.techdraw", JSON.stringify({ cutTable: o.cutTable, iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy, page2 }));
+    localStorage.setItem("imajcad.techdraw", JSON.stringify({ cutTable: o.cutTable, iso: o.iso, section: o.section, dims: o.dims, paper: o.paper, material: o.material, drawnBy: o.drawnBy, page2, flat: flatPage }));
     (dlg as any)._svg = cur.svg;
     (dlg as any)._sheets = sheets;
     (dlg as any)._dr = dr;
@@ -960,6 +968,13 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
   };
   const p2box = cbox(asmIn ? "2. sayfa (patlatılmış)" : "2. sayfa (detay / izometrik)", page2, (x) => (page2 = x));
   opts.append(p2box);
+  if (sheetBase)
+    opts.append(
+      cbox("Açınım sayfası", flatPage, (x) => {
+        flatPage = x;
+        if (x && !flat) void computeFlat(0).then((r) => ((flat = r), draw()));
+      }),
+    );
   if (!asmIn) {
     opts.append(
       cbox("Detay B", !!dr.detail, (x) => {
@@ -984,8 +999,8 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     txt("Çizen", o.drawnBy, (x) => (o.drawnBy = x)),
     txt("Resim no", o.no, (x) => (o.no = x)),
   );
-  if (!asmIn) renderTools();
-  dlg.append(opts, ...(asmIn ? [] : [tools, edit]), fr);
+  renderTools(); // D9-23: montaj resminde de ölçü / açıklama araçları
+  dlg.append(opts, tools, edit, fr);
   const bar = h("div", "cut-bar");
   const left = h("div", "pm-row");
   const base = (asmIn ? asmIn.name : doc.name).replace(/[\\/:*?"<>|]/g, "_");
@@ -2210,6 +2225,8 @@ function hidePM() {
   syncMgr();
   document.body.classList.toggle("sheet", $("#side").classList.contains("open"));
   hint("");
+  // montaj paneli kapanınca durum etiketli komutlar (Patlat / Daralt) güncellenir — ✕ patlatmayı geri alınca etiket eski kalıyordu
+  if (asmUI?.on) queueMicrotask(() => asmUI?.on && renderCommands());
 }
 $("#pm-ok").addEventListener("click", () => pmOk());
 $("#pm-cancel").addEventListener("click", () => guardedCancel(false));
@@ -7909,7 +7926,8 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
         firstBuild = true;
       }
       viewer.viewStd("iso");
-    } else if (act === "save" || act === "saveas") await saveFile(act === "saveas");
+    } else if ((act === "save" || act === "saveas") && asmUI?.on) asmUI.saveAsm(); // M-1: montajda Ctrl+S montajı kaydeder
+    else if (act === "save" || act === "saveas") await saveFile(act === "saveas");
     else if (act === "recent") openRecent();
     else if (act === "files") openFileManager();
     else if (act === "3mf" || act === "pdf" || act === "skdxf" || act === "facedxf") return exportExtra(act);
@@ -8371,11 +8389,17 @@ function popupAt(x: number, y: number, cls: string) {
   const box = h("div", "sw-popup " + cls);
   document.body.appendChild(box);
   box.addEventListener("pointerdown", (ev) => ev.stopPropagation());
-  requestAnimationFrame(() => {
+  const place = () => {
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, x)) + "px";
     box.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, y)) + "px";
-  });
+  };
+  requestAnimationFrame(place);
+  // sonradan (eşzamansız) eklenen öğelerle büyüyen menü ekran dışına taşmasın
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => (box.isConnected ? place() : ro.disconnect()));
+    ro.observe(box);
+  }
   return box;
 }
 window.addEventListener("pointerdown", (e) => {

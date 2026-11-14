@@ -51,7 +51,7 @@ function slotsOf(t: MateType): [string, number][] {
   return [["Eşleşme seçimleri", 2]];
 }
 /** hizalama (hizalı / ters hizalı) anlamlı mı */
-const ALIGNABLE = new Set<MateType>(["coincident", "parallel", "distance", "angle", "concentric", "tangent", "limit", "limitAngle", "profileCenter"]);
+const ALIGNABLE = new Set<MateType>(["coincident", "parallel", "distance", "angle", "concentric", "tangent", "limit", "limitAngle", "profileCenter", "symmetric"]);
 
 interface MateDraft {
   edit?: string;
@@ -423,7 +423,8 @@ export class AsmUI {
       this.meshes.clear();
       await this.refresh();
     }
-    (window as any).__openTechDrawing?.({ data: r.draw, bom: b, balloonOf, name: this.doc.name, exploded });
+    // D9-23: ölçü / açıklama / sürüklemeler montaj belgesinde saklanır (geri alınabilir)
+    (window as any).__openTechDrawing?.({ data: r.draw, bom: b, balloonOf, name: this.doc.name, exploded, drawing: this.doc.drawing, saveDrawing: (d: AsmDoc["drawing"]) => ((this.doc.drawing = d), this.save()) });
   }
   /** SolidWorks Delik Hizalama: farklı bileşenlerdeki paralel, örtüşen ama eş eksenli olmayan delikler */
   holeAlignment(tol = 0.01) {
@@ -516,6 +517,15 @@ export class AsmUI {
     this.updatePatterns();
     this.bad = new Set([...r.bad, ...this.lost]);
     return r;
+  }
+  /** montajı .icasm olarak indir (Montajı Kaydet, montajda Ctrl+S) */
+  saveAsm() {
+    this.ctx.download(new Blob([JSON.stringify(this.doc, (k, v) => (k.startsWith("_") ? undefined : v))], { type: "application/json" }), `${this.doc.name}.icasm`);
+  }
+  /** D9-15: bileşenin bağlı olduğu rijit alt montajın üyeleri (yoksa yalnız kendisi) */
+  private rigidGroup(id: string): string[] {
+    const s = (this.doc.subs ?? []).find((x) => x.rigid && x.comps.includes(id));
+    return s ? s.comps.filter((x) => this.doc.comps.some((c) => c.id === x)) : [id];
   }
   /** D9-15: rijit alt montaj üyeleri, dayanak üyenin (sürüklenen ya da ilk) pozuna göre kayıtlı göreli konumlarına tam oturtulur */
   private rigidify(drag?: string) {
@@ -838,6 +848,9 @@ export class AsmUI {
       if (!pr || !pr.comp || this.mateDraft || this.picker) return;
       const c = this.doc.comps.find((x) => x.id === pr.comp);
       if (!c || c.fixed) return;
+      // D9-15: rijit alt montajın üyeleri tek gövde gibi taşınır (sabit üye varsa grup taşınmaz)
+      const grp = this.rigidGroup(c.id);
+      if (grp.some((id) => this.doc.comps.find((x) => x.id === id)?.fixed)) return;
       const dx = e.clientX - pr.x, dy = e.clientY - pr.y;
       if (!pr.moved && Math.hypot(dx, dy) < 6) return;
       pr.moved = true;
@@ -866,11 +879,12 @@ export class AsmUI {
           pr.local = [q.x, q.y, q.z];
         }
         pr.world.add(right.multiplyScalar(dx * k)).add(up.multiplyScalar(-dy * k));
-        const free = !this.doc.mates.some((m) => !m.off && [m.a, m.b, m.c, m.d].some((x) => x?.comp === c.id));
+        const free = !this.doc.mates.some((m) => !m.off && [m.a, m.b, m.c, m.d].some((x) => x && grp.includes(x.comp)));
         if (free) {
           const cur = V3(pr.local).applyQuaternion(QQ(c)).add(V3(c.p));
           const d = pr.world.clone().sub(cur);
           c.p = [c.p[0] + d.x, c.p[1] + d.y, c.p[2] + d.z];
+          if (grp.length > 1) this.rigidify(c.id);
         } else this.solve({ drag: { comp: c.id, local: pr.local, target: [pr.world.x, pr.world.y, pr.world.z] }, iters: 20 });
       }
       if (this.physics && !pr.alt) {
@@ -1148,12 +1162,21 @@ export class AsmUI {
     return (r[r.length - 1] ?? 0) < -1e-9;
   }
   private autoFlip(t: MateType, a: MateEnt, b: MateEnt) {
-    if (!ALIGNABLE.has(t) || t === "tangent") return false;
+    if (!ALIGNABLE.has(t) || t === "tangent" || t === "symmetric") return false;
     const ca = this.doc.comps.find((c) => c.id === a.comp), cb = this.doc.comps.find((c) => c.id === b.comp);
     if (!ca || !cb) return false;
     const d = wEnt(a, ca).N.dot(wEnt(b, cb).N);
     if (t === "coincident" && a.kind === "plane" && b.kind === "plane") return d > 0.7;
     return d > 0;
+  }
+  /** D9-26: simetrik eşleşmede düz yüzlerin hizalaması — b normali a'nın yansımasına mı tersine mi yakın (en az dönme) */
+  private symFlip(a: MateEnt, b: MateEnt, s: MateEnt) {
+    const cm = (id: string) => this.doc.comps.find((c) => c.id === id);
+    const ca = cm(a.comp), cb = cm(b.comp), cs = cm(s.comp) ?? ({ p: [0, 0, 0], q: [0, 0, 0, 1] } as any);
+    if (!ca || !cb || a.kind !== "plane") return false;
+    const A = wEnt(a, ca).N, B = wEnt(b, cb).N, S = wEnt(s, cs).N;
+    const refl = A.clone().addScaledVector(S, -2 * A.dot(S));
+    return B.dot(refl) < 0;
   }
   /** eşleşme ekle; sağlanamazsa geri al (SolidWorks: aşırı tanımlama hatası) */
   addMate(m: Mate, keepBad = false, at = -1): boolean {
@@ -1253,6 +1276,7 @@ export class AsmUI {
       if (d.type === "coincident" || d.type === "concentric") d.type = this.suggest(d.ents[0], d.ents[1]);
       d.flip = this.autoFlip(d.type, d.ents[0], d.ents[1]);
     } else if (d.ents[0] && d.ents[1] && !d.edit && ALIGNABLE.has(d.type)) d.flip = this.autoFlip(d.type, d.ents[0], d.ents[1]); // D9-11: tür önce seçilse de en yakın hizalama
+    if (d.type === "symmetric" && d.ents[0] && d.ents[1] && d.ents[2] && !d.edit) d.flip = this.symFlip(d.ents[0], d.ents[1], d.ents[2]);
     this.renderMatePM();
     this.preview();
   }
@@ -2317,7 +2341,7 @@ export class AsmUI {
       body.appendChild(group("Seçenekler", checkField("Fiziksel dinamik (değdiğini it)", this.physics, (v) => (this.physics = v)), button("⏺ Kaydet ve oynat (video)", () => {
         if (!this.startRec()) return;
         play();
-        if (!st.playing) this.stopRec();
+        if (!st.playing) this.stopRec(false); // oynatılamadıysa boş video indirilmez
       }, "btn")));
       body.appendChild(h("p", "pm-hint", "Motor bileşeni seçilen eksen etrafında döndürür veya yön boyunca iter; eşleşmeler (dişli, menteşe, vida, kremayer…) diğer bileşenleri birlikte hareket ettirir."));
     };
@@ -2449,6 +2473,27 @@ export class AsmUI {
       });
       ul.appendChild(li);
       if (this.mateDraft || this.picker) planeToggle(c.id, "Ana düzlemler", "child");
+    }
+    // D9-14: bileşen çoğaltmaları ağaçta düzenlenebilir özellik (SolidWorks LocalLPattern / LocalCirPattern / DerivedLPattern)
+    if (this.doc.pdp?.length) {
+      ul.appendChild(h("li", "rollbar", "Bileşen çoğaltmaları"));
+      this.doc.pdp.forEach((pd, i) => {
+        const insts = this.doc.comps.filter((c) => c.pat?.id === pd.id);
+        const kind = pd.own ? (pd.own.kind === "circ" ? "Dairesel Bileşen Çoğaltma" : "Doğrusal Bileşen Çoğaltma") : "Desen Güdümlü Çoğaltma";
+        const sel = insts.length > 0 && insts.every((c) => this.selSet.has(c.id));
+        const li = h("li", "child" + (sel ? " sel" : ""), `⁂ ${kind}${i + 1} (${pd.seeds.map(nm).join(", ")} · ${insts.length + pd.seeds.length} örnek)`);
+        li.title = pd.own ? "Dokun: örnekleri seç · Çift tık: düzenle" : "Dokun: örnekleri seç";
+        li.addEventListener("click", () => {
+          this.selSet = new Set(insts.map((c) => c.id));
+          this.sel = insts[0]?.id ?? null;
+          this.selMate = null;
+          this.selSub = null;
+          this.draw();
+          this.renderTree();
+        });
+        if (pd.own) li.addEventListener("dblclick", () => this.openPattern(pd.id));
+        ul.appendChild(li);
+      });
     }
     if (this.doc.feats?.length) {
       ul.appendChild(h("li", "rollbar", "Montaj özellikleri"));
@@ -2815,7 +2860,7 @@ export class AsmUI {
           if (n) (this.doc.name = n), this.save(), this.renderTree();
         },
       },
-      { id: "saveAsm", label: "Montajı Kaydet", icon: "file", run: () => this.ctx.download(new Blob([JSON.stringify(this.doc, (k, v) => (k.startsWith("_") ? undefined : v))], { type: "application/json" }), `${this.doc.name}.icasm`) },
+      { id: "saveAsm", label: "Montajı Kaydet", icon: "file", run: () => this.saveAsm() },
       {
         id: "openAsm",
         label: "Montaj Dosyası Aç",

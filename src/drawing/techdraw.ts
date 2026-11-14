@@ -1,6 +1,6 @@
 // Teknik resim (SolidWorks Drawing benzeri): ilk açı (ISO E) standart görünüşler, izometrik, kesit A-A,
 // otomatik ölçüler (toplam boyutlar, delik çapları ve konumları), antet, montajda malzeme listesi + balonlar.
-import type { DrawView, Vec2, Vec3 } from "../doc/types";
+import type { DrawView, Vec2, Vec3, FlatResult } from "../doc/types";
 import { Svg, placeView } from "../weld/drawing";
 
 export interface TechData {
@@ -26,6 +26,8 @@ export interface TechInfo {
   dec?: number;
   /** belge özel özellikleri (antet altı satırı) */
   props?: string;
+  /** D9-24: sac parçada 1. sayfaya açınım sayfası notu */
+  flatNote?: string;
   bom?: { no: number; name: string; qty: number }[];
   /** balon: bileşen sırası → BOM no */
   balloonOf?: number[];
@@ -361,6 +363,7 @@ export function techSheet(d: TechData, info: TechInfo): { svg: string; scale: nu
   });
   svg.line(tbx + 28, tby, tbx + 28, tby + TB.h, "g");
   svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD" + (info.props ? " · " + info.props : ""), 2.4, "start", 0, "tk");
+  if (info.flatNote) svg.text(M + 3, H - M - 7, info.flatNote, 2.6, "start", 0, "tb");
   if (info.page) svg.text(tbx + TB.w - 2, tby - 2, `Sayfa ${info.page[0]} / ${info.page[1]}`, 2.6, "end", 0, "tk");
   const places: Record<string, FrontPlace> = {};
   for (const [k, p] of Object.entries(out)) if (p.v) places[k] = { ox: p.ox, oy: p.oy, s, min: p.v.min, max: p.v.max };
@@ -474,6 +477,7 @@ function wrapSvg(svg: Svg, W: number, H: number) {
     .h{stroke:#555;stroke-width:0.25;fill:none;stroke-dasharray:1.6 0.9}
     .d{stroke:#1c5fd1;stroke-width:0.18;fill:none}
     .c{stroke:#c0392b;stroke-width:0.18;stroke-dasharray:6 1 1 1}
+    .bu{stroke:#2f9e44;stroke-width:0.3;stroke-dasharray:3 1.2}.bd{stroke:#d33f3f;stroke-width:0.3;stroke-dasharray:3 1.2}
     .g{stroke:#000;stroke-width:0.25}
     .ar{fill:#1c5fd1;stroke:none}
     text{font-family:Arial,'DejaVu Sans',sans-serif}
@@ -569,6 +573,71 @@ export function techSheet2(d: TechData, info: TechInfo, sheet1Scale: number, exp
   }
   titleBlock(svg, info, W, H, s);
   svg.text(M + 3, H - M - 3, "Genel toleranslar: ISO 2768-m · Ölçüler mm · İmaj CAD" + (info.props ? " · " + info.props : ""), 2.4, "start", 0, "tk");
+  return { svg: wrapSvg(svg, W, H), scale: s };
+}
+
+/**
+ * D9-24: sac parçanın açınım (düz desen) sayfası — SolidWorks çiziminde "Düz desen" görünüşü:
+ * dış hat + delikler, büküm çizgileri (yukarı yeşil / aşağı kırmızı kesikli), büküm notları, toplam ölçüler ve büküm tablosu.
+ */
+export function flatSheet(fl: Pick<FlatResult, "outline" | "bends" | "w" | "h">, info: TechInfo, t?: number): { svg: string; scale: number } {
+  const W = info.paper === "A3" ? 420 : 297, H = info.paper === "A3" ? 297 : 210, M = 10;
+  const svg = new Svg();
+  // sınır kutusu (açınım koordinatları)
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const ext = (p: Vec2, r = 0) => ((x0 = Math.min(x0, p[0] - r)), (y0 = Math.min(y0, p[1] - r)), (x1 = Math.max(x1, p[0] + r)), (y1 = Math.max(y1, p[1] + r)));
+  for (const e of fl.outline) e.k === "l" ? (ext(e.a), ext(e.b)) : ext(e.c, e.r);
+  if (!isFinite(x0)) (x0 = y0 = 0), (x1 = fl.w), (y1 = fl.h);
+  const bw = Math.max(1e-6, x1 - x0), bh = Math.max(1e-6, y1 - y0);
+  const tbh = 36, tblW = fl.bends.length ? 92 : 0;
+  const aw = W - 2 * M - 30 - tblW, ah = H - 2 * M - tbh - 34;
+  const s = info.scale > 0 ? info.scale : SCALES.find((x) => x <= Math.min(aw / bw, ah / bh)) ?? SCALES[SCALES.length - 1];
+  const ox = M + 18 + (aw - bw * s) / 2, oy = M + 16 + (ah - bh * s) / 2;
+  const X = (x: number) => ox + (x - x0) * s, Y = (y: number) => oy + (y1 - y) * s;
+  for (const e of fl.outline) {
+    if (e.k === "l") svg.line(X(e.a[0]), Y(e.a[1]), X(e.b[0]), Y(e.b[1]));
+    else if (e.k === "c") svg.circle(X(e.c[0]), Y(e.c[1]), e.r * s);
+    else {
+      // DXF yayı: a0 → a1 saat yönü tersine (derece); SVG'de y aşağı → sweep 0
+      let a0 = e.a0, a1 = e.a1;
+      while (a1 <= a0) a1 += 360;
+      const r = (d: number) => (d * Math.PI) / 180;
+      const P = (d: number) => [X(e.c[0] + e.r * Math.cos(r(d))), Y(e.c[1] + e.r * Math.sin(r(d)))];
+      const [sx, sy] = P(a0), [ex, ey] = P(a1);
+      svg.parts.push(`<path class="v" d="M${sx.toFixed(2)} ${sy.toFixed(2)} A${(e.r * s).toFixed(2)} ${(e.r * s).toFixed(2)} 0 ${a1 - a0 > 180 ? 1 : 0} 0 ${ex.toFixed(2)} ${ey.toFixed(2)}"/>`);
+    }
+  }
+  // büküm çizgileri + kısa notlar (B1, B2…)
+  fl.bends.forEach((b, i) => {
+    svg.line(X(b.a[0]), Y(b.a[1]), X(b.b[0]), Y(b.b[1]), b.up ? "bu" : "bd");
+    let rot = (Math.atan2(-(b.b[1] - b.a[1]), b.b[0] - b.a[0]) * 180) / Math.PI;
+    if (rot > 90.001) rot -= 180;
+    if (rot < -89.999) rot += 180;
+    const mx = (X(b.a[0]) + X(b.b[0])) / 2, my = (Y(b.a[1]) + Y(b.b[1])) / 2;
+    const rr = (rot * Math.PI) / 180;
+    svg.text(mx + Math.sin(rr) * 1.6, my - Math.cos(rr) * 1.6, `B${i + 1} ${b.up ? "YUKARI" : "AŞAĞI"} ${f1(b.angle)}° R${f1(b.r)}`, 2.4, "middle", rot, "t");
+  });
+  // toplam ölçüler
+  svg.dimH(X(x0), Y(y0), X(x1), Y(y0), Y(y0) + 8, f1(bw));
+  svg.dimV(X(x0), Y(y1), X(x0), Y(y0), X(x0) - 8, f1(bh));
+  svg.text(ox + (bw * s) / 2, M + 9, `AÇINIM (DÜZ DESEN)  (${scaleLabel(s)})`, 3.4, "middle", 0, "tb");
+  // büküm tablosu
+  if (fl.bends.length) {
+    const tx = W - M - tblW, ty = M + 6, rh = 5;
+    const cols = [0, 12, 40, 62, tblW];
+    svg.text(tx + tblW / 2, ty + 3.5, "BÜKÜM TABLOSU", 2.8, "middle", 0, "tb");
+    const head = ["No", "Yön", "Açı", "İç R"];
+    const rows = fl.bends.slice(0, 24).map((b, i) => [`B${i + 1}`, b.up ? "Yukarı" : "Aşağı", `${f1(b.angle)}°`, f1(b.r)]);
+    [head, ...rows].forEach((r, k) => {
+      const yy = ty + 5 + k * rh;
+      svg.parts.push(`<rect class="g" x="${tx.toFixed(2)}" y="${yy.toFixed(2)}" width="${tblW}" height="${rh}" fill="none"/>`);
+      r.forEach((c, j) => svg.text(tx + (cols[j] + cols[j + 1]) / 2, yy + rh - 1.3, c, 2.4, "middle", 0, k ? "t" : "tb"));
+    });
+    for (const c of cols.slice(1, -1)) svg.line(tx + c, ty + 5, tx + c, ty + 5 + (rows.length + 1) * rh, "g");
+  }
+  titleBlock(svg, info, W, H, s);
+  const up = fl.bends.filter((b) => b.up).length;
+  svg.text(M + 3, H - M - 3, `Levha ${f1(bw)} × ${f1(bh)} mm${t ? ` · t = ${f1(t)}` : ""} · ${fl.bends.length} büküm (${up} yukarı, ${fl.bends.length - up} aşağı) · İmaj CAD`, 2.4, "start", 0, "tk");
   return { svg: wrapSvg(svg, W, H), scale: s };
 }
 

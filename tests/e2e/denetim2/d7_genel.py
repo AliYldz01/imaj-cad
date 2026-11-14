@@ -99,8 +99,10 @@ with sync_playwright() as p:
         c = a.wsc([0, 20, 0]); rclick(a, c[0], c[1])
         it = menu_items(a)
         print("   RN yüzey sağ tık menüsü:", it)
+        chk("RN yüzey yüzünde 'yüz rengi' (D7-19)", any("yüz rengi" in x for x in it), it)
         if any("yüz rengi" in x for x in it):
             menu_click(a, "Görünüm: yüz rengi"); choose_color(a, "#0000ff"); a.wait(0.6)
+            chk("RN yüzey yüzü mavi boyandı (D7-19)", (face_colors(a) or {}).get("0") == "ff", face_colors(a))
             a.cmd("Kalınlaştır"); a.wait(0.5); a.pmfield("Kalınlık", 3); a.wait(0.5); a.ok()
             fc = face_colors(a)
             print("   RN yüzey mavi → kalınlaştır sonrası yüz renkleri:", fc)

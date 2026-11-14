@@ -4758,8 +4758,13 @@ async function build(id: number, features: KFeature[]) {
     const counts = [...bodies, ...welds, ...surfs.map((x) => x.s)].map((b) => (b.faces as any[]).length);
     if (counts.reduce((x, y) => x + y, 0) === mesh.faces.length) {
       let k = 0;
+      const nSolid = bodies.length + welds.length;
       counts.forEach((c, bi) => {
-        for (let j = 0; j < c; j++) mesh.faces[k++].b = bi;
+        for (let j = 0; j < c; j++) {
+          const fi = mesh.faces[k++];
+          fi.b = bi;
+          if (bi >= nSolid) fi.srf = true; // D7-19: yüzey gövdesi yüzü (iki taraftan seçilir / boyanır)
+        }
       });
     }
     let members: { key: string; name: string; body: number }[] = [];
