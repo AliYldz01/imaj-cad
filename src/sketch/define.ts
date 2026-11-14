@@ -6,14 +6,19 @@ import { P, nid } from "./model";
 
 const add2 = (a: number[], b: number[]): [number, number] => [a[0] + b[0], a[1] + b[1]];
 
-export function autoDefine(sk: SketchData): number {
+export function autoDefine(sk: SketchData, lenient = false): number {
+  // önce gereksiz kısıt üretmeyen ölçüler; serbestlik kalırsa çözücünün "gereksiz" saydığı ama serbestliği azaltan ölçüler de kabul edilir
+  const n = autoPass(sk, true);
+  return lenient && solve(sk, undefined, false).dof > 0 ? n + autoPass(sk, false) : n;
+}
+function autoPass(sk: SketchData, strict: boolean): number {
   let added = 0;
   const tryDim = (d: SDim) => {
     const b0 = solve(sk, undefined, false), before = b0.dof;
     sk.dims.push(d);
     const r = solve(sk, undefined, false);
     // gereksiz kısıt oluşturan ölçü eklenmez (eskiz "aşırı tanımlı (gereksiz)" olmasın)
-    if (!r.ok || r.conflicts.length || r.dof >= before || r.redundant.length > b0.redundant.length) {
+    if (!r.ok || r.conflicts.length || r.dof >= before || (strict && r.redundant.length > b0.redundant.length)) {
       sk.dims.pop();
       return false;
     }
@@ -54,7 +59,7 @@ export function autoDefine(sk: SketchData): number {
     const b0 = solve(sk, undefined, false), before = b0.dof;
     sk.rels.push({ id: nid(sk, "r"), t: "fix", refs: [id], fx: q[0], fy: q[1] });
     const r = solve(sk, undefined, false);
-    if (!r.ok || r.conflicts.length || r.dof >= before || r.redundant.length > b0.redundant.length) sk.rels.pop();
+    if (!r.ok || r.conflicts.length || r.dof >= before || (strict && r.redundant.length > b0.redundant.length)) sk.rels.pop();
     else added++;
     res = solve(sk);
     def = analyze(sk, res.dof);

@@ -635,10 +635,10 @@ export class Viewer {
   }
 
   /** D3-25: dünya noktasını görünür bandın (paneller hariç) ortasına getir — yakınlaştırma değişmez */
-  centerOn(w: [number, number, number], ins: { t: number; b: number }) {
+  centerOn(w: [number, number, number], ins: { t: number; b: number; l?: number }) {
     const h = this.container.clientHeight || 1, W = this.container.clientWidth || 1;
     const s = this.toScreen(w);
-    const want = [W / 2, ins.t + (h - ins.t - ins.b) / 2];
+    const want = [(ins.l ?? 0) + (W - (ins.l ?? 0)) / 2, ins.t + (h - ins.t - ins.b) / 2];
     const px2w = this.viewHeight / this.camera.zoom / h;
     const up = this.camera.up.clone().normalize();
     const fwd = this.controls.target.clone().sub(this.camera.position).normalize();
@@ -650,7 +650,7 @@ export class Viewer {
     this.requestRender();
   }
   /** D4-7: sığdırırken grafik alanı örten paneller (px, üst / alt) */
-  fitInsets: { t: number; b: number } | null = null;
+  fitInsets: { t: number; b: number; l?: number } | null = null;
   fit() {
     this.pushView();
     const box = this.bbox && !this.bbox.isEmpty() ? this.bbox.clone() : new THREE.Box3(new THREE.Vector3(-60, -60, -60), new THREE.Vector3(60, 60, 60));
@@ -660,7 +660,15 @@ export class Viewer {
     const h = this.container.clientHeight || 1;
     const fitSize = size * 1.25;
     const ins = this.fitInsets, hv = ins ? Math.max(h * 0.35, h - ins.t - ins.b) : h;
-    this.camera.zoom = Math.min((this.viewHeight * (hv / h)) / fitSize, (this.viewHeight * (w / h)) / fitSize);
+    const wl = ins?.l ? Math.max(w * 0.35, w - ins.l) : w;
+    this.camera.zoom = Math.min((this.viewHeight * (hv / h)) / fitSize, (this.viewHeight * (wl / h)) / fitSize);
+    if (ins?.l && wl < w) {
+      // sol çekmece açık: görünür alanın ortasına (hedef ekran solu yönünde kaydırılır)
+      const px2w = this.viewHeight / this.camera.zoom / h;
+      const fw = this.controls.target.clone().sub(this.camera.position).normalize();
+      const rt = new THREE.Vector3().crossVectors(fw, this.camera.up).normalize();
+      center.add(rt.multiplyScalar(-(ins.l / 2) * px2w));
+    }
     this.camera.updateProjectionMatrix();
     if (ins && hv < h) {
       // görünür bandın ortasına: hedef ekran yukarısı yönünde kaydırılır

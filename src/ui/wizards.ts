@@ -63,12 +63,21 @@ const feats = (uid: () => string, name: string, plane: string, d: Sk, depth: num
 const holesOnCircle = (c: ReturnType<typeof sk>, n: number, pcd: number, dh: number) => {
   const pc = c.circle(0, 0, pcd / 2);
   c.d.ents.find((e) => e.id === pc.c).cons = true;
-  let first = "";
+  let first = "", firstP = "";
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + Math.PI / 2;
     const h = c.circle((pcd / 2) * Math.cos(a), (pcd / 2) * Math.sin(a), dh / 2, i === 0);
+    if (n % 2 === 0 && i === n / 2) {
+      // ilk deliğin tam karşısındaki delik: orijin, iki deliği birleştiren yapı çizgisinin ortası (dikey + üzerinde ikilisi çözücüde "gereksiz" sayılıyordu)
+      const l = c.id("l");
+      c.d.ents.push({ id: l, t: "line", p1: firstP, p2: h.cp, cons: true });
+      c.rel("midpoint", [ORIGIN, l]);
+      c.rel("equal", [h.c, first]);
+      continue;
+    }
     c.rel("onCircle", [h.cp, pc.c]);
     if (i === 0) {
+      firstP = h.cp;
       c.rel("vertical", [h.cp, ORIGIN]);
       first = h.c;
     } else c.rel("equal", [h.c, first]);

@@ -195,7 +195,7 @@ dialog.cut-dialog { max-width: min(980px, 96vw); width: 980px; }
 .cut-bar form { margin: 0; }
 
 /* ---------- Telefon / dar ekran ---------- */
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-height: 500px) and (orientation: landscape) {
   #cmdbar { flex-wrap: wrap; }
   #tabs { display: flex; flex-direction: row; order: 1; border-right: 0; padding: 4px; gap: 2px; align-items: center; overflow-x: auto; flex: 1 1 0; min-width: 0; scrollbar-width: none; }
   #tabs::-webkit-scrollbar { display: none; }
@@ -297,7 +297,7 @@ dialog.draw-dialog { width: 1100px; }
 .vcube .cell:hover { background: #ffd43b; color: #000; }
 .vcube .iso { position: absolute; left: 13px; top: 76px; width: 44px; height: 20px; font-size: 11px; border-radius: 6px; border: 1px solid #c9d1dc; background: #fff; padding: 0; cursor: pointer; }
 .sheet-min { display: none; }
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-height: 500px) and (orientation: landscape) {
   .sheet-min { display: inline-block; width: 34px; height: 34px; border: 0; background: none; font-size: 18px; }
   #side.min { max-height: 54px !important; overflow: hidden; }
   /* alt panel küçültülünce ekran çubuğu yeniden üstten bağlanır (tuval genişler) */
@@ -324,7 +324,7 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .cmd-groups { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 1fr); gap: 2px 3px; align-content: center; padding: 0 4px; flex: 0 0 auto; }
 .cmd-chip { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid #3a4757; background: transparent; color: #c9d4e0; cursor: pointer; white-space: nowrap; }
 .cmd-chip.on { background: #f76707; border-color: #f76707; color: #fff; }
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-height: 500px) and (orientation: landscape) {
   #cmdgroups { order: 3; flex-basis: 100%; border-top: 1px solid #3a4757; }
   #cmdgroups:empty { display: none; }
   .cmd-groups { display: flex; overflow-x: auto; padding: 4px; gap: 4px; scrollbar-width: none; }
@@ -385,7 +385,7 @@ dialog.input-dialog .btn.wide { display: block; width: 100%; text-align: left; m
 .cust-foot .spacer, .cust-head .spacer { flex: 1; }
 .lock-btn.on { color: #ffd43b; }
 
-@media (min-width: 821px) {
+@media (min-width: 821px) and (min-height: 501px), (min-width: 821px) and (orientation: portrait) {
   #cmdbar { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "menu globals" "cmds cmds" "tabs tabs"; background: #f4f6f8; color: var(--ink); border-bottom: 1px solid #c4ccd6; }
   #menubar { grid-area: menu; display: flex; align-items: center; gap: 2px; min-width: 0; background: var(--ink); color: #dfe6ee; padding: 0 6px; height: 32px; }
   #menubar .brand { font-weight: 700; color: #ff922b; margin-right: 10px; font-size: 13px; white-space: nowrap; }
@@ -517,7 +517,7 @@ dialog.whatswrong { max-width: 560px; width: 92vw; }
 #taskpane .tp-head { display: flex; gap: 4px; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 #taskpane .tp-row { display: flex; gap: 4px; align-items: center; padding: 3px 0; border-bottom: 1px solid #f0f2f5; }
 #taskpane .tp-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 820px) { #crumbs { top: 4px; left: 4px; font-size: 11px; } #taskpane { width: 86vw; } }
+@media (max-width: 820px), (max-height: 500px) and (orientation: landscape) { #crumbs { top: 4px; left: 4px; font-size: 11px; } #taskpane { width: 86vw; } }
 @media (pointer: coarse) { .i3d .i3d-ar { font-size: 38px; width: 48px; height: 48px; left: -24px; top: -48px; transform-origin: 24px 48px; } }
 .cand-bar { position: absolute; z-index: 30; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; background: rgba(255,255,255,.96); border: 1px solid #ccd3dc; border-radius: 8px; padding: 4px 6px; box-shadow: 0 3px 10px rgba(0,0,0,.15); max-width: 260px; }
 .cand-bar .btn { min-height: 34px; }
@@ -545,7 +545,7 @@ dialog.cal-dlg .cal-last { font-size: 28px; font-weight: 700; text-align: center
 .cmd.active svg { color: var(--accent); }
 #tree li.sel { background: #E9F0FB; border-left-color: var(--accent); color: var(--brand); font-weight: 600; }
 #tree li.sel svg { color: var(--brand); }
-@media (min-width: 821px) {
+@media (min-width: 821px) and (min-height: 501px), (min-width: 821px) and (orientation: portrait) {
   #cmdbar { grid-template-areas: "menu globals" "tabs tabs" "cmds cmds"; background: #fff; border-bottom: 0; }
   #menubar { background: var(--brand); color: #fff; height: 46px; padding: 0 8px 0 0; }
   #menubar .brand { background: #fff; height: 46px; display: flex; align-items: center; padding: 0 34px 0 14px; margin-right: 10px; clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%); }
@@ -595,7 +595,7 @@ dialog.cal-dlg .cal-last { font-size: 28px; font-weight: 700; text-align: center
   #statusbar button.on { background: rgba(255,212,59,.28); color: #fff; }
   #sb-units { border-color: rgba(255,255,255,.2); }
 }
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-height: 500px) and (orientation: landscape) {
   #cmdbar { background: var(--brand); color: #fff; align-items: center; }
   #mbrand { display: flex; order: 0; align-items: center; padding: 0 4px 0 10px; height: 44px; }
   #mbrand img { height: 26px; display: block; }
@@ -625,9 +625,44 @@ dialog.cal-dlg .cal-last { font-size: 28px; font-weight: 700; text-align: center
 .fea-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .fea-min { padding: 2px 10px; min-height: 0; }
 .fea-panel.min > :not(.fea-head) { display: none; }
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-height: 500px) and (orientation: landscape) {
   body .fea-panel { left: 6px !important; right: 6px !important; top: auto !important; bottom: calc(var(--tray-h, 0px) + 6px) !important; width: auto !important; max-height: 42vh; }
 }
 .sw-ctx .sw-mh { font-size: 11px; color: #667; padding: 4px 10px 2px; border-top: 1px solid #e3e6ec; }
 .dim-prompt.quick.passive { pointer-events: none; opacity: .8; } /* D1-2 */
 .dim-prompt.quick.passive .no { pointer-events: auto; }
+
+/* ===== Telefon yatay modu (v0.92): ince üst bant, solda komut kolonu, ağaç / panel sol çekmece, sağda ekran çubuğu ===== */
+body.land #cmdbar { flex-wrap: nowrap; }
+body.land #mbrand { height: 40px; padding: 0 2px 0 8px; }
+body.land #mbrand img { height: 22px; }
+body.land #tabs { order: 1; flex: 1 1 0; background: transparent; border-bottom: 0; padding: 4px 6px; gap: 4px; }
+body.land #tabs button { padding: 5px 11px; font-size: 12.5px; background: rgba(255,255,255,.14); color: #fff; }
+body.land #tabs button.active { background: #fff; color: var(--brand); box-shadow: inset 0 -3px 0 var(--accent); }
+body.land #globals { order: 2; margin-left: 0; }
+body.land #globals .cmd { height: 36px; }
+body.land #main { margin-left: 62px; }
+body.land #tray { position: fixed; left: 0; top: var(--land-top, 40px); bottom: 0; width: 62px; border-radius: 0; box-shadow: 1px 0 0 #dde3ec; padding: 4px 4px calc(4px + var(--safe-b)); display: flex; }
+body.land.pm-only #tray { display: flex; }
+body.land #tray::before { display: none; }
+body.land #tray #cmdgroups { display: none; }
+body.land #tray #cmds { flex: 1 1 auto; min-height: 0; flex-direction: column; flex-wrap: nowrap; overflow-x: hidden; overflow-y: auto; gap: 4px; scrollbar-width: none; align-items: stretch; }
+body.land #tray #cmds::-webkit-scrollbar { display: none; }
+body.land #tray .cmd { min-width: 0; width: 54px; height: 46px; flex: 0 0 auto; font-size: 9px; gap: 2px; border-radius: 10px; }
+body.land #tray .cmd svg { width: 20px; height: 20px; }
+body.land #tray .cmd .lbl { max-width: 52px; }
+body.land #tray .cmd-sep { width: auto; height: 1px; min-height: 1px; margin: 2px 6px; flex: 0 0 auto; }
+body.land #side { left: 0; right: auto; top: 0; bottom: 0; width: min(300px, 42vw); max-height: none; border-radius: 0; border-top: 0; border-right: 1px solid var(--line); box-shadow: 6px 0 20px rgba(0,0,0,.14); }
+body.land.asm-pm #side { max-height: none; }
+body.land .actbar, body.land.sheet .actbar, body.land.asm-pm .actbar, body.land.has-doctabs .actbar { top: calc(var(--land-top, 40px) + 6px); bottom: auto; max-height: calc(100vh - var(--land-top, 40px) - 12px); gap: 4px; }
+body.land .actbar button, body.land.asm-pm .actbar button { width: 38px; height: 38px; font-size: 15px; }
+body.land #hint, body.land.sheet #hint, body.land.asm-pm #hint { top: auto; bottom: 6px; max-width: 60%; font-size: 12px; padding: 4px 10px; }
+body.land #toast { bottom: calc(10px + var(--safe-b)); }
+body.land #crumbs, body.land.has-doctabs #crumbs { top: auto; bottom: 6px; left: 6px; max-width: 34%; }
+body.land .fea-panel { left: auto !important; right: 56px !important; bottom: 6px !important; width: 300px !important; max-height: calc(100vh - var(--land-top, 40px) - 12px); overflow: auto; }
+body.land.sheet .vcube { left: calc(min(300px, 42vw) + 8px); }
+body.land.sheet #hint { left: calc(min(300px, 42vw) + 12px); transform: none; max-width: 44%; }
+body.land #side.min { bottom: auto; box-shadow: 0 4px 14px rgba(0,0,0,.14); }
+body.land.sheet:has(#side.min) .actbar, body.land.asm-pm:has(#side.min) .actbar, body.land.sheet.has-doctabs:has(#side.min) .actbar { top: calc(var(--land-top, 40px) + 6px); max-height: calc(100vh - var(--land-top, 40px) - 12px); }
+body.land.sheet:has(#side.min) .vcube { left: 14px; top: 66px; }
+body.land.sheet:has(#side.min) #hint { left: 50%; transform: translateX(-50%); }

@@ -686,3 +686,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.90 | Denetim 2 Paket 5 + 6: kalan Yüksek / Orta / Düşük bulgular (150 ✅) | ✅ |
 
 | v0.91 | Kalan denetim bulguları: 3B eskiz geri al / Esc, ilişkisel öteleme / çoğaltma, kabuk, tam yuvarlak, bindirmeli köşe açınımı, montaj resmi ölçüleri, sac açınım sayfası, eşleşmeler | ✅ |
+
+| v0.92 | Telefon yatay modu: ince üst bant, sol komut kolonu, sol çekmece, sağda ekran çubuğu | ✅ |

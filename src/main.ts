@@ -2014,7 +2014,7 @@ function offerCandidates(x: number, y: number, hit: PickHit) {
     bar.appendChild(b);
   }
   const r = $("#view").getBoundingClientRect();
-  bar.style.left = Math.min(r.width - 260 - (innerWidth <= 820 ? 56 : 0), Math.max(4, x - r.left - 60)) + "px";
+  bar.style.left = Math.min(r.width - 260 - (narrow() ? 56 : 0), Math.max(4, x - r.left - 60)) + "px";
   bar.style.top = Math.max(4, y - r.top + 26) + "px";
   $("#view").appendChild(bar);
   setTimeout(() => bar.remove(), 5000);
@@ -2040,7 +2040,7 @@ function showMiniBar(x: number, y: number) {
     bar.appendChild(b);
   }
   // D10-10: telefonda sağdaki ekran çubuğunu örtmesin
-  const rightGap = innerWidth <= 820 ? 62 : 10;
+  const rightGap = narrow() ? 62 : 10;
   bar.style.left = Math.max(4, Math.min(innerWidth - 40 * items.length - rightGap, x + 14)) + "px";
   bar.style.top = Math.max(4, y - 52) + "px";
   bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
@@ -2157,7 +2157,7 @@ function openSketch(f: SketchFeature, isNew: boolean, tool?: SkTool) {
   // mevcut eskizi açarken eskizi ve modeli ekrana sığdır
   if (!isNew && f.data.ents.length) setTimeout(fitAll, 50);
   // D3-25 / D5-15: telefonda yeni eskizde orijin alt panelin arkasında kalmasın
-  else if (innerWidth <= 820) setTimeout(() => viewer.centerOn(frame.o as any, viewInsets()), 60);
+  else if (narrow()) setTimeout(() => viewer.centerOn(frame.o as any, viewInsets()), 60);
 }
 
 let saveTimer = 0;
@@ -7568,17 +7568,41 @@ const GROUP_NAMES: Record<string, string[]> = {
 const TAB_CAPS: Record<string, string> = { features: "Ekle / Kes", sketch: "Eskiz", weld: "Yapı", sheet: "Sac", evaluate: "Ölç", asm: "Montaj" };
 const groupSel: Record<string, number> = {};
 /** telefonda komut şeridi ekranın altındaki tepsiye, masaüstünde başlığa (Kurumsal Şerit) */
+/** telefon yatay modu: alçak (≤ 500 px) ve enine ekran — dar ekran düzeni kullanılır, komutlar sol kolonda */
+function landPhone(): boolean {
+  return innerHeight <= 500 && innerWidth > innerHeight;
+}
+/** dar ekran (telefon dikey / küçük pencere) ya da telefon yatay */
+function narrow(): boolean {
+  return innerWidth <= 820 || landPhone();
+}
+let landObs: ResizeObserver | null = null;
+function syncLand() {
+  if (!landObs) {
+    // üst bant yüksekliği değişince (sekme satırı, belge sekmeleri) kolon ve çekmece yeniden hizalanır
+    landObs = new ResizeObserver(() => landPhone() && document.documentElement.style.setProperty("--land-top", Math.round($("#main").getBoundingClientRect().top) + "px"));
+    landObs.observe($("#cmdbar"));
+  }
+  const on = landPhone();
+  document.body.classList.toggle("land", on);
+  const st = document.documentElement.style;
+  if (on) {
+    st.setProperty("--land-top", Math.round($("#main").getBoundingClientRect().top) + "px");
+    st.setProperty("--tray-h", "0px");
+  } else st.removeProperty("--land-top");
+}
 function placeRibbon() {
   const cmds = $("#cmds"), gb = document.getElementById("cmdgroups");
   let tray = document.getElementById("tray");
-  if (innerWidth <= 820) {
+  syncLand();
+  if (narrow()) {
     if (!tray) {
       tray = h("nav", "");
       tray.id = "tray";
       $("#main").after(tray);
       // yüzen ekran çubuğu alt panelin üstünde kalsın: tepsi yüksekliği CSS değişkeninde
       const t = tray;
-      new ResizeObserver(() => (document.documentElement.style.setProperty("--tray-h", (t.isConnected ? t.offsetHeight : 0) + "px"), fitActBar())).observe(t);
+      new ResizeObserver(() => (document.documentElement.style.setProperty("--tray-h", (t.isConnected && !landPhone() ? t.offsetHeight : 0) + "px"), fitActBar())).observe(t);
     }
     if (cmds.parentElement !== tray) {
       if (gb) tray.appendChild(gb);
@@ -7699,7 +7723,7 @@ function renderCommands() {
   if (gi >= groups.length) gi = groups.length > 1 ? 1 : 0;
   const list: Cmd[] = [...groups[0]];
   let chips: HTMLElement | null = null;
-  if (groups.length > 1 && innerWidth > 820) {
+  if (groups.length > 1 && (!narrow() || landPhone())) {
     // masaüstü: SolidWorks CommandManager gibi tüm gruplar yan yana
     for (const g of groups.slice(1)) list.push("sep", ...g);
   } else if (groups.length > 1) {
@@ -7715,7 +7739,7 @@ function renderCommands() {
     list.push(...groups[gi]);
   }
   // masaüstü (Kurumsal Şerit): her grup başlıklı bir kutu
-  const desk = innerWidth > 820;
+  const desk = !narrow();
   let host: HTMLElement = box;
   let gk = 0;
   const newGroup = () => {
@@ -7749,7 +7773,7 @@ function renderCommands() {
   }
   gbar.innerHTML = "";
   if (chips) {
-    if (innerWidth <= 820) gbar.appendChild(chips);
+    if (narrow()) gbar.appendChild(chips);
     else {
       const sep = box.querySelector(".cmd-sep");
       if (sep) sep.after(chips);
@@ -7885,7 +7909,7 @@ $("#redo").addEventListener("click", redo);
 
 $("#tree-btn").addEventListener("click", () => {
   const side = $("#side");
-  if (window.matchMedia("(max-width: 820px)").matches) {
+  if (narrow()) {
     side.classList.toggle("open");
     document.body.classList.toggle("sheet", side.classList.contains("open") || side.classList.contains("pm-open"));
   } else side.hidden = !side.hidden;
@@ -7901,7 +7925,7 @@ $("#help-btn").addEventListener("click", () => ($("#help") as HTMLDialogElement)
 // Görünüm çubuğu
 // =====================================================================
 /** D4-7: grafik alanın üstünü / altını örten paneller (telefonda alt özellik paneli, tepsi; şerit) */
-function viewInsets(): { t: number; b: number } {
+function viewInsets(): { t: number; b: number; l?: number } {
   const c = viewer.renderer.domElement.getBoundingClientRect();
   let t = 0, b = 0;
   for (const el of document.querySelectorAll<HTMLElement>("#cmdbar, #side, #tray, #doctabs")) {
@@ -7912,7 +7936,11 @@ function viewInsets(): { t: number; b: number } {
     if (r.top <= c.top + 4) t = Math.max(t, r.bottom - c.top);
     else if (r.bottom >= c.bottom - 4) b = Math.max(b, c.bottom - r.top);
   }
-  return { t, b };
+  // telefon yatay: sol çekmece (ağaç / panel) grafik alanın solunu örter
+  let l = 0;
+  const sd = $("#side");
+  if (landPhone() && (sd.classList.contains("open") || sd.classList.contains("pm-open")) && !sd.classList.contains("min")) l = Math.max(0, sd.getBoundingClientRect().right - c.left);
+  return { t, b, l };
 }
 function fitAll() {
   viewer.fitInsets = viewInsets();
@@ -8942,7 +8970,7 @@ function renderActBar() {
 }
 /** A-3: telefonda ekran çubuğu sütun sayısı — yükseklik yetmezse düğmeler ikinci sütuna geçer */
 function fitActBar() {
-  if (innerWidth > 820 || actbar.hidden) return actbar.style.removeProperty("--ab-rows");
+  if (!narrow() || actbar.hidden) return actbar.style.removeProperty("--ab-rows");
   actbar.style.setProperty("--ab-rows", "99");
   requestAnimationFrame(() => {
     const cs = getComputedStyle(actbar);
@@ -8950,7 +8978,7 @@ function fitActBar() {
     if (!bt) return;
     // kullanılabilir yükseklik: üstten bağlıysa tepsiye kadar, alttan bağlıysa (alt panel açık) görünüm çubuğunun altına kadar
     const trayH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tray-h")) || 0;
-    const anchoredBottom = (document.body.classList.contains("sheet") || document.body.classList.contains("asm-pm")) && !$("#side").classList.contains("min");
+    const anchoredBottom = !landPhone() && (document.body.classList.contains("sheet") || document.body.classList.contains("asm-pm")) && !$("#side").classList.contains("min");
     // alttan bağlıyken ikinci sütun görünüm çubuğunun altında kalsın
     const minTop = (document.body.classList.contains("has-doctabs") ? 30 : 0) + 96;
     const bottomPx = parseFloat(cs.bottom);
@@ -9378,7 +9406,7 @@ viewer.onRender(() => {
   window.addEventListener(
     "pointerdown",
     (e) => {
-      if (e.target === viewer.renderer.domElement && prefs.autoMinSheet && e.pointerType !== "mouse" && sketchDrawing() && innerWidth <= 820) $("#side").classList.add("min");
+      if (e.target === viewer.renderer.domElement && prefs.autoMinSheet && e.pointerType !== "mouse" && sketchDrawing() && narrow()) $("#side").classList.add("min");
     },
     true,
   );
@@ -9613,7 +9641,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 // Masaüstü arayüzü (SolidWorks gibi): menü çubuğu, komut arama, kısayol kataloğu,
 // durum çubuğu, yönetici sekmeleri / açılır ağaç, bölgeye yakınlaştırma
 // =====================================================================
-const isDesk = () => innerWidth > 820;
+const isDesk = () => !narrow();
 const TAB_NAMES: Record<string, string> = { features: "Özellikler", sketch: "Eskiz", sheet: "Sac Metal", weld: "Kaynaklı", evaluate: "Değerlendir", asm: "Montaj" };
 const TAB_PFX: Record<string, string> = { features: "ft", sketch: "sk", sheet: "sh", weld: "wd", evaluate: "ev", asm: "as" };
 /** şerit komutlarının tümü (sekme sekme) */
