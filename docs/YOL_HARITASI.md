@@ -684,3 +684,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.89 | Denetim 2 Paket 4: telefonda seçim araçları dokunulan öğeyi işler, nokta / öğe uzaklık önceliği, eskizde parmakla sürükleme, ölçü kutusu hayalet tıklaması, 3 parmak ileri al, spline Bitir, bildirim / menü / sekme / mini çubuk / ekran çubuğu yerleşimi, iki parmak kaydırmada yuvarlanma yok | ✅ |
 
 | v0.90 | Denetim 2 Paket 5 + 6: kalan Yüksek / Orta / Düşük bulgular (150 ✅) | ✅ |
+
+| v0.91 | Kalan denetim bulguları: 3B eskiz geri al / Esc, ilişkisel öteleme / çoğaltma, kabuk, tam yuvarlak, bindirmeli köşe açınımı, montaj resmi ölçüleri, sac açınım sayfası, eşleşmeler | ✅ |
