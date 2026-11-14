@@ -127,7 +127,7 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
 - Düzeltilen düşük bulgular: D1-11…D1-18, D2-10…D2-18, D3-16…D3-23, D3-25, D4-8…D4-11, D4-12 (kısmi: süpürme / loft "Sonucu birleştir"), D5-6, D5-9, D5-13, D5-15, D5-17, D6-9, D6-12…D6-17, D7-18, D7-20…D7-22, D8-9, D8-11, D8-13…D8-18, D9-17…D9-22, D9-25, D9-28, D10-14…D10-25; ilk rapordan P-4 (tüm tüketilen eskizler ağaçta çocuk), P-5 (dairesel çoğaltmada referans eksen).
 - Doğrulama sırasında bulunup düzeltilenler: ölçü etiketi ilişki simgesinin üstünde (çift tık engellenmiyordu), Delme dik bakışta uç uca görünen kenarlarda düzlemi kesen kenarı seçer, sekme kapatmada dosyaya kaydedilmemiş belge de sorulur (D10-19), Dosya listesi masaüstünde de ekranın altına taşmaz (D10-8).
 - Açıklamayla kapanan: D5-16 (OCC radyüs motoru teğet zinciri her zaman yayar — panelde belirtildi), D6-10 (bilgi).
-- Açık kalan: D3-24 (kısa dokunuşta kaydırmasız yerleştirme denendi; basma / bırakma konumu tutarsız kaldığı için geri alındı), D6-3 (bindirmeli köşe düzleştirme), D6-11 (açınım DXF'inde şekillendirme işaretleri), D7-19 (yüzey gövdesinde yüz rengi), D9-23 (montaj resminde ölçü araçları), D9-24 (sac resminde açınım görünüşü), D9-26 (simetrik eşleşmede gereksiz dönme), D9-27 (kam eşleşmesi %5), D4-12'nin diğer seçenekleri (süpürmede ince özellik, döndürmede uç koşulları).
+- Açık kalan: D3-24 (kısa dokunuşta kaydırmasız yerleştirme denendi; basma / bırakma konumu tutarsız kaldığı için geri alındı), D7-19 (yüzey gövdesinde yüz rengi), D9-23 (montaj resminde ölçü araçları), D9-24 (sac resminde açınım görünüşü), D9-26 (simetrik eşleşmede gereksiz dönme), D9-27 (kam eşleşmesi %5). (D6-3, D6-11 ve D4-12 kalanı ajan B ile ✅.)
 
 ## 4. Önerilen düzeltme sırası
 
@@ -1351,7 +1351,8 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Betik:** `d4_loft.py` L2 (çıktı satırı "L3 kapalı loft").
 - **Öneri:** Kapalı loft sonucunu `BRepCheck_Analyzer` ile doğrula, kesişen kesitlerde hata ver.
 
-##### D4-12 · Temel özelliklerde eksik SolidWorks seçenekleri
+##### ✅ D4-12 · Temel özelliklerde eksik SolidWorks seçenekleri
+- **Kalanı düzeltildi:** süpürmede ince özellik (açık / kapalı profil, `thinOf`), döndürmede uç koşulu Açı / Köşeye kadar / Yüzeye kadar (ekseni içeren düz yüz) + açısal öteleme (`RevolveFeature.end/vtx/face/offA`); test `d4_ek12.py`.
 - **Önem:** Düşük · **Tür:** Eksik
 - **SolidWorks'te olup bizde olmayanlar (P-11 / P-35 dışında):**
   - Süpürme ve Loft'ta "Sonucu birleştir" (her zaman birleşiyor).
@@ -1784,7 +1785,8 @@ Kapsama oranı: **21 / 21 komut** (+ alandaki 34 seçenek satırı).
 - **Kod:** `src/kernel.worker.ts:1862-1935 toSheet`: yarıklar ve köşe boşaltma kutuları (`rt = r + t`) büküm kenarlarını keserek böldükten **sonra** `matchEdges(f.bends)` yapılıyor → orta nokta kayıyor, imza ile eşleşip `heals` yeni konumu belgeye yazıyor; iç kenar araması `perpD ∈ [0.9t, 2.1t]` kalınlık uyuşmayınca köşegendeki yanlış kenarı (2,83 mm) kabul ediyor.
 - **Öneri:** Büküm kenarlarını yarık / boşaltma kesiminden önce eşle (hash'leri sakla); kalınlık yüz çiftlerinden ölçülüp `t` ile karşılaştırılsın, uyuşmazsa hata; bu özellik için heals yazma.
 
-##### D6-3 · Köşe Kapat "Bindirme": boşluk yok sayılıyor, parça açılamıyor
+##### ✅ D6-3 · Köşe Kapat "Bindirme": boşluk yok sayılıyor, parça açılamıyor
+- **Düzeltildi:** bindirmede karşı flanşın düz kısmı uzatmanın tam kesiti ± boşlukla kırpılır, uzatma büküm bölgesinin boşluk kadar üstünden başlar → gövdeler kaynaşmaz, açınım / DXF alınır (iki flanşın toplam hacmi alına yakın kalır; test beklentisi buna göre düzeltildi).
 - **Önem:** Yüksek · **Tür:** İşlev çalışmıyor
 - **SolidWorks:** Bindirme (overlap) seçili boşlukla kurulur; düz desen alınır.
 - **Bizde:** `d6_kose.py` C1, `x7.py`: iki ayrı kenar flanşı (L30) → Köşe Kapat → sağ flanşın uç yüzüne tık → "Bindirme (dış yüze kadar)" → Boşluk 0,2 ve 1: hacim ikisinde de **20 438,27** (alında 20 427,87 / 20 386,27 — boşluk etkili). Düzleştir: **"Açınım dış hattı kapanmıyor (sac geometrisi açılamadı)"**, Açınım DXF de alınamıyor. Kaynaklı seçeneği bindirmede de etkisiz.
@@ -1828,7 +1830,8 @@ Kapsama oranı: **21 / 21 komut** (+ alandaki 34 seçenek satırı).
 ##### D6-10 · Sac takviye / iç büküm yüzü, uç yüzleri izometrikte görünmüyor (bilgi)
 - Seçim için Ctrl+2 / yakınlaştırma gerekti; işlev ✓. (Bulgu sayısına katılmadı.)
 
-##### D6-11 · Açınım DXF'inde şekillendirme ve çapraz kırma izi yok
+##### ✅ D6-11 · Açınım DXF'inde şekillendirme ve çapraz kırma izi yok
+- **Düzeltildi:** `unfold` `flatPt` / `flatFace`; açınım DXF'inde `ISARET` katmanı: şekillendirme merkez artısı + dış çap dairesi + not (KABARTMA / PANJUR), çapraz kırma köşegenleri + not.
 - **Önem:** Düşük · **Tür:** Eksik (SW davranışı doğrulanmadı)
 - **Bizde:** `d6_sekil` F1 / X1: panjurlu / kabartmalı / çapraz kırmalı levhanın DXF'i yalnız 4 KESIM çizgisi + 2 not; kabartma merkezi, panjur kesiği ya da kırma çizgisi yok. SW düz desende şekillendirme aracını (merkez / profil) ve çapraz kırmayı gösterebilir.
 - **Öneri:** NOTLAR / ayrı katmanda şekillendirme merkezleri ve panjur kesik çizgileri.

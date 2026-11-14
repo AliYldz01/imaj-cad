@@ -129,7 +129,8 @@ with sync_playwright() as p:
             chk("C1 %s boşluk %g: açınım çalışır (2 büküm)" % (lbl, gap), r and len(r["bends"]) == 2, r and r["bends"])
         chk("C1 alın: boşluk 0.2 → 1 hacim azalır", res["under1"] < res["under"], res)
         chk("C1 bindirme: boşluk 0.2 → 1 hacim azalır (boşluk uygulanır)", res["over1"] < res["over"], res)
-        chk("C1 bindirme > alın hacmi", res["over"] > res["under"], res)
+        # bindirmede uzatılan flanş karşı flanşın dış yüzüne kadar gider, karşı flanş t + boşluk kadar kısalır: toplam hacim alına yakın
+        chk("C1 bindirme hacmi alına yakın (≤ %2) ve farklı geometri", abs(res["over"] - res["under"]) < 0.02 * res["under"] and res["over"] != res["under"], res)
         # yaşam döngüsü (alın)
         two_flanges()
         new_sheet(a, "Köşe Kapat"); a.wclick(ends[0]); a.wait(0.4); a.ok()

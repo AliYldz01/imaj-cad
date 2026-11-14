@@ -384,11 +384,13 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           const loops = selectContours(r0.loops, f.contours);
           const ax = sk.data.ents.find((e) => e.id === f.axis);
           if (!ax || ax.t !== "line") throw new Error("Döndürme ekseni seçin (eskizde bir merkez çizgisi çizin)");
-          kfeats.push({ id: f.id, type: "revolve", cut: f.cut, pl, loops, axis: [pointPos(sk.data, ax.p1), pointPos(sk.data, ax.p2)], angle: f.angle, mid: f.mid, rev: f.rev, merge: f.merge });
+          kfeats.push({ id: f.id, type: "revolve", cut: f.cut, pl, loops, axis: [pointPos(sk.data, ax.p1), pointPos(sk.data, ax.p2)], angle: f.angle, mid: f.mid, rev: f.rev, merge: f.merge, end: f.end, vtx: f.vtx, face: f.face, offA: f.offA });
           break;
         }
         case "sweep": {
-          const { pl, loops } = (f.circ && f.circ > 0) || f.tool ? { pl: null, loops: [] } : profileOf(f.sketch);
+          // D4-12: ince süpürme — profil (açık / kapalı) kalınlık bölgesine çevrilir
+          if (f.thin && !(f.circ && f.circ > 0) && !f.tool && (f.twist || f.guide)) throw new Error("İnce süpürme burulma / kılavuz eğriyle birlikte kullanılamaz");
+          const { pl, loops } = (f.circ && f.circ > 0) || f.tool ? { pl: null, loops: [] } : f.thin ? thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one", f.thinT2, f.thinR) : profileOf(f.sketch);
           // 3B eskiz yolu (birleşik eğri: çizgi + yay + spline + helis + kesişim eğrisi uç uca)
           const p3 = feats.find((x) => x.id === f.path && x.type === "sketch3d") as Sketch3DFeature | undefined;
           if (p3) {

@@ -213,6 +213,12 @@ export interface RevolveFeature extends FeatBase {
   angle: number;
   mid: boolean;
   rev: boolean;
+  /** D4-12: uç koşulu — açı (varsayılan), köşeye kadar, yüzeye kadar (ekseni içeren düz yüz / düzlem) */
+  end?: "blind" | "vertex" | "face";
+  vtx?: Vec3;
+  face?: FaceRef;
+  /** köşe / yüzeyden açısal öteleme (°) */
+  offA?: number;
   thin?: boolean;
   thinT?: number;
   thinMode?: "one" | "rev" | "mid" | "two";
@@ -274,6 +280,12 @@ export interface SweepFeature extends FeatBase {
   twist?: number;
   /** kılavuz eğri eskizi: profil, kılavuza olan uzaklığa göre ölçeklenir */
   guide?: string;
+  /** D4-12: ince özellik (profil eskizi açık ya da kapalı; kalınlık, yön) */
+  thin?: boolean;
+  thinT?: number;
+  thinMode?: "one" | "rev" | "mid" | "two";
+  thinT2?: number;
+  thinR?: number;
 }
 export interface LoftFeature extends FeatBase {
   type: "loft";
@@ -825,7 +837,7 @@ export type KFeature =
   /** P-9 / D5-4: yüze bağlı düzlem referanslarını o andaki modelde bulup çerçevesini bildirir (geometri değiştirmez) */
   | { id: string; type: "probe"; refs: { key: string; face: FaceRef; frame: Frame }[] }
   | { id: string; type: "extrude"; fromFace?: FaceRef | null; fromVtx?: Vec3 | null; vtx?: Vec3 | null; bodyRef?: FaceRef | null; dirVec?: Vec3 | null; flipCut?: boolean; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
-  | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
+  | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean; end?: "blind" | "vertex" | "face"; vtx?: Vec3; face?: FaceRef; offA?: number }
   | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full" | "face" | "conic"; rho?: number; r2?: number; radii?: number[]; faces2?: FaceRef[] }
   | { id: string; type: "chamfer"; d: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "equal" | "dd" | "da" | "vtx" | "offset"; d2?: number; d3?: number; angle?: number; flip?: boolean; faces2?: FaceRef[]; verts?: Vec3[] }
   | { id: string; type: "rib"; pl: KPlane; chain: Seg[]; normal: boolean; flip: boolean; t: number; side: "mid" | "one" | "rev" }
@@ -933,8 +945,13 @@ export type Flat2D =
   | { k: "a"; c: Vec2; r: number; a0: number; a1: number }
   | { k: "c"; c: Vec2; r: number };
 export interface FlatBend { a: Vec2; b: Vec2; up: boolean; angle: number; r: number; a3: Vec3; b3: Vec3 }
+/** D6-11: açınımda işaretlenecek şekillendirme / çapraz kırma (katlı parça koordinatlarında) */
+export type FlatMarkIn = { k: "pt"; p: Vec3; r: number; label: string } | { k: "face"; c: Vec3; n: Vec3; label: string };
+/** D6-11: açınımdaki işaret (DXF ISARET katmanı): daire (şekillendirme merkezi / dış çapı) ya da çizgi (kırma köşegeni) */
+export type FlatMark = { k: "c"; c: Vec2; r: number; label?: string } | { k: "l"; a: Vec2; b: Vec2; label?: string };
 export interface FlatResult {
   mesh: MeshData | null;
+  marks?: FlatMark[];
   outline: Flat2D[];
   bends: FlatBend[];
   /** levha ölçüleri ve alanı */

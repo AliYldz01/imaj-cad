@@ -97,6 +97,10 @@ export interface UnfoldOut {
   fold: (q: Vec2, force?: object) => FoldPt | null;
   /** büküm şeritleri (açınımda): o başlangıç çizgisi üzerinde nokta, d şeride dik birim yön, w genişlik, n dilim */
   bands: { o: Vec2; d: Vec2; w: number; n: number }[];
+  /** D6-11: katlı parçadaki düz yüz üzerindeki noktanın açınım (to2) karşılığı; yoksa null */
+  flatPt: (p: Vec3) => Vec2 | null;
+  /** D6-11: c noktasından geçen, n normalli düz yüzün açınımdaki çokgenleri */
+  flatFace: (c: Vec3, n: Vec3) => Vec2[][] | null;
 }
 export interface FoldPt { p: Vec3; n: Vec3; eo: number; ei: number; m: object; rigid: boolean }
 
@@ -452,7 +456,7 @@ export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number,
     }
   }
   // katlama eşlemesi: her eşlenmiş yüzün açınımdaki çokgenleri (çift-tek kuralıyla içerme)
-  const fpolys: { m: FMap; polys: Vec2[][] }[] = [];
+  const fpolys: { m: FMap; polys: Vec2[][]; i: number }[] = [];
   for (const [i, m] of maps) {
     const segs: Vec2[][] = faceEdges[i].map((e) => {
       const n = String(e.geomType) === "LINE" ? 1 : 24;
@@ -472,7 +476,7 @@ export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number,
       }
       polys2.push(cur);
     }
-    fpolys.push({ m, polys: polys2 });
+    fpolys.push({ m, polys: polys2, i });
   }
   const inPolys = (q: Vec2, polys2: Vec2[][]) => {
     let c = false;
@@ -530,7 +534,36 @@ export function unfold(body: Shape, t: number, kIn: number | ((angleDeg: number,
     const o = to2(o3), d2 = [vdot(d3, x0), vdot(d3, y0)] as Vec2;
     bands.push({ o, d: d2, w: amax * m.rhoN, n: Math.max(4, Math.ceil((amax * 180) / Math.PI / 8)) });
   }
-  return { frame, loops, outline, bends, area, min, max, fold, bands };
+  // D6-11: düz yüz noktası → açınım
+  const planeOf = (i: number) => {
+    const fc = tup(faces[i].center);
+    return { c: fc, n: vnorm(tup(faces[i].normalAt(fc))) };
+  };
+  const flatPt = (p: Vec3): Vec2 | null => {
+    let best: { q: Vec2; d: number } | null = null;
+    for (const fp of fpolys) {
+      if (types[fp.i] !== "PLANE") continue;
+      const pl = planeOf(fp.i);
+      // sacın öbür yüzündeki nokta da kabul (kalınlık kadar), yüz düzlemine izdüşürülür
+      const dz = vdot(vsub(p, pl.c), pl.n);
+      if (Math.abs(dz) > t + 0.05) continue;
+      const q = to2(mapP(fp.m, vsub(p, vmul(pl.n, dz))));
+      if ((inPolys(q, fp.polys) || segDist(q, fp.polys) < 0.05) && (!best || Math.abs(dz) < best.d)) best = { q, d: Math.abs(dz) };
+    }
+    return best?.q ?? null;
+  };
+  const flatFace = (c: Vec3, n: Vec3): Vec2[][] | null => {
+    let best: { polys: Vec2[][]; d: number } | null = null;
+    for (const fp of fpolys) {
+      if (types[fp.i] !== "PLANE") continue;
+      const pl = planeOf(fp.i);
+      if (Math.abs(vdot(pl.n, vnorm(n))) < 0.999 || Math.abs(vdot(vsub(c, pl.c), pl.n)) > t + 0.05) continue;
+      const d = vlen(vsub(c, pl.c));
+      if (!best || d < best.d) best = { polys: fp.polys, d };
+    }
+    return best?.polys ?? null;
+  };
+  return { frame, loops, outline, bends, area, min, max, fold, bands, flatPt, flatFace };
 }
 
 function circ2(a: Vec2, b: Vec2, c: Vec2): { c: Vec2; r: number } | null {

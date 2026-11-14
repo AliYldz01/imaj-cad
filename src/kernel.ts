@@ -1,5 +1,5 @@
 // Çekirdek iş parçacığıyla konuşan istemci.
-import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, CutItem, WeldItem, DrawData, Vec3, RefHeals } from "./doc/types";
+import type { Frame, KFeature, KernelRequest, KernelResponse, MassProps, MeasureItem, MeshData, SectionItem, FlatResult, FlatMarkIn, CutItem, WeldItem, DrawData, Vec3, RefHeals } from "./doc/types";
 
 export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; message: string }[]; frames: Record<string, Frame>; members: { key: string; name: string; body: number }[]; heals?: RefHeals };
 
@@ -109,9 +109,9 @@ export class Kernel {
     return this.request({ type: "exportBody", body } as any);
   }
 
-  async flat(body: number, t: number, k: number, table?: { angle: number; ba: number }[], r?: number, fix?: { o: Vec3; n: Vec3 }): Promise<FlatResult> {
+  async flat(body: number, t: number, k: number, table?: { angle: number; ba: number }[], r?: number, fix?: { o: Vec3; n: Vec3 }, marks?: FlatMarkIn[]): Promise<FlatResult> {
     await this.ready;
-    return this.request<FlatResult>({ type: "flat", body, t, k, table, r, fix } as any);
+    return this.request<FlatResult>({ type: "flat", body, t, k, table, r, fix, marks } as any);
   }
 
   async measure(items: MeasureItem[]): Promise<string[]> {

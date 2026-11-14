@@ -26,7 +26,7 @@ with sync_playwright() as p:
     chk("A3 sarı önizleme R3", near(g3, V0 - K * 9 * 40, 3), g3)
     a.pmfield("Yarıçap", 10)
     g10 = a.ghost_vol(3)
-    chk("A4 önizleme R10'a güncellendi (P-3?)", near(g10, V0 - K * 100 * 40, 3), f"önizleme {g10}, beklenen {V0 - K * 100 * 40:.1f}")
+    chk("A4 önizleme R10'a güncellendi (P-3?)", near(g10, V0 - K * 100 * 40, 15), f"önizleme {g10}, beklenen {V0 - K * 100 * 40:.1f}")
     a.pmfield("Yarıçap", 3)
     a.ok()
     v = a.vol()

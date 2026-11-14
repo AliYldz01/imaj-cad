@@ -1,6 +1,6 @@
 // Sac açınımından DXF (R12 / AC1009, mm) üretimi — lazer / plazma / abkant yazılımları için.
 // Katmanlar: KESIM (dış hat ve delikler), BUKUM_YUKARI / BUKUM_ASAGI (büküm çizgileri), NOTLAR (büküm bilgisi).
-import type { Flat2D, FlatBend } from "../doc/types";
+import type { Flat2D, FlatBend, FlatMark } from "../doc/types";
 
 const n = (v: number) => (Math.abs(v) < 1e-9 ? "0.0" : (Math.round(v * 1e6) / 1e6).toString());
 
@@ -9,6 +9,8 @@ export interface DxfOptions {
   notes: boolean;
   /** başlık notu (parça adı, kalınlık, malzeme) */
   title?: string;
+  /** D6-11: şekillendirme merkezleri / çapraz kırma çizgileri (ISARET katmanı, kesilmez) */
+  marks?: FlatMark[];
 }
 
 /** DXF metinlerinde yalnızca ASCII kullan (Türkçe karakterleri sadeleştir) */
@@ -36,6 +38,7 @@ export function flatToDxf(outline: Flat2D[], bends: FlatBend[], w: number, h: nu
     ["BUKUM_YUKARI", 3, "DASHED"],
     ["BUKUM_ASAGI", 1, "DASHED"],
     ["NOTLAR", 5, "CONTINUOUS"],
+    ["ISARET", 6, "DASHED"],
   ];
   p(0, "TABLE"); p(2, "LAYER"); p(70, String(layers.length));
   for (const [name, color, lt] of layers) {
@@ -72,6 +75,19 @@ export function flatToDxf(outline: Flat2D[], bends: FlatBend[], w: number, h: nu
         text(mx, my, th, rot, `B${i + 1} ${b.up ? "YUKARI" : "ASAGI"} ${Math.round(b.angle * 10) / 10}%%d R${Math.round(b.r * 100) / 100}`);
       }
     });
+  // D6-11: şekillendirme (merkez artısı + dış çap) ve çapraz kırma köşegenleri — markalama katmanı
+  for (const m of opt.marks ?? []) {
+    if (m.k === "c") {
+      p(0, "CIRCLE"); p(8, "ISARET"); p(10, m.c[0]); p(20, m.c[1]); p(30, 0); p(40, m.r);
+      const s = Math.max(1, m.r * 0.3);
+      line("ISARET", [m.c[0] - s, m.c[1]], [m.c[0] + s, m.c[1]]);
+      line("ISARET", [m.c[0], m.c[1] - s], [m.c[0], m.c[1] + s]);
+      if (opt.notes && m.label) text(m.c[0] + m.r + th * 0.3, m.c[1] + th * 0.3, th * 0.8, 0, m.label);
+    } else {
+      line("ISARET", m.a, m.b);
+      if (opt.notes && m.label) text((m.a[0] + m.b[0]) / 2 + th * 0.3, (m.a[1] + m.b[1]) / 2 + th * 0.3, th * 0.8, 0, m.label);
+    }
+  }
   if (opt.notes && opt.title) text(0, -th * 2, th, 0, opt.title);
   // sınır kutusu ve büküm sayısı (abkant / lazer hazırlığı için)
   if (opt.notes) text(0, -th * 3.6, th * 0.8, 0, `Sinir kutusu ${Math.round(w * 100) / 100} x ${Math.round(h * 100) / 100} mm - ${bends.length} bukum (${bends.filter((b) => b.up).length} yukari, ${bends.filter((b) => !b.up).length} asagi)`);

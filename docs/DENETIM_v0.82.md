@@ -434,7 +434,8 @@ En önemli beş bulgu:
 
 ### Bulgular
 
-#### P-1 · Kabuk başarısız olunca sessizce yok sayılıyor (hata yok, yanlış geometri)
+#### ✅ P-1 · Kabuk başarısız olunca sessizce yok sayılıyor (hata yok, yanlış geometri)
+- **Düzeltildi:** worker `shellBody`: önce OCC MakeThickSolid, doğrulanmazsa (hacim / BRepCheck) yedek yol: gövde içe ötelenir (`offsetSolid`), kaldırılan düz yüzlerin iç karşılığı dışarı uzatılıp gövdeden çıkarılır → radyüslü kutuya kabuk çalışır; olmazsa anlamlı hata.
 - **Önem:** Kritik · **Tür:** Hata
 - **SolidWorks:** Kabuk oluşturulamazsa PM'de "Kabuk oluşturulamadı / kalınlık çok büyük" hatası verir, özellik oluşmaz. Tüm kenarları radyüslenmiş kutuda (R3, t=2, üst yüz kaldırılır) kabuk sorunsuz çalışır.
 - **Bizde:** 40×30×20 kutu, tüm kenarlar R3 (yüz seçimi ile), ardından kabuk t=2 üst yüz kaldırılarak → hacim **23 340,85 = yalnız radyüslü kutu hacmi**; yüz sayısı 26 (kabuk yok), hata listesi boş, durum "Hazır". R1/R5, t=1 ile de aynı. Yalnız üst 4 kenar R3 + kabuk → yine kabuksuz (23 778,6). Radyüssüz kutuda: t=12 ve t=16 → hacim 24 000 (kabuk yok, hata yok); t=10 (tam yarı kalınlık) → 11 yüzlü, hacmi 20 148 olan bozuk gövde. (Dikey kenarlar R5 + kabuk çalışıyor: 7444,5.) Betik: `e2.py`, `e2b.py`, `e6.py`.
@@ -448,7 +449,8 @@ En önemli beş bulgu:
 - **Kod:** `src/doc/compile.ts:330–352` (extrude derlemesinde değer denetimi yok), `src/kernel.worker.ts:extrudeTool` `sk(0).extrude(sign*d1)`; `kernel.worker.ts:4598` onmessage `try/catch` WASM çökmesini yakalayamıyor; `src/kernel.ts` tarafında zaman aşımı / worker yeniden başlatma yok.
 - **Öneri:** Derleyicide tüm uzunluk/açı/kalınlık parametrelerini `> 0` denetle (denklem sonucu dahil); `kernel.ts`'te build için zaman aşımı + worker'ı yeniden oluşturma.
 
-#### P-3 · Radyüs / pah / kabuk sarı önizlemesi sayısal değer değişince güncellenmiyor
+#### ✅ P-3 · Radyüs / pah / kabuk sarı önizlemesi sayısal değer değişince güncellenmiyor
+- **Düzeltildi:** yarıçap / mesafe / bitiş yarıçapı / mesafe 2-3 / açı / yön ve kabuk kalınlığı / dışa kabuk alanları `schedulePreview()` çağırır.
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Yarıçap / mesafe / kalınlık değiştikçe sarı önizleme hemen yenilenir.
 - **Bizde:** Radyüs PM, kenar seçilir (önizleme R3) → Yarıçap alanına 10 yazılır, 3 sn beklenir → çekirdekteki önizleme hacmi hâlâ R3 (23 922,74; R10 olsaydı 23 141,59). Pah mesafesi 6 → önizleme 2 mm'de (fark 80, beklenen 720). Kabuk kalınlığı 4 → önizleme 2 mm'de (7872). Önizleme yalnız seçim değişince yenileniyor; ✓ sonrası sonuç doğru. (`u2b.py`)
@@ -469,14 +471,16 @@ En önemli beş bulgu:
 - **Kod:** `src/main.ts:2690–2694`, `src/doc/compile.ts:855–859`, `src/doc/types.ts:427` (`refAxis`).
 - **Öneri:** PM'e "Eksen" seçim kutusu: referans eksen özellikleri + modelde silindir yüzü / düz kenar tıklaması (`ax`/`ac` bilgisi FaceInfo'da zaten var).
 
-#### P-6 · Radyüs / pah / kabuk vb. hata verse de ✓ ile ağaca hatalı özellik giriyor
+#### ✅ P-6 · Radyüs / pah / kabuk vb. hata verse de ✓ ile ağaca hatalı özellik giriyor
+- **Düzeltildi:** canlı kurulmayan taslaklar (`isLiveDraft`) ✓'de `draftBuildError` ile bir kez kurulur; hata varsa PM açık kalır, ileti gösterilir, ağaca özellik girmez.
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Radyüs oluşturulamazsa PM açık kalır, "Radyüs oluşturulamadı" mesajı; özellik eklenmez.
 - **Bizde:** R50 (40×30×20 kutuda) → ✓ → PM kapanır, ağaçta kırmızı `Radyüs1`, hata "Geometri işlemi başarısız (OpenCascade hatası)", durum "1 özellikte hata" (`u2.py`). Aynısı pah, kabuk, koniklik, kenar flanş, birleştir, gövde sil, girinti, diş, saca dönüştür için.
 - **Kod:** `src/main.ts:2230` (bu türler `draftError` denetiminden muaf; nedeni canlı önizleme olmaması).
 - **Öneri:** ✓'de bu türler için bir kez kurup hata varsa PM'i açık tutup mesajı göster.
 
-#### P-7 · Ebeveyn bastırılınca çocuklar bastırılmıyor, hata veriyor
+#### ✅ P-7 · Ebeveyn bastırılınca çocuklar bastırılmıyor, hata veriyor
+- **Düzeltildi:** `toggleSuppress`: kimlikle bağlı bağımlılara ek olarak deneme yapısında ebeveyn bastırılınca yeni hata veren sonraki özellikler de bastırılır (`offBy`); etkinleştirince birlikte geri gelir.
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Bir özellik bastırılınca ona bağlı çocuklar (radyüs, kesme, çoğaltma) da otomatik bastırılır; hata çıkmaz.
 - **Bizde:** `Ekstrüzyon1` → Bastır → `Radyüs1`, `Kesme1`, `DÇ1` kırmızı hata ("Önce bir katı oluşturun", "Kesilecek bir katı yok"), durum "3 özellikte hata" (`u3.py`).
@@ -518,7 +522,8 @@ En önemli beş bulgu:
 - **Kod:** `src/main.ts:2648–2655`, `src/doc/compile.ts:847–852` (`AXES[f.axis]`).
 - **Öneri:** `dirVec` alanı + kenar/yüz seçimi (ekstrüzyondaki "Ekstrüzyon yönü (kenar)" düğmesi gibi).
 
-#### P-13 · Dışa kabukta dış kenarlar yuvarlanıyor
+#### ✅ P-13 · Dışa kabukta dış kenarlar yuvarlanıyor
+- **Düzeltildi:** dışa kabuk `GeomAbs_Intersection` birleşimiyle (keskin köşe; olmazsa Arc); doğrulama dışa kabukta hacmin küçülmesini hata saymaz.
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı (SolidWorks davranışı **Doğrulanmadı**)
 - **SolidWorks (beklenen):** Düz yüzlü kutuda "Dışa kabuk" sonucu keskin köşeli büyük kutu (44×32×24, açık üst) → hacim 9792.
 - **Bizde:** 40×30×20, t=2 dışa, üst açık → 23 yüz, hacim 9570,74 (yuvarlak dış kenarlar, r=2). pb1 testinde de 23 yüz.
@@ -539,14 +544,16 @@ En önemli beş bulgu:
 - **Kod:** `src/sheet/sheet.ts:98–104` `effK`.
 - **Öneri:** Açınımda BA/BD yönteminde K yerine doğrudan BA/BD değerini kullan.
 
-#### P-16 · Tam yuvarlak radyüs tam yarım daire değil
+#### ✅ P-16 · Tam yuvarlak radyüs tam yarım daire değil
+- **Düzeltildi:** `fullRoundTool`: yan yüzler düz ve orta yüze dikse şerit kutusu − silindir (R = genişlik / 2) çıkarılır (tam yarım daire); değilse eski OCC %99,5 yaklaşımı.
 - **Önem:** Düşük · **Tür:** Hata
 - **SolidWorks:** Tam yuvarlak, orta yüzü tamamen kaldırır; yarıçap = genişlik/2.
 - **Bizde:** 10 mm genişlikte 2·(1−π/4)·25·20 = 214,60 beklenirken 212,46 (−%1); 20 mm genişlikte 1716,8 yerine 1699,7. Üstte ~0,05 mm düz şerit kalıyor (`e2.py`).
 - **Kod:** `src/kernel.worker.ts:1321` `r: (best.d / 2) * 0.995`.
 - **Öneri:** Üç yüz takımlı gerçek tam yuvarlak (yan yüzleri yuvarlakla değiştir) ya da tam yarıçapla dene, başarısızsa 0,995'e düş.
 
-#### P-17 · Kabuk yüz seçmeden (içi boş kapalı gövde) yapılamıyor
+#### ✅ P-17 · Kabuk yüz seçmeden (içi boş kapalı gövde) yapılamıyor
+- **Düzeltildi:** yüz seçilmeden kabuk = kapalı, içi boş gövde (içe ötelenmiş katı çıkarılır; dışa kabukta ötelenmiş katıdan gövde çıkarılır).
 - **Önem:** Düşük · **Tür:** Eksik
 - **SolidWorks:** Kaldırılacak yüz seçilmezse kapalı, içi boş gövde oluşturur.
 - **Bizde:** Yüz seçmeden ✓ → "Kaldırılacak en az bir yüz seçin"; çekirdekte de "Kaldırılacak yüz seçin" (`e2.py`).

@@ -10,7 +10,7 @@ import {
 } from "replicad";
 import type {
   EdgeInfo, EdgeRef, FaceInfo, FaceRef, Frame, KFeature, KPlane, KernelRequest, KernelResponse, Loop, MassProps, MeasureItem, MeshData,
-  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData, CornerKind,
+  Seg, SectionItem, TextItem, Vec2, Vec3, CutItem, MemberItem, WeldItem, DrawView, DrawData, CornerKind, FlatMark, FlatMarkIn,
 } from "./doc/types";
 import { thinRegion, segPoints, revSeg, offsetSegs } from "./sketch/profile";
 import { sampleLoop } from "./weld/profiles";
@@ -204,6 +204,117 @@ function applyTool(solid: Shape, cut: boolean, merge = true) {
 /** Hash'leri içeren gövdeye işlem uygular */
 /** son sabit yarıçaplı radyüs (sonraki radyüs başarısız olursa sırayı değiştirip yeniden denemek için) */
 let filletHist: { before: Shape; after: Shape; refs: EdgeRef[]; rad: number } | null = null;
+/** Kabuk sonucunu doğrula: hacim beklenen yönde değişmiş ve BRepCheck geçerli */
+function shellValid(r: Shape | null, v0: number, out: boolean) {
+  if (!r) return false;
+  const v1 = volOf(r);
+  // dışa kabukta sonuç yalnız duvardır: hacmi girdiden küçük ya da büyük olabilir
+  if (!(v1 > 1e-6) || Math.abs(v1 - v0) < 1e-6 * Math.max(1, v0) || (!out && v1 >= v0)) return false;
+  try {
+    const oc = getOC() as any;
+    const an = new oc.BRepCheck_Analyzer(r.wrapped, true, false);
+    const ok = !!(an.IsValid_2 ? an.IsValid_2() : an.IsValid());
+    an.delete();
+    return ok;
+  } catch {
+    return true;
+  }
+}
+
+/** Katıyı (ya da kabuğu) d kadar ötele (d < 0 içe); başarısızsa null */
+function offsetSolid(b: Shape, d: number, join: "GeomAbs_Arc" | "GeomAbs_Intersection"): Shape | null {
+  const oc = getOC() as any;
+  const mk = new oc.BRepOffsetAPI_MakeOffsetShape();
+  try {
+    mk.PerformByJoin(b.wrapped, d, 1e-3, oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType[join], false);
+    if (!mk.IsDone()) return null;
+    let s = cast(mk.Shape()) as Shape;
+    if (s.wrapped.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_SOLID) s = makeSolid([s] as any) as Shape;
+    if (volOf(s) < 0) s = cast(s.wrapped.Reversed()) as Shape;
+    return volOf(s) > 1e-6 ? s : null;
+  } catch {
+    return null;
+  } finally {
+    mk.delete();
+  }
+}
+
+/** OCC MakeThickSolid (birleşim türüyle); başarısızsa null */
+function thickSolid(b: Shape, faces: any[], t: number, join: "GeomAbs_Arc" | "GeomAbs_Intersection"): Shape | null {
+  const oc = getOC() as any;
+  const L = new oc.NCollection_List_TopoDS_Shape();
+  const mk = new oc.BRepOffsetAPI_MakeThickSolid();
+  try {
+    for (const fc of faces) L.Append(fc.wrapped);
+    mk.MakeThickSolidByJoin(b.wrapped, L, t, 1e-3, oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType[join], false);
+    if (!mk.IsDone()) return null;
+    return cast(mk.Shape()) as Shape;
+  } catch {
+    return null;
+  } finally {
+    mk.delete();
+    L.delete();
+  }
+}
+
+/**
+ * Kabuk (P-1 / P-13 / P-17): önce OCC MakeThickSolid (dışa kabukta keskin köşe için GeomAbs_Intersection);
+ * başarısızsa (ör. radyüslü kenara teğet kaldırılan yüz) ötelenmiş katı ile boolean: iç = gövde içe ötelenmiş,
+ * kaldırılan her düz yüzün iç karşılığı dışarı doğru uzatılır, gövdeden çıkarılır. Yüz yoksa kapalı içi boş gövde.
+ */
+function shellBody(b: Shape, set: Set<number>, t: number, out: boolean): Shape {
+  const fail = "Kabuk uygulanamadı (kalınlık çok büyük ya da geometri kabuğa uygun değil)";
+  const v0 = volOf(b);
+  const rm = (b.faces as any[]).filter((x) => set.has(x.hashCode));
+  if (rm.length) {
+    for (const join of out ? (["GeomAbs_Intersection", "GeomAbs_Arc"] as const) : (["GeomAbs_Arc"] as const)) {
+      const r = thickSolid(b, rm, out ? t : -t, join);
+      if (shellValid(r, v0, out)) return r;
+    }
+  }
+  // boolean yedek yol: yalnız düz kaldırılan yüzler
+  const planes = rm.map((x) => {
+    if (String(x.geomType) !== "PLANE") throw new Error(fail + " — kaldırılan yüz düz değil");
+    const c = tup(x.center);
+    return { c, n: vnorm(tup(x.normalAt(c))) };
+  });
+  const matchOn = (s: Shape, pl: { c: Vec3; n: Vec3 }, k: number) =>
+    (s.faces as any[]).filter((x) => {
+      if (String(x.geomType) !== "PLANE") return false;
+      const c = tup(x.center);
+      return vdot(vnorm(tup(x.normalAt(c))), pl.n) > 0.999 && Math.abs(vdot(vsub(c, pl.c), pl.n) - k) < 1e-3;
+    });
+  const eps = Math.max(0.01, t * 0.05);
+  try {
+    let r: Shape | null = null;
+    if (!out) {
+      const inner = offsetSolid(b, -t, "GeomAbs_Arc");
+      if (!inner) throw new Error(fail);
+      let tool: Shape = inner;
+      for (const pl of planes) {
+        const fs = matchOn(inner, pl, -t);
+        if (!fs.length) throw new Error(fail);
+        for (const fc of fs) tool = tool.fuse(basicFaceExtrusion(fc.clone() as any, new Vector(vmul(pl.n, t + eps) as any)) as any);
+      }
+      r = b.clone().cut(tool);
+    } else {
+      const outer = offsetSolid(b, t, "GeomAbs_Intersection") ?? offsetSolid(b, t, "GeomAbs_Arc");
+      if (!outer) throw new Error(fail);
+      let tool: Shape = b.clone();
+      for (const pl of planes) {
+        const fs = matchOn(outer, pl, t);
+        if (!fs.length) throw new Error(fail);
+        for (const fc of fs) tool = tool.fuse(basicFaceExtrusion(fc.clone().translate(vmul(pl.n, eps)) as any, new Vector(vmul(pl.n, -(t + eps)) as any)) as any);
+      }
+      r = outer.cut(tool);
+    }
+    if (!shellValid(r, v0, out)) throw new Error(fail);
+    return r;
+  } catch (e) {
+    throw new Error((e as Error).message?.startsWith("Kabuk") ? (e as Error).message : fail);
+  }
+}
+
 function onOwner(hashes: Set<number>, kind: "edges" | "faces", fn: (b: Shape) => Shape) {
   let done = false;
   bodies = bodies.map((b) => {
@@ -404,9 +515,38 @@ function revolveTool(f: Extract<KFeature, { type: "revolve" }>) {
   const b = toWorld(frame, f.axis[1]);
   let dir = vnorm(vsub(b, a));
   if (f.rev) dir = vmul(dir, -1);
-  const angle = Math.min(360, Math.max(0.01, f.angle));
+  let ang = f.angle;
+  let mid = f.mid;
+  if (f.end === "vertex" || f.end === "face") {
+    // D4-12: köşeye / yüzeye kadar — profilin bulunduğu yarım düzlemden hedef yarım düzleme açı (dönüş yönünde)
+    const perp = (p: Vec3) => {
+      const w = vsub(p, a);
+      return vsub(w, vmul(dir, vdot(w, dir)));
+    };
+    const ps = f.loops.flatMap((l: any) => (l.segs ? l.segs.map((s: any) => s.a as Vec2) : [l.circle.c as Vec2]));
+    if (!ps.length) throw new Error("Döndürülecek profil yok");
+    const pc = toWorld(frame, [ps.reduce((s, p) => s + p[0], 0) / ps.length, ps.reduce((s, p) => s + p[1], 0) / ps.length]);
+    const rp = perp(pc);
+    let rt: Vec3;
+    if (f.end === "vertex") {
+      if (!f.vtx) throw new Error("Hedef köşeyi seçin");
+      rt = perp(vtxAt(f.vtx) ?? f.vtx);
+    } else {
+      const pf = f.face ? planarFace(f.face) : null;
+      if (!pf) throw new Error("Hedef yüzü seçin (düz yüz)");
+      if (Math.abs(vdot(pf.n, dir)) > 1e-6 || Math.abs(vdot(vsub(pf.c, a), pf.n)) > 1e-4) throw new Error("Yüzeye kadar: hedef düz yüz döndürme eksenini içermeli");
+      rt = perp(pf.c);
+    }
+    if (vlen(rt) < 1e-6 || vlen(rp) < 1e-6) throw new Error("Hedef döndürme ekseni üzerinde");
+    let deg = (Math.atan2(vdot(vcross(rp, rt), dir), vdot(rp, rt)) * 180) / Math.PI;
+    if (deg <= 1e-6) deg += 360;
+    ang = deg + (f.offA ?? 0);
+    mid = false;
+    if (!(ang > 0.01)) throw new Error("Öteleme açısı hedefe varan açıdan büyük");
+  }
+  const angle = Math.min(360, Math.max(0.01, ang));
   let solid = profile(f.loops).sketchOnPlane(makePlane(frame)).revolve(dir, { origin: a, angle });
-  if (f.mid && angle < 360) solid = solid.rotate(-angle / 2, a, dir);
+  if (mid && angle < 360) solid = solid.rotate(-angle / 2, a, dir);
   return solid;
 }
 
@@ -1459,7 +1599,7 @@ function snapHook(f: Extract<KFeature, { type: "snaphook" }>) {
   applyTool(basicFaceExtrusion(face, new Vector(vmul(v, f.w))) as any, false);
 }
 
-function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number } {
+function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number; exact: Shape | null } {
   const face = allFaces().find((f) => faceSet.has(f.hashCode));
   if (!face) throw new Error("Tam yuvarlak için orta yüzü seçin");
   const lines = (face.edges as any[]).filter((e) => String(e.geomType) === "LINE");
@@ -1475,7 +1615,43 @@ function fullRoundEdges(faceSet: Set<number>): { edges: Set<number>; r: number }
       if (!best || len > best.len) best = { a: A, b: B, d, len };
     }
   if (!best) throw new Error("Seçili yüzde paralel iki kenar bulunamadı");
-  return { edges: new Set([best.a.hashCode, best.b.hashCode]), r: (best.d / 2) * 0.995 };
+  return { edges: new Set([best.a.hashCode, best.b.hashCode]), r: (best.d / 2) * 0.995, exact: fullRoundTool(face, best.a, best.b, best.d) };
+}
+
+/**
+ * P-16: gerçek tam yuvarlak (orta yüz tamamen kalkar, R = genişlik / 2). Yan yüzler düz ve orta yüze dikse
+ * şerit kutusu − silindir aracı döner (gövdeden çıkarılır); değilse null (OCC radyüsüyle %99,5 yaklaşık).
+ */
+function fullRoundTool(face: any, A: any, B: any, d: number): Shape | null {
+  try {
+    if (String(face.geomType) !== "PLANE") return null;
+    const c = tup(face.center), n = vnorm(tup(face.normalAt(c)));
+    const a0 = tup(A.startPoint), a1 = tup(A.endPoint), b0 = tup(B.startPoint), b1 = tup(B.endPoint);
+    const u = vnorm(vsub(a1, a0));
+    const w0 = vsub(b0, a0), wv = vsub(w0, vmul(u, vdot(w0, u)));
+    if (Math.abs(vdot(wv, n)) > 1e-6 * Math.max(1, d)) return null;
+    // yan yüzler: kenarı paylaşan diğer düz yüzler orta yüze dik olmalı
+    for (const E of [A, B]) {
+      const sides = allFaces().filter((x) => x.hashCode !== face.hashCode && (x.edges as any[]).some((e) => e.hashCode === E.hashCode));
+      if (!sides.length) return null;
+      for (const sf of sides) {
+        if (String(sf.geomType) !== "PLANE") return null;
+        const sc = tup(sf.center);
+        if (Math.abs(vdot(vnorm(tup(sf.normalAt(sc))), n)) > 1e-6) return null;
+      }
+    }
+    const sa = [vdot(a0, u), vdot(a1, u)].sort((x, y) => x - y), sb = [vdot(b0, u), vdot(b1, u)].sort((x, y) => x - y);
+    const s0 = Math.max(sa[0], sb[0]), s1 = Math.min(sa[1], sb[1]);
+    if (!(s1 - s0 > 1e-6)) return null;
+    const O = vadd(a0, vmul(u, s0 - vdot(a0, u)));
+    const r = d / 2, eps = Math.max(0.01, r * 0.05);
+    const rect = makePolygon([vadd(O, vmul(n, eps)), vadd(vadd(O, wv), vmul(n, eps)), vsub(vadd(O, wv), vmul(n, r)), vsub(O, vmul(n, r))] as any) as any;
+    const prism = basicFaceExtrusion(rect, new Vector(vmul(u, s1 - s0) as any)) as any;
+    const cyl = makeCylinder(r, s1 - s0 + 2 * eps, vsub(vadd(O, vmul(wv, 0.5)), vadd(vmul(n, r), vmul(u, eps))) as any, u as any) as any;
+    return prism.cut(cyl);
+  } catch {
+    return null;
+  }
 }
 
 // ---------- Gövde işlemleri ----------
@@ -2000,6 +2176,7 @@ function closeCorner(f: Extract<KFeature, { type: "closecorner" }>) {
     const dist = best - (f.overlap || f.weld ? 0 : f.gap);
     if (dist <= 1e-6) continue;
     let prism = basicFaceExtrusion(pf.face.clone(), new Vector(vmul(n, dist)));
+    let cutRegion: Shape | null = null;
     // yalnızca düz flanş kısmı uzatılır: tabandan büküm (r + t) yüksekliğinin altı kırpılır
     let base: any = null, ba = 0;
     for (const fc of body.faces as any[]) {
@@ -2015,14 +2192,20 @@ function closeCorner(f: Extract<KFeature, { type: "closecorner" }>) {
       if (vdot(vsub(c, cb), ub) < 0) ub = vmul(ub, -1);
       let umin = Infinity;
       for (const ed of body.edges as any[]) umin = Math.min(umin, vdot(vsub(tup(ed.startPoint), cb), ub), vdot(vsub(tup(ed.endPoint), cb), ub));
-      prism = prism.cut(halfSpace(vadd(cb, vmul(ub, umin + f.r + f.t)), ub));
+      // D6-3: bindirmede uzatma, karşı flanşın büküm bölgesine değmesin diye boşluk kadar yukarıdan başlar
+      const lift = f.overlap && f.gap > 0 && !f.weld ? f.gap : 0;
+      const h0 = vadd(cb, vmul(ub, umin + f.r + f.t));
+      if (lift) cutRegion = prism.clone().cut(halfSpace(h0, ub));
+      prism = prism.cut(halfSpace(vadd(h0, vmul(ub, lift)), ub));
     }
     if (volOf(prism) <= 1e-9) continue;
     if (f.overlap && f.gap > 0 && !f.weld) {
       // D6-3: bindirmede karşı flanşın ucu, uzatılan flanştan boşluk kadar geri kırpılır (iki flanş kaynaşmaz, açınım alınabilir)
+      // kırpılan bölge: uzatmanın büküm üstündeki tam kesiti (yükseltilmemiş), kalınlık yönünde ± boşluk
       const fr = faceRectFrame(pf);
-      let region: Shape = prism.clone();
-      for (const s of [1, -1]) region = region.fuse(prism.clone().translate(vmul(fr.e, s * f.gap) as any));
+      const src = cutRegion ?? prism;
+      let region: Shape = src.clone();
+      for (const s of [1, -1]) region = region.fuse(src.clone().translate(vmul(fr.e, s * f.gap) as any));
       bodies[bi] = bodies[bi].cut(region);
     }
     bodies[bi] = bodies[bi].fuse(prism);
@@ -3775,7 +3958,7 @@ function sketchBend(f: Extract<KFeature, { type: "sketchbend" }>) {
   bodies = bodies.flatMap(solidsOf);
 }
 
-function flatPattern(id: number, bodyIdx: number, t: number, k: number | ((a: number, r: number) => number), fix?: { o: Vec3; n: Vec3 }) {
+function flatPattern(id: number, bodyIdx: number, t: number, k: number | ((a: number, r: number) => number), fix?: { o: Vec3; n: Vec3 }, marksIn?: FlatMarkIn[]) {
   try {
     if (!bodies.length) throw new Error("Açılacak sac yok");
     const b = bodies[Math.max(0, Math.min(bodyIdx, bodies.length - 1))];
@@ -3786,7 +3969,21 @@ function flatPattern(id: number, bodyIdx: number, t: number, k: number | ((a: nu
     const outline = u.outline.map((o) => (o.k === "l" ? { ...o, a: sh(o.a), b: sh(o.b) } : { ...o, c: sh(o.c) }));
     const lift = vmul(u.frame.n, 0.05);
     const bends = u.bends.map((x) => ({ ...x, a: sh(x.a), b: sh(x.b), a3: vadd(x.a3, lift), b3: vadd(x.b3, lift) }));
-    post({ id, type: "flat", mesh, outline, bends, w: u.max[0] - u.min[0], h: u.max[1] - u.min[1], area: u.area }, [
+    // D6-11: şekillendirme merkezleri (daire) ve çapraz kırma köşegenleri açınım koordinatlarında
+    const marks: FlatMark[] = [];
+    for (const mk of marksIn ?? []) {
+      if (mk.k === "pt") {
+        const q = u.flatPt(mk.p);
+        if (q) marks.push({ k: "c", c: sh(q), r: mk.r, label: mk.label });
+      } else {
+        const polys = u.flatFace(mk.c, mk.n);
+        if (!polys?.length) continue;
+        const ps = polys.flat();
+        const x0 = Math.min(...ps.map((p) => p[0])), x1 = Math.max(...ps.map((p) => p[0])), y0 = Math.min(...ps.map((p) => p[1])), y1 = Math.max(...ps.map((p) => p[1]));
+        marks.push({ k: "l", a: sh([x0, y0]), b: sh([x1, y1]), label: mk.label }, { k: "l", a: sh([x0, y1]), b: sh([x1, y0]) });
+      }
+    }
+    post({ id, type: "flat", mesh, marks, outline, bends, w: u.max[0] - u.min[0], h: u.max[1] - u.min[1], area: u.area }, [
       mesh.vertices.buffer, mesh.normals.buffer, mesh.triangles.buffer, mesh.lines.buffer, mesh.faceGroups.buffer, mesh.edgeGroups.buffer,
     ]);
   } catch (e) {
@@ -4095,8 +4292,17 @@ async function buildFeature(f: KFeature) {
     case "chamfer": {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
       if (f.type === "fillet" && f.kind === "full") {
-        const { edges, r } = fullRoundEdges(matchFaces(f.faces ?? []));
-        onOwner(edges, "edges", (b) => b.fillet((e: any) => (edges.has(e.hashCode) ? r : null)));
+        const { edges, r, exact } = fullRoundEdges(matchFaces(f.faces ?? []));
+        onOwner(edges, "edges", (b) => {
+          if (exact) {
+            const v0 = volOf(b);
+            try {
+              const res = b.clone().cut(exact.clone());
+              if (volOf(res) > 1e-6 && volOf(res) < v0) return res;
+            } catch {}
+          }
+          return b.fillet((e: any) => (edges.has(e.hashCode) ? r : null));
+        });
         return;
       }
       if (f.type === "chamfer" && f.kind === "vtx") return vertexChamfer(f);
@@ -4423,35 +4629,26 @@ async function buildFeature(f: KFeature) {
     }
     case "shell": {
       if (!bodies.length) throw new Error("Önce bir katı oluşturun");
-      const set = matchFaces(f.faces);
-      if (!set.size) throw new Error("Kaldırılacak yüz seçin");
+      const set = f.faces.length ? matchFaces(f.faces) : new Set<number>();
+      if (f.faces.length && !set.size) throw new Error("Kaldırılacak yüzler modelde bulunamadı");
       // yüz başına kalınlık: önce düzlemlerini kaydet
       const multi = (f.multi ?? [])
         .map((m) => ({ pf: planarFace(m.ref), t: m.t }))
         .filter((m) => m.pf && m.t > 0 && Math.abs(m.t - Math.abs(f.t)) > 1e-9) as { pf: { c: Vec3; n: Vec3 }; t: number }[];
       if ((f.multi?.length ?? 0) > multi.length && f.multi!.some((m) => m.t > 0 && Math.abs(m.t - Math.abs(f.t)) > 1e-9)) throw new Error("Farklı kalınlık yalnız düz yüzlerde: yüz bulunamadı");
-      onOwner(set, "faces", (b) => {
+      const doShell = (b: Shape) => {
         // P-1: kabuk başarısızsa sessizce yok sayılmasın
         const t0 = Math.abs(f.t);
         const bb = b.boundingBox.bounds as [Vec3, Vec3];
         const ext = Math.min(...[0, 1, 2].map((k) => bb[1][k] - bb[0][k]));
         if (!f.out && 2 * t0 >= ext - 1e-6) throw new Error(`Kabuk kalınlığı (${t0}) parça için çok büyük`);
-        const v0 = volOf(b);
-        const r = b.clone().shell((f.out ? -1 : 1) * t0, (ff: any) => ff.when(({ element }: any) => set.has(element.hashCode)));
-        const v1 = volOf(r);
-        const fail = "Kabuk uygulanamadı (kalınlık çok büyük ya da geometri kabuğa uygun değil)";
-        if (!(v1 > 1e-6) || Math.abs(v1 - v0) < 1e-6 * Math.max(1, v0) || (f.out ? v1 <= v0 : v1 >= v0)) throw new Error(fail);
-        try {
-          const oc = getOC() as any;
-          const an = new oc.BRepCheck_Analyzer(r.wrapped, true, false);
-          const ok = !!(an.IsValid_2 ? an.IsValid_2() : an.IsValid());
-          an.delete();
-          if (!ok) throw new Error(fail);
-        } catch (e) {
-          if ((e as Error).message === fail) throw e;
-        }
-        return r;
-      });
+        return shellBody(b, set, t0, !!f.out);
+      };
+      if (!set.size) {
+        // P-17: yüz seçilmezse kapalı, içi boş gövde (son gövde)
+        if (!bodies.length) throw new Error("Önce bir katı oluşturun");
+        bodies[bodies.length - 1] = doShell(bodies[bodies.length - 1]);
+      } else onOwner(set, "faces", doShell);
       if (multi.length && f.out) throw new Error("Yüz başına kalınlık yalnız içe kabukta");
       for (const m of multi) {
         // iç duvar: normali −n, düzlemi orijinal yüzden t içeride
@@ -5119,7 +5316,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
         } catch {}
       post({ id: req.id, type: "owner", r } as any);
     } else if ((req as any).type === "isect") faceIsect(req.id, (req as any).a, (req as any).b);
-    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k, (req as any).fix);
+    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k, (req as any).fix, (req as any).marks);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);

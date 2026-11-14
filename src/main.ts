@@ -15,7 +15,7 @@ void unitsVar;
 import { solve as solveSketch } from "./sketch/solver";
 import type {
   EdgeRef, Feature, FaceRef, PartDoc, PlaneRef, SketchFeature, StdPlane, Vec3, ExtrudeFeature, RevolveFeature, HoleFeature, MeasureItem, Vec2,
-  FlatResult, Sketch3DFeature, Frame,
+  FlatResult, FlatMarkIn, Sketch3DFeature, Frame,
 } from "./doc/types";
 import { lastSheetBase, sheetParamsBefore, bendAllowance, effK, GAUGE_TABLE } from "./sheet/sheet";
 import { loftFlatPattern, outlineDxf } from "./sheet/loftflat";
@@ -594,12 +594,33 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
   if (mode.k === "sketch") return { feats: doc.features.slice(0, featIndex(mode.featId)) };
   if (mode.k === "pm") {
     const d = mode.draft;
-    const live = !["fillet", "chamfer", "shell", "dface", "draft", "combine", "delbody", "indent", "thread", "tosheet"].includes(d.type) && !((d.type === "edgeflange" || d.type === "hem" || d.type === "miterflange") && !(d as any)._preview);
+    const live = isLiveDraft(d);
     const base = mode.editingId ? doc.features.slice(0, featIndex(mode.editingId)) : all;
     return { feats: live ? [...base, d] : base, draftId: d.id };
   }
   return { feats: all };
 }
+
+/** PM taslağı görünümdeki yapıya canlı katılıyor mu (radyüs / pah / kabuk… yalnız sarı önizleme) */
+function isLiveDraft(d: Feature) {
+  return !["fillet", "chamfer", "shell", "dface", "draft", "combine", "delbody", "indent", "thread", "tosheet"].includes(d.type) && !((d.type === "edgeflange" || d.type === "hem" || d.type === "miterflange") && !(d as any)._preview);
+}
+/** P-6: canlı kurulmayan taslağı ✓ öncesi bir kez kur; hata varsa iletisini döndür */
+async function draftBuildError(d: Feature, editingId?: string): Promise<string | null> {
+  const all = doc.rollback !== null && doc.rollback !== undefined ? doc.features.slice(0, doc.rollback) : doc.features;
+  const base = editingId ? doc.features.slice(0, featIndex(editingId)) : all;
+  try {
+    const { kfeats, errors } = compile([...base, { ...d }], doc.profiles ?? {});
+    const ce = errors.get(d.id);
+    if (ce) return ce;
+    const r = await kernel.build(kfeats);
+    const e = r.errors.find((x: any) => String(x.featureId).split("~")[0] === d.id);
+    return e ? e.message : null;
+  } catch (e) {
+    return (e as Error)?.message ?? String(e);
+  }
+}
+let commitChecked: Feature | null = null;
 
 // ---------- Teknik resim (SolidWorks Drawing) ----------
 /** parça (ya da montaj: asm verilirse) için teknik resim penceresi: görünüş seçimi, ölçek, kağıt, antet; PDF / SVG / DXF */
@@ -1388,7 +1409,7 @@ const GHOST_TYPES = ["fillet", "chamfer", "shell", "draft", "dface"];
 async function ghostPreview(base: Feature[]) {
   const seq = ++ghostSeq;
   const d = mode.k === "pm" ? (mode.draft as any) : null;
-  const ready = d && GHOST_TYPES.includes(d.type) && (d.edges?.length || d.faces?.length || d.verts?.length || d.multi?.length);
+  const ready = d && GHOST_TYPES.includes(d.type) && (d.type === "shell" || d.edges?.length || d.faces?.length || d.verts?.length || d.multi?.length);
   if (!ready || ghostOff) return viewer.setGhost(null);
   try {
     const { kfeats, errors } = compile([...base, { ...d }], doc.profiles ?? {});
@@ -1868,6 +1889,10 @@ function pickWant() {
     if (t === "axis") return { edge: true, face: true }; // D5-7: iki düzlem / silindir yüzü de seçilir
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
     if (t === "point" || t === "csys") return { edge: true, face: true };
+    if (t === "revolve") {
+      const pk = (mode.draft as any)._pick;
+      return pk === "vtx" ? { edge: true } : pk === "face" ? { face: true } : {};
+    }
     if (t === "extrude") {
       const pk = (mode.draft as any)._pick;
       if (pk === "vtx" || pk === "fromV" || pk === "dir") return { edge: true };
@@ -2692,18 +2717,21 @@ function commitFeature(kind: string) {
     return;
   }
   const { draft, editingId } = mode;
+  const wasLive = isLiveDraft(draft);
   if (draft.type === "fillet" || draft.type === "chamfer") {
     const dd = draft as any;
     if (dd.kind === "vtx" ? !dd.verts?.length : dd.faces2 ? !dd.faces?.length || !dd.faces2.length : !draft.edges.length && !dd.faces?.length) return toast(dd.kind === "vtx" ? "En az bir köşe seçin" : dd.faces2 ? "İki yüz grubunu da seçin" : "En az bir kenar seçin", true);
   }
   if (draft.type === "draft" && ((draft as any).mode === "parting" ? !(draft as any).edges?.length : !draft.faces.length)) return toast((draft as any).mode === "parting" ? "Ayırma çizgisi kenarlarını seçin" : "Koniklik verilecek yüzleri seçin", true);
-  if (draft.type === "shell" && !draft.faces.length) return toast("Kaldırılacak en az bir yüz seçin", true);
+  // P-17: yüz seçilmeden kabuk = kapalı, içi boş gövde
   if ((draft as any).type === "dface" && !(draft as any).faces.length) return toast("En az bir yüz seçin", true);
   if ((draft as any).type === "sform" && !(draft as any).pts.length) return toast("Sac yüzüne dokunarak konum seçin", true);
   if (((draft as any).type === "crossbreak" || (draft as any).type === "sgusset") && !(draft as any).face) return toast("Yüz seçin", true);
   if ((draft.type === "lpattern" || draft.type === "cpattern") && !draft.feats.length) return toast("Çoğaltılacak özelliği seçin", true);
   if (draft.type === "mirror" && !draft.body && !draft.feats.length) return toast("Aynalanacak özelliği seçin veya 'Tüm gövde'yi işaretleyin", true);
   if (draft.type === "revolve" && !draft.axis) return toast("Döndürme ekseni için eskize bir merkez çizgisi çizin", true);
+  if (draft.type === "revolve" && draft.end === "vertex" && !draft.vtx) return toast("Hedef köşeyi seçin", true);
+  if (draft.type === "revolve" && draft.end === "face" && !draft.face) return toast("Hedef yüzü seçin", true);
   if (draft.type === "hole" && (!draft.plane || !draft.pts.length)) return toast("Deliğin konumunu seçin: yüze dokunun", true);
   if ((draft.type === "dome" || draft.type === "wrap" || draft.type === "tabslot" || draft.type === "lip" || draft.type === "snaphook") && !draft.face) return toast("Yüzü seçin", true);
   if (draft.type === "sketch3d" && !draft.lines.length) return toast("3B eskizde en az bir çizgi olmalı", true);
@@ -2727,7 +2755,24 @@ function commitFeature(kind: string) {
   } else delete (draft as any)._preview;
   if (draft.type === "extrude" && (draft.end === "surface" || draft.end === "offset") && !draft.face) return toast("Hedef yüzü seçin", true);
   if (draft.type === "surface" && (draft as any).mode === "fill" && !(draft as any).edges?.length) return toast("Doldurulacak sınırın kenarlarını seçin", true);
-  if (draftError && !["fillet", "chamfer", "shell", "draft", "edgeflange", "hem", "miterflange", "combine", "delbody", "indent", "thread", "tosheet"].includes(draft.type)) return toast(draftError, true);
+  if (wasLive) {
+    if (draftError) return toast(draftError, true);
+  } else if (commitChecked !== draft) {
+    // P-6: SolidWorks gibi — özellik kurulamıyorsa PM açık kalır, ağaca hatalı özellik girmez
+    setStatus("busy", "Özellik denetleniyor…");
+    void draftBuildError(draft, editingId).then((err) => {
+      if (mode.k !== "pm" || mode.draft !== draft) return;
+      if (err) {
+        draftError = err;
+        setStatus("err", err);
+        return toast(err, true);
+      }
+      commitChecked = draft;
+      commitFeature(kind);
+    });
+    return;
+  }
+  commitChecked = null;
   mode = { k: "part" };
   hidePM();
   const newEqs = doc.eqs;
@@ -2974,8 +3019,27 @@ function renderFeaturePM(kind: string) {
           axOpts.length ? selectField("Eksen", axOpts, r.axis, (v) => ((r.axis = v), upd())) : h("p", "pm-hint", "Eskizde çizgi yok. Eskize bir merkez çizgisi ekleyin."),
         ),
       );
-      const g = group("Açı", numField("Açı", r.angle, (v) => ((r.angle = v), upd()), { min: 0.01, unit: "°", key: `${r.id}.angle` }));
-      g.appendChild(checkField("Orta düzlem", r.mid, (v) => ((r.mid = v), upd())));
+      // D4-12: uç koşulu (açı / köşeye kadar / yüzeye kadar + açısal öteleme)
+      const rend = r.end ?? "blind";
+      const g = group(
+        "Yön 1",
+        selectField("Uç koşulu", [{ v: "blind", t: "Açı (kör)" }, { v: "vertex", t: "Köşeye kadar" }, { v: "face", t: "Yüzeye kadar" }], rend, (v) => {
+          r.end = v === "blind" ? undefined : (v as any);
+          (r as any)._pick = v === "vertex" ? "vtx" : v === "face" ? "face" : undefined;
+          renderFeaturePM(kind);
+          upd();
+        }),
+      );
+      if (rend === "blind") {
+        g.appendChild(numField("Açı", r.angle, (v) => ((r.angle = v), upd()), { min: 0.01, unit: "°", key: `${r.id}.angle` }));
+        g.appendChild(checkField("Orta düzlem", r.mid, (v) => ((r.mid = v), upd())));
+      } else {
+        const done = rend === "vertex" ? !!r.vtx : !!r.face;
+        const lbl = rend === "vertex" ? "Hedef köşe" : "Hedef yüz (ekseni içeren düz yüz)";
+        g.appendChild(button((r as any)._pick ? "Modelde seçin…" : lbl + (done ? " ✓" : ""), () => (((r as any)._pick = (r as any)._pick ? undefined : rend === "vertex" ? "vtx" : "face"), renderFeaturePM(kind), refreshHighlight())));
+        g.appendChild(numField("Açısal öteleme", r.offA ?? 0, (v) => ((r.offA = v || undefined), upd()), { unit: "°", key: `${r.id}.offA` }));
+        if ((r as any)._pick) hint(rend === "vertex" ? "Hedef köşeye (kenar ucuna) dokunun" : "Döndürme eksenini içeren düz yüze dokunun");
+      }
       g.appendChild(checkField("Yönü ters çevir", r.rev, (v) => ((r.rev = v), upd())));
       body.appendChild(g);
       body.appendChild(thinGroup(r, kind));
@@ -3026,11 +3090,11 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           isF ? "Radyüs parametreleri" : "Pah parametreleri",
-          numField(isF ? (d.kind === "var" ? "Başlangıç yarıçapı" : "Yarıçap") : "Mesafe", isF ? d.r : d.d, (v) => (isF ? (d.r = v) : (d.d = v)), { min: 0.001, unit: "mm", key: `${d.id}.${isF ? "r" : "d"}` }),
+          numField(isF ? (d.kind === "var" ? "Başlangıç yarıçapı" : "Yarıçap") : "Mesafe", isF ? d.r : d.d, (v) => ((isF ? (d.r = v) : (d.d = v)), schedulePreview()), { min: 0.001, unit: "mm", key: `${d.id}.${isF ? "r" : "d"}` }),
         ),
       );
       if (isF && d.kind === "conic") body.appendChild(numField("Rho (0,05–0,95; 0,5 parabol)", d.rho ?? 0.5, (v) => ((d.rho = Math.min(0.95, Math.max(0.05, v))), schedulePreview()), { min: 0.05, key: `${d.id}.rho` }));
-      if (isF && d.kind === "var") body.appendChild(numField("Bitiş yarıçapı", d.r2 ?? d.r, (v) => (d.r2 = v), { min: 0.001, unit: "mm", key: `${d.id}.r2` }));
+      if (isF && d.kind === "var") body.appendChild(numField("Bitiş yarıçapı", d.r2 ?? d.r, (v) => ((d.r2 = v), schedulePreview()), { min: 0.001, unit: "mm", key: `${d.id}.r2` }));
       if (isF && (d.kind ?? "const") === "const" && d.edges.length > 1) {
         const multi = !!d.radii;
         const gm = group("Çoklu yarıçap", checkField("Kenar başına farklı yarıçap", multi, (v) => ((d.radii = v ? d.edges.map(() => d.r) : undefined), renderFeaturePM(kind))));
@@ -3038,8 +3102,8 @@ function renderFeaturePM(kind: string) {
         body.appendChild(gm);
       }
       if (!isF && d.kind === "vtx") {
-        body.appendChild(numField("Mesafe 2", d.d2 ?? d.d, (v) => (d.d2 = v), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
-        body.appendChild(numField("Mesafe 3", d.d3 ?? d.d2 ?? d.d, (v) => (d.d3 = v), { min: 0.001, unit: "mm", key: `${d.id}.d3` }));
+        body.appendChild(numField("Mesafe 2", d.d2 ?? d.d, (v) => ((d.d2 = v), schedulePreview()), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
+        body.appendChild(numField("Mesafe 3", d.d3 ?? d.d2 ?? d.d, (v) => ((d.d3 = v), schedulePreview()), { min: 0.001, unit: "mm", key: `${d.id}.d3` }));
         const g = group("Köşeler", h("div", "pm-picks", d.verts?.length ? `${d.verts.length} köşe seçili` : "Pah kırılacak köşelere dokunun"), h("p", "pm-hint", "Köşeden çıkan üç doğrusal kenarda verilen mesafelerden geçen düzlemle köşe kesilir."));
         if (d.verts?.length) g.appendChild(button("Seçimi temizle", () => ((d.verts = []), renderFeaturePM(kind))));
         body.appendChild(g);
@@ -3054,9 +3118,9 @@ function renderFeaturePM(kind: string) {
         break;
       }
       if (!isF && (d.kind ?? "equal") !== "vtx") body.appendChild(checkField("Yüz – yüz pah (iki yüz grubu)", false, () => ((d.faces2 = []), (d.faces = []), (d.edges = []), (d._fg = 1), renderFeaturePM(kind), refreshHighlight())));
-      if (!isF && d.kind === "dd") body.appendChild(numField("İkinci mesafe", d.d2 ?? d.d, (v) => (d.d2 = v), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
-      if (!isF && d.kind === "da") body.appendChild(numField("Açı", d.angle ?? 45, (v) => (d.angle = v), { min: 0.1, unit: "°", key: `${d.id}.angle` }));
-      if (!isF && d.kind && d.kind !== "equal" && d.kind !== "offset") body.appendChild(checkField("Yönü ters çevir", !!d.flip, (v) => (d.flip = v)));
+      if (!isF && d.kind === "dd") body.appendChild(numField("İkinci mesafe", d.d2 ?? d.d, (v) => ((d.d2 = v), schedulePreview()), { min: 0.001, unit: "mm", key: `${d.id}.d2` }));
+      if (!isF && d.kind === "da") body.appendChild(numField("Açı", d.angle ?? 45, (v) => ((d.angle = v), schedulePreview()), { min: 0.1, unit: "°", key: `${d.id}.angle` }));
+      if (!isF && d.kind && d.kind !== "equal" && d.kind !== "offset") body.appendChild(checkField("Yönü ters çevir", !!d.flip, (v) => ((d.flip = v), schedulePreview())));
       const nf = (d.faces ?? []).length;
       const picks = h("div", "pm-picks", d.edges.length || nf ? `${d.edges.length} kenar, ${nf} yüz seçili` : "Kenarlara veya yüzlere dokunun");
       const g = group("Kenarlar ve yüzler", picks, h("p", "pm-hint", "Bir yüz seçmek o yüzün tüm kenarlarını seçer."));
@@ -3152,11 +3216,11 @@ function renderFeaturePM(kind: string) {
       break;
     }
     case "shell": {
-      body.appendChild(group("Parametreler", numField("Kalınlık", d.t, (v) => (d.t = v), { min: 0.001, unit: "mm", key: `${d.id}.t` }), checkField("Dışa kabuk (kalınlık dışa eklenir)", !!d.out, (v) => (d.out = v))));
+      body.appendChild(group("Parametreler", numField("Kalınlık", d.t, (v) => ((d.t = v), schedulePreview()), { min: 0.001, unit: "mm", key: `${d.id}.t` }), checkField("Dışa kabuk (kalınlık dışa eklenir)", !!d.out, (v) => ((d.out = v), schedulePreview()))));
       const pm2 = d._pick === "multi";
       body.appendChild(segField([{ v: "rm", t: `Kaldırılacak yüzler (${d.faces.length})` }, { v: "multi", t: `Farklı kalınlık (${(d.multi ?? []).length})` }], pm2 ? "multi" : "rm", (v) => ((d._pick = v === "multi" ? "multi" : undefined), renderFeaturePM(kind))));
       if (!pm2) {
-        const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Kaldırılacak yüzlere dokunun");
+        const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Kaldırılacak yüzlere dokunun (seçilmezse kapalı, içi boş gövde)");
         const g = group("Kaldırılacak yüzler", picks);
         if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
         body.appendChild(g);
@@ -3303,6 +3367,8 @@ function renderFeaturePM(kind: string) {
       }
       if (!circ) gp.appendChild(h("p", "pm-hint", "Profil eskizi, yolun başlangıç noktasında yola dik bir düzlemde olmalıdır."));
       body.appendChild(gp);
+      // D4-12: ince süpürme (açık profil de olur); dairesel profilde iç çap aynı işi görür
+      if (!circ) body.appendChild(thinGroup(d, kind));
       body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), renderFeaturePM(kind), upd())));
       if (!d.cut) body.appendChild(checkField("Sonucu birleştir (kapalıysa ayrı gövde)", d.merge !== false, (v) => ((d.merge = v), upd()))); // D4-12
       break;
@@ -5872,6 +5938,20 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     }
     renderFeaturePM("plane");
     updatePlanePreview();
+  } else if (d.type === "revolve" && (d as any)._pick && m) {
+    // D4-12: döndürme uç koşulu hedefi
+    const pk = (d as any)._pick;
+    if (pk === "vtx" && hit.kind === "edge") {
+      const ed = m.edges[hit.index];
+      d.vtx = dist3(ed.s, hit.point) <= dist3(ed.e, hit.point) ? ed.s : ed.e;
+    } else if (pk === "face" && hit.kind === "face") {
+      const f = m.faces[hit.index];
+      if (!f.n) return toast("Düz bir yüz seçin", true);
+      d.face = { c: f.c, n: f.n };
+    } else return;
+    (d as any)._pick = undefined;
+    renderFeaturePM(d.cut ? "cutRevolve" : "revolve");
+    schedulePreview();
   } else if (d.type === "extrude" && (d as any)._pick && m) {
     const pk = (d as any)._pick;
     if (hit.kind === "edge") {
@@ -6626,7 +6706,19 @@ async function computeFlat(bodyIdx: number): Promise<FlatResult | null> {
   if (welded) await kernel.build(compile(feats.map((f) => (f.type === "closecorner" && f.weld ? { ...f, weld: false } : f.type === "sform" || f.type === "sgusset" ? { ...f, off: true } : f)), doc.profiles ?? {}).kfeats);
   // D6-16: düzleştirmeden önce seçili düz yüz sabit yüz olur (SolidWorks Düz Desen › Sabit yüz)
   const sf = psel.faces.size === 1 ? viewer.mesh?.faces[[...psel.faces][0]] : undefined;
-  const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r, sf?.n ? { o: sf.c, n: sf.n } : undefined);
+  // D6-11: şekillendirme konumları ve çapraz kırmalar açınım DXF'inde işaretlenir
+  const marks: FlatMarkIn[] = [];
+  for (const f of feats as any[]) {
+    if (f.off) continue;
+    if (f.type === "sform" && f.plane) {
+      const fr = resolveFrame(f.plane, doc.features);
+      if (!fr) continue;
+      const nm = f.kind === "dimple" ? `KABARTMA D${fmtNum(f.D, 1)} H${fmtNum(f.H, 1)}` : f.kind === "emboss" ? `KABARTMA ${fmtNum(f.L, 1)}x${fmtNum(f.D, 1)} H${fmtNum(f.H, 1)}` : `PANJUR ${fmtNum(f.L, 1)} H${fmtNum(f.H, 1)}`;
+      for (const q of f.pts) marks.push({ k: "pt", p: toWorld(fr, q), r: f.kind === "dimple" ? f.D / 2 : Math.max(f.L, f.D) / 2, label: `${nm}${f.down ? " ASAGI" : ""}` });
+    }
+    if (f.type === "crossbreak" && f.face?.n) marks.push({ k: "face", c: f.face.c, n: f.face.n, label: `CAPRAZ KIRMA ${fmtNum(f.angle, 1)}%%d${f.flip ? " ASAGI" : " YUKARI"}` });
+  }
+  const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r, sf?.n ? { o: sf.c, n: sf.n } : undefined, marks);
   if (welded) await kernel.build(compile(feats, doc.profiles ?? {}).kfeats);
   setStatus("ok", "Hazır");
   if (res.error) {
@@ -6712,7 +6804,7 @@ async function exportDxf() {
   const sb = lastSheetBase(viewFeatures().feats);
   const mat = doc.material ? MATERIALS[doc.material]?.name : "";
   const title = `${doc.name} - t=${fmtNum(sb?.t ?? 0, 2)} mm${mat ? " - " + mat : ""} - ${fmtNum(res.w, 1)} x ${fmtNum(res.h, 1)}`;
-  const txt = flatToDxf(res.outline, res.bends, res.w, res.h, { bends: true, notes: true, title });
+  const txt = flatToDxf(res.outline, res.bends, res.w, res.h, { bends: true, notes: true, title, marks: res.marks });
   download(new Blob([txt], { type: "application/dxf" }), `${doc.name}_acinim.dxf`);
 }
 
@@ -6948,6 +7040,50 @@ function renderTree() {
   renderTreeActions();
 }
 
+/**
+ * Bastır / etkinleştir. D7-17: kimlikle bağlı bağımlılar da bastırılır; P-7: geometrisine (kenar / yüz) bağlı
+ * çocuklar da — deneme yapısında ebeveyn bastırılınca yeni hata veren sonraki özellikler (SolidWorks gibi).
+ * Etkinleştirince onunla bastırılanlar geri gelir.
+ */
+async function toggleSuppress(f: Feature) {
+  const set = new Set([f.id]);
+  if (!f.off) {
+    setStatus("busy", "Bastırılıyor…");
+    const idDeps = () => {
+      for (const x of doc.features as any[]) if (!set.has(x.id) && !x.off && x.type !== "sketch" && [...set].some((p) => refsTo(x, p))) set.add(x.id);
+    };
+    idDeps();
+    const i0 = featIndex(f.id);
+    const before = new Set(featureErrors.keys());
+    const all = doc.rollback !== null && doc.rollback !== undefined ? doc.features.slice(0, doc.rollback) : doc.features;
+    for (let pass = 0; pass < 3; pass++) {
+      let bad: string[] = [];
+      try {
+        const feats = all.map((x) => (set.has(x.id) ? ({ ...x, off: true } as Feature) : x));
+        const { kfeats, errors } = compile(feats, doc.profiles ?? {});
+        const r = await kernel.build(kfeats);
+        const ids = new Set([...errors.keys(), ...r.errors.map((e: any) => String(e.featureId).split("~")[0])]);
+        bad = [...ids].filter((id) => !before.has(id) && !set.has(id) && featIndex(id) > i0 && getFeat(id) && !getFeat(id)!.off);
+      } catch {}
+      if (!bad.length) break;
+      bad.forEach((id) => set.add(id));
+      idDeps();
+    }
+  }
+  commitDoc(() => {
+    const on = !f.off;
+    if (on) {
+      for (const x of doc.features as any[]) if (set.has(x.id)) (x.off = true), x.id !== f.id && (x.offBy = f.id);
+    } else {
+      delete (f as any).off;
+      for (const x of doc.features as any[]) if (x.offBy === f.id) (delete x.off, delete x.offBy, set.add(x.id));
+    }
+    // etkin yapılandırmanın bastırma listesi de güncellenir (SolidWorks: "Bu yapılandırma")
+    const cfg = activeConfig();
+    if (cfg) cfg.off = on ? [...new Set([...cfg.off, ...set])] : cfg.off.filter((x) => !set.has(x));
+  });
+}
+
 /** özelliğin başvurduğu (ebeveyn) özellik kimlikleri */
 function parentsOf(f: Feature, explicitOnly = false): string[] {
   const out: string[] = [];
@@ -7082,20 +7218,7 @@ function renderTreeActions() {
   const idx = featIndex(f.id);
   add("Buraya geri sar", () => commitDoc(() => (doc.rollback = idx)));
   if (doc.rollback != null) add("Sona sar", () => commitDoc(() => (doc.rollback = null)));
-  add(f.off ? "Etkinleştir" : "Bastır", () =>
-    commitDoc(() => {
-      f.off = !f.off;
-      // D7-17: bastırılan özelliğin (adıyla) bağımlıları da bastırılır; etkinleştirince onunla bastırılanlar geri gelir
-      const set = new Set([f.id]);
-      if (f.off) {
-        for (const x of doc.features as any[]) if (!set.has(x.id) && !x.off && x.type !== "sketch" && [...set].some((p) => refsTo(x, p))) (x.off = true), (x.offBy = f.id), set.add(x.id);
-      } else
-        for (const x of doc.features as any[]) if (x.offBy === f.id) (delete x.off, delete x.offBy, set.add(x.id));
-      // etkin yapılandırmanın bastırma listesi de güncellenir (SolidWorks: "Bu yapılandırma")
-      const cfg = activeConfig();
-      if (cfg) cfg.off = f.off ? [...new Set([...cfg.off, ...set])] : cfg.off.filter((x) => !set.has(x));
-    }),
-  );
+  add(f.off ? "Etkinleştir" : "Bastır", () => void toggleSuppress(f));
   const i0 = doc.features.indexOf(f);
   if (i0 > 0) add("▲ Yukarı", () => moveFeature(f.id, doc.features[i0 - 1].id));
   if (i0 < doc.features.length - 1) add("▼ Aşağı", () => moveFeature(f.id, doc.features[i0 + 2]?.id ?? null));
@@ -8488,7 +8611,7 @@ function openContextMenu(x: number, y: number) {
       tmp.appendChild(h("div", "sw-mh", f.name));
       menuItem(tmp, "Özelliği düzenle", () => editFeature(fid));
       if (typeof f.sketch === "string" && getFeat(f.sketch)) menuItem(tmp, "Eskizi düzenle", () => editFeature(f.sketch));
-      menuItem(tmp, f.off ? "Etkinleştir" : "Bastır", () => ((treeSel = fid), commitDoc(() => setOffCfg([fid], !f.off))));
+      menuItem(tmp, f.off ? "Etkinleştir" : "Bastır", () => ((treeSel = fid), void toggleSuppress(f)));
       menuItem(tmp, "Adlandır", () => {
         const n = prompt("Yeni ad", f.name)?.trim();
         if (n) commitDoc(() => (f.name = n));
