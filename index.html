@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#204B9B" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="İmaj CAD" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <title>İmaj CAD</title>
+    <script type="module" crossorigin src="./assets/index-Ls9RlvbQ.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CKo3U14f.css">
+  </head>
+  <body>
+    <header id="cmdbar">
+      <span id="mbrand"><img src="./emb_w.png" alt="İmaj CAD" /></span>
+      <div id="menubar">
+        <span class="brand"><img src="./logo.png" alt="İmaj Makina — İmaj CAD" /></span>
+        <nav id="menus"></nav>
+        <div id="cmd-search-box"><input id="cmd-search" type="search" placeholder="Komut ara…" autocomplete="off" spellcheck="false" /></div>
+      </div>
+      <div id="tabs">
+        <button data-tab="features" class="active">Özellikler</button>
+        <button data-tab="sketch">Eskiz</button>
+        <button data-tab="sheet">Sac Metal</button>
+        <button data-tab="weld">Kaynaklı</button>
+        <button data-tab="evaluate">Değerlendir</button>
+        <button data-tab="asm">Montaj</button>
+      </div>
+      <div id="cmds"></div>
+      <div id="globals">
+        <button id="tree-btn" class="cmd" title="Özellik ağacı"></button>
+        <button id="undo" class="cmd" title="Geri al (Ctrl+Z)"></button>
+        <button id="redo" class="cmd" title="Yinele (Ctrl+Y)"></button>
+        <button id="file-btn" class="cmd" title="Dosya"></button>
+        <button id="help-btn" class="cmd" title="Yardım"></button>
+      </div>
+    </header>
+
+    <div id="main">
+      <aside id="side">
+        <div id="mgr-tabs"><button data-m="tree" class="on" title="Özellik ağacı (FeatureManager)"></button><button data-m="pm" title="Özellik yöneticisi (PropertyManager)"></button></div>
+        <section id="tree-panel">
+          <div class="side-head"><strong id="part-name">Parça1</strong><button id="side-close" class="icon-x" aria-label="Kapat">✕</button></div>
+          <ul id="tree"></ul>
+          <div id="tree-actions"></div>
+        </section>
+        <section id="pm" hidden>
+          <div class="pm-head">
+            <strong id="pm-title"></strong>
+            <span class="spacer"></span>
+            <button id="pm-ok" class="corner ok" title="Tamam">✓</button>
+            <button id="pm-cancel" class="corner no" title="İptal">✕</button>
+          </div>
+          <div id="pm-body"></div>
+        </section>
+      </aside>
+
+      <main id="view">
+        <div id="doctabs"></div>
+        <div id="hint"></div>
+        <div id="status"><span class="dot"></span><span id="status-text">Çekirdek yükleniyor…</span></div>
+        <div id="viewbar"></div>
+        <div id="crumbs"></div>
+        <aside id="taskpane" hidden></aside>
+      </main>
+    </div>
+    <footer id="statusbar"><span id="sb-mode"></span><span id="sb-sel"></span><span class="spacer"></span><span id="sb-units" title="Birim sistemi: milimetre, gram, saniye">MMGS</span><button id="sb-lock" title="Tam ekran Esc kilidi"></button><button id="sb-keys" title="Kısayolları özelleştir">⌨</button></footer>
+
+    <div id="file-menu" class="popover" hidden>
+      <button data-act="new">Yeni parça</button>
+      <button data-act="wizard">Şekil sihirbazı (çizmeden parça)…</button>
+      <button data-act="open">Aç (.icad)…</button>
+      <button data-act="save">Kaydet (.icad)</button>
+      <button data-act="saveas">Farklı kaydet…</button>
+      <button data-act="recent">Son belgeler…</button>
+      <button data-act="files">Dosya yöneticisi…</button>
+      <button data-act="docprops">Belge özellikleri…</button>
+      <button data-act="import">STEP / STL içe aktar…</button>
+      <hr />
+      <button data-act="step">STEP olarak dışa aktar</button>
+      <button data-act="stl">STL olarak dışa aktar</button>
+      <button data-act="3mf">3MF olarak dışa aktar</button>
+      <button data-act="pdf">Görünümü PDF olarak kaydet</button>
+      <button data-act="skdxf">Eskizi DXF olarak dışa aktar</button>
+      <button data-act="facedxf">Seçili yüzü DXF olarak dışa aktar</button>
+      <button data-act="dxf">Sac açınımı (DXF)</button>
+      <button data-act="cutlist">Kesim listesi…</button>
+      <hr />
+      <button data-act="units">Birim: mm ↔ inç</button>
+      <button data-act="persp">Perspektif / ortografik</button>
+      <button data-act="wheel">Tekerlek yakınlaştırma yönünü ters çevir</button>
+      <button data-act="keys">Klavye ve fare kısayolları…</button>
+      <button data-act="ar">AR'de gör (telefon / tablet)</button>
+      <button data-act="navlog">Gezinme tanılaması (aç / kapat)</button>
+      <button data-act="input">Kalem ve dokunmatik ayarları…</button>
+      <button data-act="welcome">Başlangıç rehberi…</button>
+    </div>
+    <input type="file" id="file-input" accept=".icad,.json,application/json" hidden />
+
+    <div id="toast" hidden></div>
+
+    <dialog id="help">
+      <h2>İmaj CAD — v0.98</h2>
+      <h3>Çalışma mantığı (SolidWorks gibi)</h3>
+      <ol>
+        <li><b>Eskiz</b>: Bir düzleme (Ön / Üst / Sağ) veya katının düz bir yüzüne dokunun, sonra <b>Eskiz</b>'e basın. Ya da önce Eskiz'e basıp düzlemi seçin.</li>
+        <li>Çizin. Yatay, dikey, çakışık gibi ilişkiler otomatik eklenir.</li>
+        <li><b>Akıllı Ölçü</b> ile ölçüleri verin. <span style="color:#1c4fd8">Mavi</span> = tanımlanmamış, siyah = tam tanımlı, <span style="color:#e03131">kırmızı</span> = aşırı tanımlı.</li>
+        <li>Sol paneldeki ✓ ile eskizden çıkın, <b>Ekstrüzyon</b> veya <b>Döndürme</b> ile katı oluşturun.</li>
+        <li>Ağaçtaki bir adıma dokunup <b>Düzenle</b> veya <b>Eskizi düzenle</b> ile geri dönebilirsiniz.</li>
+      </ol>
+      <h3>Kalem, parmak ve fare</h3>
+      <p><b>Telefon / tablet:</b> Dosya › <i>Kalem ve dokunmatik ayarları</i> menüsünden kalem tipinizi seçin (otomatik algılanır). Kalem çizer ve seçer; parmak görünümü yönetir (tek parmak döndürür, iki parmak kaydırır / yakınlaştırır / çevirir). Basit kalem veya parmakla çizimde tek dokunuş çizer, iki parmak gezinir. Dokunup kaydırarak noktayı ayarlayın, kaldırınca yerleşir; büyüteç yakalamayı gösterir. İki parmak dokunuşu geri alır, üç parmak ileri alır; uzun basma bağlam menüsünü açar; kalem yan tuşu sağ tuş gibidir. Sağdaki çubukta ✓ / ✕ / A / Ctrl / geri / ileri / araç menüsü / sığdır, sol üstte görünüm küpü vardır.<br />
+      <b>Fare (SolidWorks ile aynı):</b> orta tuş döndürür, Ctrl+orta kaydırır, Shift+orta yakınlaştırır, Alt+orta yuvarlar, orta tuşa çift tık ekrana sığdırır. Tekerlek imleçte yakınlaştırır (ileri = uzaklaş). Sağ tık bağlam menüsü, sağ tuşla sürükleme fare hareketleri (eskizde ↑ Akıllı Ölçü, → Daire, ↓ Dikdörtgen, ← Çizgi; parçada görünüm yönleri).</p>
+      <h3>Klavye (SolidWorks varsayılanları)</h3>
+      <p class="small"><b>Tüm kısayollar ve fare hareketleri Araçlar &gt; Özelleştir’den değiştirilebilir ve yazdırılabilir.</b> Ctrl+1…8 Ön/Arka/Sol/Sağ/Üst/Alt/İzometrik/Normal · G büyüteç · F5 seçim filtresi · F9 özellik ağacı · F11 tam ekran (🔒 ile Esc kilitlenir) · Ctrl+Boşluk görünüm seçici · Boşluk görünüm yönü · F sığdır · Z / Shift+Z uzaklaş / yakınlaş · oklar 15° döndür, Shift+oklar 90°, Alt+←/→ yuvarla, Ctrl+oklar kaydır · Ctrl+Shift+Z önceki görünüm · S kısayol çubuğu · Enter son komutu tekrarla · A çizgi↔teğet yay · Ctrl+B / Ctrl+Q yeniden oluştur · Ctrl+S kaydet · Ctrl+O aç · Ctrl+N yeni · Ctrl+Z / Ctrl+Y geri / ileri · Ctrl+A tümünü seç · Ctrl+C / Ctrl+V kopyala / yapıştır · Delete sil · Esc iptal.<br />
+      Not: Tarayıcı sekmesinde Ctrl+1…8 ve Ctrl+N tarayıcıya ayrılmıştır; uygulamayı “Yükle / Ana ekrana ekle” ile kurarsanız tüm kısayollar çalışır.</p>
+      <h3>Lisanslar</h3>
+      <p class="small">Bu uygulama <b>Open CASCADE Technology</b> yazılımının sağladığı olanakları kullanır (GNU LGPL 2.1, Open CASCADE istisnası ile; LGPL kapsamındaki haklarınız saklıdır). Eskiz çözücüsü <b>FreeCAD PlaneGCS</b>'tir (GNU LGPL). Her ikisi de ayrı, değiştirilebilir WebAssembly dosyaları olarak yüklenir. Kaynaklar: <a href="https://dev.opencascade.org" target="_blank" rel="noopener">dev.opencascade.org</a>, <a href="https://github.com/Salusoft89/planegcs" target="_blank" rel="noopener">planegcs</a>.<br />
+      Ayrıca <b>replicad</b> (MIT) ve <b>three.js</b> (MIT) kullanılmaktadır.</p>
+      <form method="dialog"><button class="btn primary">Kapat</button></form>
+    </dialog>
+
+  </body>
+</html>
