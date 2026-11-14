@@ -48,10 +48,10 @@ export interface TechInfo {
 /** ölçü toleransı: simetrik ±, sapma (+üst / −alt), sınır (üst / alt boyut), ISO uyum (H7 vb.) */
 export interface Tol { t: "none" | "sym" | "dev" | "lim" | "fit"; up?: number; lo?: number; fit?: string }
 /** kullanıcı ölçüsü: görünüş koordinatlarında iki nokta (çapta a = merkez, b[0] = yarıçap); off = kağıtta ölçü çizgisi uzaklığı */
-export interface UDim { id: string; view: string; a: Vec2; b: Vec2; dir: "h" | "v" | "al" | "d"; off: number; text?: string; tol?: Tol }
+export interface UDim { id: string; view: string; a: Vec2; b: Vec2; dir: "h" | "v" | "al" | "d"; off: number; text?: string; tol?: Tol; /** D9-6: uçların görünüş kutusuna göre göreli konumu (model değişince yakalama noktasına yeniden oturur) */ ra?: Vec2; rb?: Vec2 }
 export interface DimOvr { text?: string; tol?: Tol; hide?: boolean }
 /** açıklamalar: yüzey pürüzlülüğü (ISO 1302), geometrik tolerans çerçevesi (ISO 1101), referans (datum) */
-export interface Annot { id: string; kind: "ra" | "gdt" | "datum"; view: string; at: Vec2; ra?: string; proc?: "any" | "req" | "proh"; sym?: string; tol?: string; dat?: string; letter?: string }
+export interface Annot { id: string; kind: "ra" | "gdt" | "datum"; view: string; at: Vec2; rat?: Vec2; ra?: string; proc?: "any" | "req" | "proh"; sym?: string; tol?: string; dat?: string; letter?: string }
 export const GDT_SYMS: [string, string][] = [
   ["⏤", "Doğrusallık"], ["⏥", "Düzlemsellik"], ["○", "Dairesellik"], ["⌭", "Silindiriklik"], ["⌒", "Çizgi profili"], ["⌓", "Yüzey profili"],
   ["∥", "Paralellik"], ["⟂", "Diklik"], ["∠", "Açısallık"], ["⌖", "Konum"], ["◎", "Eş merkezlilik"], ["⌯", "Simetri"], ["↗", "Dairesel salgı"], ["⌰", "Toplam salgı"],
@@ -77,6 +77,32 @@ export function snapPoints(v: DrawView): Vec2[] {
   for (let i = 0; i < v.vis.length; i += 4) add([v.vis[i], v.vis[i + 1]]), add([v.vis[i + 2], v.vis[i + 3]]);
   for (const c of [...v.circles, ...(v.arcs ?? [])]) if (!c.hidden) add(c.c);
   return out;
+}
+
+/** D9-6: görünüş kutusuna göre göreli konum ve yeniden yerleştirme (en yakın yakalama noktası / daire) */
+export function relOf(v: DrawView, p: Vec2): Vec2 {
+  return [(p[0] - v.min[0]) / Math.max(1e-6, v.max[0] - v.min[0]), (p[1] - v.min[1]) / Math.max(1e-6, v.max[1] - v.min[1])];
+}
+export function reloc(v: DrawView, p: Vec2, r: Vec2 | undefined, circle: boolean | "free" = false): { p: Vec2; r?: number } {
+  if (!r) return { p };
+  const w = Math.max(1e-6, v.max[0] - v.min[0]), hh = Math.max(1e-6, v.max[1] - v.min[1]);
+  const pred: Vec2 = [v.min[0] + r[0] * w, v.min[1] + r[1] * hh];
+  if (circle === "free") return { p: pred };
+  const tol = 0.15 * Math.max(w, hh);
+  if (circle) {
+    let best: { c: Vec2; r: number } | null = null, bd = tol;
+    for (const c of circlesOf(v)) {
+      const d = Math.hypot(c.c[0] - pred[0], c.c[1] - pred[1]);
+      if (d < bd) (bd = d), (best = c);
+    }
+    return best ? { p: best.c, r: best.r } : { p: pred };
+  }
+  let best: Vec2 | null = null, bd = tol;
+  for (const q of snapPoints(v)) {
+    const d = Math.hypot(q[0] - pred[0], q[1] - pred[1]);
+    if (d < bd) (bd = d), (best = q);
+  }
+  return { p: best ?? pred };
 }
 
 const SCALES = [10, 5, 2, 1, 1 / 2, 1 / 2.5, 1 / 5, 1 / 10, 1 / 20, 1 / 25, 1 / 50, 1 / 100, 1 / 200];
@@ -345,9 +371,12 @@ type Placed = { X: (x: number) => number; Y: (y: number) => number; w: number; h
 /** kullanıcı ölçüleri, pürüzlülük, geometrik tolerans ve referans sembolleri (görünüşe bağlı, görünüşle birlikte taşınır) */
 function annotate(svg: Svg, out: Record<string, Placed>, info: TechInfo, s: number) {
   const O = (k: string) => info.off?.[k] ?? [0, 0];
-  for (const u of info.user ?? []) {
-    const P = out[u.view];
+  for (const u0 of info.user ?? []) {
+    const P = out[u0.view];
     if (!P) continue;
+    // model değiştiyse uçlar yeni yakalama noktalarına oturur, değer yeniden ölçülür
+    const ra = reloc(P.v, u0.a, u0.ra, u0.dir === "d");
+    const u: UDim = u0.dir === "d" ? { ...u0, a: ra.p, b: [ra.r ?? u0.b[0], 0] } : { ...u0, a: ra.p, b: reloc(P.v, u0.b, u0.rb).p };
     const ax = P.X(u.a[0]), ay = P.Y(u.a[1]), bx = P.X(u.b[0]), by = P.Y(u.b[1]);
     const k = "u:" + u.id, o = O(k);
     if (u.dir === "d") {
@@ -386,9 +415,10 @@ function annotate(svg: Svg, out: Record<string, Placed>, info: TechInfo, s: numb
         svg.text((a2x + b2x) / 2 + nx * 0.8, (a2y + b2y) / 2 + ny * 0.8, t, 2.8, "middle", ang);
       });
   }
-  for (const n of info.notes ?? []) {
-    const P = out[n.view];
+  for (const n0 of info.notes ?? []) {
+    const P = out[n0.view];
     if (!P) continue;
+    const n = { ...n0, at: reloc(P.v, n0.at, n0.rat, "free").p };
     const k = "n:" + n.id, o = O(k);
     const px = P.X(n.at[0]), py = P.Y(n.at[1]);
     const lx = px + 10 + o[0], ly = py - 10 + o[1];

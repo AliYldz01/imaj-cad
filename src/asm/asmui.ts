@@ -170,11 +170,13 @@ export class AsmUI {
       if ((this as any)["k_" + c.id] === key && this.meshes.has(c.id)) continue;
       this.ctx.setStatus("busy", `Bileşen kuruluyor: ${c.name}`);
       const old = (this as any)["k_" + c.id] ? this.meshes.get(c.id) : undefined;
+      const oldK = (this as any)["f_" + c.id] as any[] | undefined;
       try {
         const { kfeats } = compile(this.featsOf(c), c.part.profiles ?? {});
         const r = await this.ctx.kernel.build(kfeats);
         this.meshes.set(c.id, r.mesh);
-        if (old && r.mesh) this.remapMates(c, old, r.mesh);
+        if (old && r.mesh) this.remapMates(c, old, r.mesh, oldK, kfeats);
+        (this as any)["f_" + c.id] = kfeats;
         // yol / kam / yuva zincirleri yeni geometriden yeniden kurulur
         if (r.mesh)
           for (const m of this.doc.mates)
@@ -194,8 +196,33 @@ export class AsmUI {
   }
   /** parça değişince eşleşme varlıklarını yeni geometriye taşı (SolidWorks: referans izlenir, kaybolursa ⚠) */
   lost = new Set<string>();
-  remapMates(c: AsmComp, old: MeshData, nw: MeshData) {
+  /** D9-2 / D9-5: derlenmiş özelliklerden izlenebilir çapalar (delik / daire merkezleri = eksen, ekstrüzyon uç düzlemleri); aynı kimlik ve sırayla eski → yeni */
+  private anchorsOf(kf: any[] | undefined): Map<string, { p: Vec3; n: Vec3; kind: "axis" | "plane" }> {
+    const out = new Map<string, { p: Vec3; n: Vec3; kind: "axis" | "plane" }>();
+    if (!kf) return out;
+    const W = (fr: any, q: number[]): Vec3 => {
+      const y = [fr.n[1] * fr.x[2] - fr.n[2] * fr.x[1], fr.n[2] * fr.x[0] - fr.n[0] * fr.x[2], fr.n[0] * fr.x[1] - fr.n[1] * fr.x[0]];
+      return [0, 1, 2].map((i) => fr.o[i] + fr.x[i] * q[0] + y[i] * q[1]) as Vec3;
+    };
+    for (const k of kf) {
+      const fr = k.pl?.frame;
+      if (!fr) continue;
+      if (k.type === "hole") (k.pts ?? []).forEach((q: number[], i: number) => out.set(`${k.id}:h${i}`, { p: W(fr, q), n: fr.n, kind: "axis" }));
+      if (["extrude", "revolve"].includes(k.type))
+        (k.loops ?? []).forEach((l: any, i: number) => {
+          if (l.circle) out.set(`${k.id}:c${i}`, { p: W(fr, l.circle.c), n: fr.n, kind: "axis" });
+        });
+      if (k.type === "extrude" && (k.end === "blind" || k.end === "mid") && !k.fromFace && !k.fromVtx) {
+        const so = k.startOff ?? 0, sg = k.rev ? -1 : 1;
+        const z0 = k.end === "mid" ? so - k.d1 / 2 : so, z1 = k.end === "mid" ? so + k.d1 / 2 : so + sg * k.d1;
+        for (const [nm, z] of [["s", z0], ["e", z1]] as const) out.set(`${k.id}:${nm}`, { p: [0, 1, 2].map((i) => fr.o[i] + fr.n[i] * z) as Vec3, n: fr.n, kind: "plane" });
+      }
+    }
+    return out;
+  }
+  remapMates(c: AsmComp, old: MeshData, nw: MeshData, oldK?: any[], newK?: any[]) {
     if (!old.bbox || !nw.bbox) return;
+    const A0 = this.anchorsOf(oldK), A1 = this.anchorsOf(newK);
     const U = (p: Vec3, b: { min: Vec3; max: Vec3 }) => p.map((v, i) => (v - b.min[i]) / Math.max(b.max[i] - b.min[i], 1e-3)) as Vec3;
     const d3 = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
     const par = (a: Vec3, b: Vec3) => Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) > 0.999;
@@ -217,11 +244,50 @@ export class AsmUI {
         if (!e || e.comp !== c.id || fixedLabels.includes(e.label ?? "")) continue;
         const cs = cands(e.kind);
         const dirOk = (x: { n: Vec3 }) => (e.kind === "plane" ? same(x.n, e.n) : e.kind === "point" ? true : par(x.n, e.n));
+        // çapa ile izleme: varlığı üreten delik / daire merkezi ya da uç düzlemi aynı özellikte nereye gittiyse oraya
+        const dotv = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        const offLine = (p: Vec3, o: Vec3, n: Vec3) => {
+          const w = [p[0] - o[0], p[1] - o[1], p[2] - o[2]] as Vec3, t = dotv(w, n);
+          return Math.hypot(w[0] - t * n[0], w[1] - t * n[1], w[2] - t * n[2]);
+        };
+        let pred: Vec3 | null = null;
+        for (const [key, a] of A0) {
+          const b = A1.get(key);
+          if (!b || !par(a.n, e.n)) continue;
+          if (a.kind === "axis" && (e.kind === "cyl" || e.kind === "circle") && offLine(a.p, e.c, e.n) < 1e-3) {
+            const dl = [b.p[0] - a.p[0], b.p[1] - a.p[1], b.p[2] - a.p[2]] as Vec3;
+            pred = [e.c[0] + dl[0], e.c[1] + dl[1], e.c[2] + dl[2]];
+          }
+          if (a.kind === "plane" && e.kind === "plane" && Math.abs(dotv([e.c[0] - a.p[0], e.c[1] - a.p[1], e.c[2] - a.p[2]], a.n)) < 1e-3) {
+            const dz = dotv([b.p[0] - a.p[0], b.p[1] - a.p[1], b.p[2] - a.p[2]], a.n);
+            pred = [e.c[0] + a.n[0] * dz, e.c[1] + a.n[1] * dz, e.c[2] + a.n[2] * dz];
+          }
+        }
+        if (pred) {
+          const P = pred;
+          const sc2 = cs
+            .filter(dirOk)
+            .map((x) => ({ x, v: e.kind === "plane" ? Math.abs(dotv([x.c[0] - P[0], x.c[1] - P[1], x.c[2] - P[2]], e.n)) * 100 + d3(x.c, P) * 1e-3 : e.kind === "point" ? d3(x.c, P) : offLine(x.c, P, e.n) + (e.r !== undefined ? Math.abs((x.r ?? 0) - e.r) * 1e-3 : 0) }))
+            .sort((p, q) => p.v - q.v);
+          if (sc2.length && sc2[0].v < (e.kind === "plane" ? 0.1 : 0.05)) {
+            const x = sc2[0].x;
+            const chg = d3(x.c, e.c) > 1e-6 || (x.r !== undefined && e.r !== undefined && Math.abs(x.r - e.r) > 1e-6);
+            e.c = x.c;
+            if (e.kind !== "plane" && e.kind !== "point") {
+              if (dotv(e.n, x.n) < 0) e.n = [-x.n[0], -x.n[1], -x.n[2]];
+              else e.n = x.n;
+              if (x.r !== undefined) e.r = x.r;
+            }
+            this.lost.delete(m.id);
+            if (chg) moved++;
+            continue;
+          }
+        }
         // geometri aynen duruyorsa dokunma
         if (cs.some((x) => d3(x.c, e.c) < 1e-3 && dirOk(x) && (e.r === undefined || Math.abs((x.r ?? 0) - e.r) < 1e-3))) continue;
         const u0 = U(e.c, old.bbox), diag = d3(nw.bbox.min, nw.bbox.max) || 1;
         const sc = cs.filter(dirOk).map((x) => ({ x, v: d3(U(x.c, nw.bbox!), u0) + (e.r !== undefined ? Math.abs((x.r ?? 0) - e.r) / diag : 0) })).sort((p, q) => p.v - q.v);
-        if (sc.length && sc[0].v < 0.35 && (sc.length < 2 || sc[1].v - sc[0].v > 0.03 || d3(sc[1].x.c, sc[0].x.c) < 1e-3)) {
+        if (sc.length && sc[0].v < 0.35 && (sc.length < 2 || sc[1].v - sc[0].v > 0.08 || d3(sc[1].x.c, sc[0].x.c) < 1e-3)) {
           const x = sc[0].x;
           if (e.kind === "plane" || e.kind === "point") e.c = x.c;
           else {
@@ -2437,9 +2503,9 @@ export class AsmUI {
       const p = loadLib()[c.part.name];
       if (!p) return this.ctx.toast("Kütüphanede bu adla parça yok", true);
       c.part = JSON.parse(JSON.stringify(p));
-      this.meshes.delete(c.id);
-      this.save();
-      this.refresh();
+      // D9-5: eski ağ korunur (eşleşme referansları yeni geometriye taşınabilsin), anahtar eskitilir
+      (this as any)["k_" + c.id] = "eski";
+      this.refresh().then(() => this.solve()).then(() => (this.draw(), this.renderTree(), this.save()));
     });
     add("Sil", () => this.removeComps([...new Set([c.id, ...this.selSet])]), "btn danger");
     return out;

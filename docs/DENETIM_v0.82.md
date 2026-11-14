@@ -146,7 +146,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Kod:** `src/sketch/ops.ts:236-311` `offsetEnts` (yalnız `firstLine` için ölçü; diğer parçalar için mesafe kısıtı yok).
 - **Öneri:** Her ötelenmiş parça için taban parçaya eşit mesafe kısıtı ekle (çizgi: `pldist` + eşitlik, yay/daire: eş merkezli + yarıçap farkı) ya da tek bir öteleme ilişkisi tanımla.
 
-#### E-5 — Varlıkları Dönüştür ve Kesişim Eğrisi modele bağlı değil (sabitlenmiş kopya)
+#### ✅ E-5 — Varlıkları Dönüştür ve Kesişim Eğrisi modele bağlı değil (sabitlenmiş kopya)
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Dönüştürülen kenarlar "Kenar üzerinde" (On Edge) ilişkisiyle modele bağlıdır. Model değişince eskiz güncellenir. Kesişim eğrisi de benzer biçimde ilişkiseldir.
 - **Bizde (t10, t18):** Kutunun üst yüzünde ön kenar fareyle dönüştürüldü → çizginin iki ucuna `fix` konuyor. Taban eskizi 80'den 100 mm'ye büyütülüp yeniden oluşturuldu → dönüştürülen çizgi `x=-40…40`'ta kaldı (beklenen ±50). Kesişim eğrisi (Sağ Düzlem ∩ kutu) de 8 çizgi + `fix` ilişkileriyle sabit.
@@ -490,7 +490,7 @@ En önemli beş bulgu:
 - **Kod:** `src/main.ts:6250` `parentsOf` (yalnız sketch/path/feats/plane id), `orderOk` 6259, `deleteFeature` ~6400.
 - **Öneri:** Kenar/yüz referanslarını çekirdekte "sahibi" (`faceOwner` zaten var) ile özelliğe bağlayan bir bağımlılık haritası; sıralama ve silme bu haritayı kullansın.
 
-#### P-9 · Statik koordinatlı referanslar model değişince takip etmiyor
+#### ✅ P-9 · Statik koordinatlı referanslar model değişince takip etmiyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** "Köşeye kadar" köşesi, referans eksen (silindirden), 3 noktalı düzlem, "referansa kadar" çoğaltma referansı geometriye bağlıdır; model değişince izler.
 - **Bizde:** Köşeye kadar `vtx=[40,30,20]` → taban derinliği 20→35 yapılınca `vtx` hâlâ `[40,30,20]` (yeni köşe z=35'e gitmez). Delikten (Ø8, x=10) referans eksen → delik x=25'e taşınınca eksen `p` hâlâ `[10,15,0]` (`kr2.py`). (Yüz üzerindeki eskiz ve radyüs kenarları doğru izliyor — kr1 TAMAM.)

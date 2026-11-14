@@ -275,7 +275,11 @@ function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false)
     if (!pf) throw new Error("Başlangıç yüzü bulunamadı");
     if (Math.abs(Math.abs(vdot(pf.n, frame0.n)) - 1) > 1e-6) throw new Error("Başlangıç yüzü eskiz düzlemine paralel olmalı");
     so = vdot(vsub(pf.c, frame0.o), frame0.n);
-  } else if (f.fromVtx) so = vdot(vsub(f.fromVtx, frame0.o), frame0.n);
+  } else if (f.fromVtx) {
+    // köşe izlenir; model köşesi değilse (eskiz / referans noktası) nokta olduğu gibi kullanılır
+    const fv = vtxAt(f.fromVtx) ?? f.fromVtx;
+    so = vdot(vsub(fv, frame0.o), frame0.n);
+  }
   so += (f as any).addOff ?? 0;
   const frame = so ? { ...frame0, o: vadd(frame0.o, vmul(frame0.n, so)) } : frame0;
   const sign = (f.rev ? -1 : 1) * (f.cut ? -1 : 1) * (flipped ? -1 : 1);
@@ -291,7 +295,8 @@ function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false)
   let clipFace: any = null;
   if (f.end === "vertex") {
     if (!f.vtx) throw new Error("Hedef köşeyi seçin");
-    d1 = vdot(vsub(f.vtx, frame.o), vmul(frame.n, sign));
+    const tv = vtxAt(f.vtx) ?? f.vtx;
+    d1 = vdot(vsub(tv, frame.o), vmul(frame.n, sign));
     if (d1 <= 1e-6) throw new Error("Köşe bu yönde değil; yönü ters çevirin");
   }
   if (f.end === "surface" || f.end === "offset") {
@@ -979,7 +984,7 @@ function wrapTool(f: Extract<KFeature, { type: "wrap" }>) {
 // Kenar / yüz önce kayıtlı konumla (2 mm) aranır. Bulunamazsa kayıtlı imza (tür, yön, komşu düz yüz
 // normalleri, yarıçap, gövde sınır kutusuna göre göreli konum `u`) ile en uygun aday seçilir.
 // Bulunan referansın imzası ve yeni konumu ana iş parçacığına "heals" olarak döner; belge kendini onarır.
-let heals: { e: Record<string, any>; f: Record<string, any> } = { e: {}, f: {} };
+let heals: { e: Record<string, any>; f: Record<string, any>; v?: Record<string, Vec3>; vs?: Record<string, any> } = { e: {}, f: {}, v: {}, vs: {} };
 const refKey = (v: Vec3) => v.map((x) => (+x).toFixed(3)).join(",");
 function bbAll(): { lo: Vec3; sz: Vec3 } {
   const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity];
@@ -991,6 +996,53 @@ function bbAll(): { lo: Vec3; sz: Vec3 } {
   }
   if (!isFinite(lo[0])) return { lo: [0, 0, 0], sz: [1, 1, 1] };
   return { lo, sz: [0, 1, 2].map((i) => Math.max(hi[i] - lo[i], 1e-3)) as Vec3 };
+}
+// ---------- P-9 / D5-5: köşe (vertex) kalıcı referansı ----------
+type VSig = { k: number; dirs: Vec3[]; u: Vec3 };
+let vsigs: Record<string, VSig> = {};
+const vkey3 = (p: Vec3) => p.map((x) => (+x).toFixed(3)).join(",");
+/** modeldeki tüm köşeler ve köşeden çıkan kenar yönleri */
+function vertexTable(): { p: Vec3; dirs: Vec3[] }[] {
+  const out: { p: Vec3; dirs: Vec3[] }[] = [];
+  const add = (p: Vec3, d: Vec3) => {
+    if (!(vlen(d) > 1e-9)) return;
+    let v = out.find((x) => vlen(vsub(x.p, p)) < 1e-4);
+    if (!v) out.push((v = { p, dirs: [] }));
+    const n = vnorm(d);
+    if (!v.dirs.some((q) => vdot(q, n) > 0.9999)) v.dirs.push(n);
+  };
+  for (const E of allEdges()) {
+    try {
+      const A = tup(E.startPoint), B = tup(E.endPoint);
+      if (vlen(vsub(A, B)) < 1e-6) continue; // kapalı kenar (daire) köşe sayılmaz
+      add(A, vsub(tup(E.pointAt(0.02)), A));
+      add(B, vsub(tup(E.pointAt(0.98)), B));
+    } catch {}
+  }
+  return out;
+}
+/** köşe noktasını o anki modelde bulur: aynı yerde köşe varsa imzasını kaydeder, yoksa imzayla (kenar yönleri + göreli konum) eşler */
+function vtxAt(p: Vec3): Vec3 | null {
+  const key = vkey3(p);
+  const tab = vertexTable();
+  const B = bbAll();
+  const here = tab.find((v) => vlen(vsub(v.p, p)) < 1e-3);
+  if (here) {
+    if (!vsigs[key]) (heals as any).vs[key] = { k: here.dirs.length, dirs: here.dirs, u: relU(here.p, B) };
+    return here.p;
+  }
+  const sg = vsigs[key];
+  if (!sg) return null;
+  const cands = tab
+    .filter((v) => v.dirs.length === sg.k && sg.dirs.every((d) => v.dirs.some((q) => vdot(q, d) > 0.995)))
+    .map((v) => ({ v, sc: vlen(vsub(relU(v.p, B), sg.u)) }))
+    .sort((a, b) => a.sc - b.sc);
+  if (!cands.length) return null;
+  if (cands.length > 1 && cands[1].sc - cands[0].sc < 0.05) return null; // belirsiz
+  const np = cands[0].v.p;
+  (heals as any).v[key] = np;
+  (heals as any).vs[vkey3(np)] = sg;
+  return np;
 }
 const relU = (p: Vec3, B: { lo: Vec3; sz: Vec3 }): Vec3 => [0, 1, 2].map((i) => (p[i] - B.lo[i]) / B.sz[i]) as Vec3;
 const r4 = (v: Vec3): Vec3 => v.map((x) => Math.round(x * 1e4) / 1e4) as Vec3;
@@ -1195,7 +1247,8 @@ function vertexChamfer(f: Extract<KFeature, { type: "chamfer" }>) {
   if (!f.verts?.length) throw new Error("Köşe seçin");
   const ds = [f.d, f.d2 ?? f.d, f.d3 ?? f.d2 ?? f.d];
   if (ds.some((x) => !(x > 0))) throw new Error("Mesafeler sıfırdan büyük olmalı");
-  for (const V of f.verts) {
+  for (const V0 of f.verts) {
+    const V = vtxAt(V0) ?? V0;
     const bi = bodies.findIndex((b) => (b.edges as any[]).some((e) => [0, 1].some((q) => vlen(vsub(tup(e.pointAt(q)), V)) < 1e-3)));
     if (bi < 0) throw new Error("Köşe modelde bulunamadı");
     const dirs: Vec3[] = [];
@@ -1348,7 +1401,9 @@ function snapHook(f: Extract<KFeature, { type: "snaphook" }>) {
   const u = vnorm(vadd(vmul(x0, Math.cos(a)), vmul(vcross(n, x0), Math.sin(a))));
   const v = vnorm(vcross(n, u));
   if (!(f.L > f.hh) || !(f.t > 0) || !(f.w > 0) || !(f.hd > 0) || !(f.hh > 0)) throw new Error("Mandal ölçüleri geçersiz (boy > kanca yüksekliği)");
-  const P = (a2: number, b2: number): Vec3 => vadd(vadd(vsub(f.p, vmul(v, f.w / 2)), vmul(u, a2)), vmul(n, b2));
+  // D5-3: nokta yüzün güncel düzlemine izdüşürülür (yüz taşınınca mandal da gider)
+  const p0 = vadd(f.p, vmul(n, vdot(vsub(pf.c, f.p), n)));
+  const P = (a2: number, b2: number): Vec3 => vadd(vadd(vsub(p0, vmul(v, f.w / 2)), vmul(u, a2)), vmul(n, b2));
   const prof = [P(0, -0.01), P(f.t, -0.01), P(f.t, f.L - f.hh), P(f.t + f.hd, f.L - f.hh), P(f.t, f.L), P(0, f.L)];
   const face = makePolygon(prof as any) as any;
   applyTool(basicFaceExtrusion(face, new Vector(vmul(v, f.w))) as any, false);
@@ -1726,7 +1781,8 @@ function flexTool(f: Extract<KFeature, { type: "flex" }>) {
 }
 
 // ---------- Köşe pahı ----------
-function vertexChamferTool(f: Extract<KFeature, { type: "vchamfer" }>) {
+function vertexChamferTool(f0: Extract<KFeature, { type: "vchamfer" }>) {
+  const f = { ...f0, v: vtxAt(f0.v) ?? f0.v };
   const near = (p: Vec3) => vlen(vsub(p, f.v)) < 1e-4;
   const bi = bodies.findIndex((b) => (b.edges as any[]).some((e) => near(tup(e.startPoint)) || near(tup(e.endPoint))));
   if (bi < 0) throw new Error("Köşe modelde bulunamadı");
@@ -3793,6 +3849,85 @@ async function buildFeature(f: KFeature) {
     case "lip":
       lipGroove(f);
       return;
+    case "probe": {
+      for (const r of (f as any).refs as { key: string; face: FaceRef; frame: Frame }[]) {
+        if (r.key.includes("|cv|")) {
+          // E-5: dönüştürülen kenarın güncel geometrisi
+          const h = bodies.length ? [...matchEdges([(r as any).edge])][0] : undefined;
+          const E = h === undefined ? null : allEdges().find((x) => x.hashCode === h);
+          if (!E) continue;
+          try {
+            const a = tup(E.startPoint), b = tup(E.endPoint), m = tup(E.pointAt(0.5));
+            const ci = String(E.geomType) === "LINE" ? null : circle3d(tup(E.pointAt(0)), tup(E.pointAt(1 / 3)), tup(E.pointAt(2 / 3)));
+            (frames as any)[r.key] = { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1], a, b, m, cc: ci?.c, r: ci?.r, s: edgeSig(E, bbAll()).s };
+          } catch {}
+          continue;
+        }
+        if (r.key.startsWith("fea|")) {
+          const h = bodies.length ? [...matchFaces([r.face])][0] : undefined;
+          const fc = h === undefined ? null : allFaces().find((x) => x.hashCode === h);
+          if (fc) (frames as any)[r.key] = { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1], c: tup(fc.center), s: faceSig(fc, bbAll()).s };
+          continue;
+        }
+        if (r.key.endsWith("|vtx")) {
+          for (const q of (r as any).pts as Vec3[]) vtxAt(q);
+          continue;
+        }
+        if (r.key.endsWith("|axis")) {
+          const rr = r as any;
+          try {
+            if (rr.face) {
+              const h = [...matchFaces([rr.face])][0];
+              const fc = h === undefined ? null : allFaces().find((x) => x.hashCode === h);
+              if (!fc || String(fc.geomType) !== "CYLINDRE") continue;
+              const cp = cylinderParams(fc);
+              let ax = vnorm(cp.a);
+              if (vdot(ax, r.frame.n) < 0) ax = vmul(ax, -1);
+              const p = vadd(cp.L, vmul(cp.a, vdot(vsub(r.frame.o, cp.L), cp.a)));
+              (frames as any)[r.key] = { o: p, x: ax, n: ax, c: tup(fc.center), axis: { p, d: ax }, s: faceSig(fc, bbAll()).s };
+            } else if (rr.edge) {
+              const h = [...matchEdges([rr.edge])][0];
+              const E = h === undefined ? null : allEdges().find((x) => x.hashCode === h);
+              if (!E) continue;
+              const m = tup(E.pointAt(0.5));
+              let p: Vec3, ax: Vec3;
+              if (String(E.geomType) === "LINE") {
+                ax = vnorm(vsub(tup(E.endPoint), tup(E.startPoint)));
+                p = m;
+              } else {
+                const c = circle3d(tup(E.pointAt(0)), tup(E.pointAt(1 / 3)), tup(E.pointAt(2 / 3)));
+                if (!c) continue;
+                ax = vnorm(c.ax);
+                p = c.c;
+              }
+              if (vdot(ax, r.frame.n) < 0) ax = vmul(ax, -1);
+              (frames as any)[r.key] = { o: p, x: ax, n: ax, m, axis: { p, d: ax }, s: edgeSig(E, bbAll()).s };
+            }
+          } catch {}
+          continue;
+        }
+        if (r.key.endsWith("|cyl")) {
+          const h = bodies.length ? [...matchFaces([r.face])][0] : undefined;
+          const fc = h === undefined ? null : allFaces().find((x) => x.hashCode === h);
+          if (!fc || String(fc.geomType) !== "CYLINDRE") continue;
+          try {
+            const cp = cylinderParams(fc);
+            const c = tup(fc.center);
+            let ax = vnorm(cp.a);
+            if (vdot(ax, r.frame.n) < 0) ax = vmul(ax, -1);
+            const ac = vadd(cp.L, vmul(cp.a, vdot(vsub(r.frame.o, cp.L), cp.a)));
+            (frames as any)[r.key] = { o: ac, x: ax, n: ax, c, cyl: { c: ac, ax, r: cp.rho }, s: faceSig(fc, bbAll()).s };
+          } catch {}
+          continue;
+        }
+        const pf = bodies.length ? planarFace(r.face) : null;
+        if (!pf || !vlen(pf.n) || Math.abs(Math.abs(vdot(vnorm(pf.n), r.frame.n)) - 1) > 1e-6) continue;
+        const shift = vdot(vsub(pf.c, r.frame.o), r.frame.n);
+        // imza da bildirilir: önbellekten gelen yapıda onarım (heals) yinelenmez, belge imzayı buradan alır
+        (frames as any)[r.key] = { o: vadd(r.frame.o, vmul(r.frame.n, shift)), x: r.frame.x, n: r.frame.n, c: pf.c, s: faceSig(pf.face, bbAll()).s };
+      }
+      return;
+    }
     case "snaphook":
       snapHook(f);
       return;
@@ -4235,7 +4370,8 @@ async function buildFeature(f: KFeature) {
         // referansa kadar: tohum özelliğin merkezinden referansa (yön boyunca) uzaklık − öteleme
         const bb = items[0].solid.boundingBox.bounds as [Vec3, Vec3];
         const c = vmul(vadd(bb[0], bb[1]), 0.5);
-        const L = vdot(vsub(d1.upTo, c), vnorm(d1.v)) - (d1.upOff ?? 0);
+        const ut = vtxAt(d1.upTo) ?? d1.upTo;
+        const L = vdot(vsub(ut, c), vnorm(d1.v)) - (d1.upOff ?? 0);
         if (!(L > 1e-6)) throw new Error("Referans, çoğaltma yönünde tohum özelliğin önünde olmalı");
         if ((d1.upMode ?? "count") === "count") d1 = { ...d1, spacing: L / Math.max(1, d1.count - 1) };
         else d1 = { ...d1, count: Math.floor(L / Math.max(1e-6, d1.spacing) + 1e-9) + 1 };
@@ -4420,8 +4556,18 @@ function validateBodies(f: KFeature, had: Set<Shape>, nb0: number): string | nul
       nf = 0;
     }
     if (!nf) return "Geometri işlemi boş gövde üretti";
-    const v = volOf(b);
-    if (!(Math.abs(v) > 1e-6)) return "Geometri işlemi hacimsiz (geçersiz) gövde üretti";
+    let v = volOf(b);
+    if (!(Math.abs(v) > 1e-6)) {
+      // bazı gövdelerde (dişte yapıştırılmış birleşim) hacim hesabı istisna verip 0 döner: katılarına bak
+      let sl: Shape[] = [];
+      try {
+        sl = solidsOf(b);
+      } catch {
+        sl = [];
+      }
+      v = sl.reduce((a, x) => a + Math.abs(volOf(x)), 0);
+      if (!(v > 1e-6) && !sl.length) return "Geometri işlemi hacimsiz (geçersiz) gövde üretti";
+    }
   }
   return null;
 }
@@ -4440,7 +4586,7 @@ async function build(id: number, features: KFeature[]) {
   let errors: { featureId: string; message: string }[] = [];
   bodies = [];
   frames = {};
-  heals = { e: {}, f: {} };
+  heals = { e: {}, f: {}, v: {}, vs: {} };
   tools.clear();
   memberReg = new Map();
   welds = [];
@@ -4827,6 +4973,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
    try {
     if (req.type === "build") {
       if (req.fontUrl) fontUrl = req.fontUrl;
+      vsigs = (req as any).vsig ?? {};
       await build(req.id, req.features);
     } else if (req.type === "export") exportShape(req.id, req.format);
     else if (req.type === "measure") measure(req.id, req.items);

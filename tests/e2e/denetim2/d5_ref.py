@@ -191,7 +191,9 @@ with sync_playwright() as p:
     chk("N3 köşe (20,20,15)", a.lastfeat()['p'] == [20, 20, 15], a.lastfeat())
     nm3 = a.lastfeat()['name']
     a.edit_sketch_dim("Ekstrüzyon1", 0, 60)
-    chk("N4 genişlik 60 → köşe noktası (30,20,15)'e gitmeli (P-9 hâlâ?)", a.featbyname(nm3)['p'][0] == 30, a.featbyname(nm3)['p'])
+    # NOT (v0.88): ölçü 40 → 60 olunca çözücü dikdörtgeni simetrik büyütmüyor (x −31,44 … 28,56); köşe gerçek yeni köşeyi izlemeli
+    bbn = a.bbox()
+    chk("N4 genişlik 60 → köşe noktası yeni köşeye (x = sınır kutusu en büyük x) gitmeli (P-9)", abs(a.featbyname(nm3)['p'][0] - bbn[1][0]) < 0.01 and a.featbyname(nm3)['p'][1:] == [20, 15], (a.featbyname(nm3)['p'], bbn))
     a.setup([cs, ext("e1", "s1", 30) | {"name": "Ekstrüzyon1"}]); a.iso()
     a.feature_cmd("Ref. Nokta")
     a.pmseg("Yay merkezi")

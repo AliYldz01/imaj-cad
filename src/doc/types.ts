@@ -110,6 +110,8 @@ export interface SketchData {
   rels: SRel[];
   dims: SDim[];
   seq: number;
+  /** E-5: modele bağlı (dönüştürülmüş) öğeler — model kenarı değişince sabit noktalar güncellenir */
+  links?: { e: EdgeRef; a?: string; b?: string; c?: string; ent?: string; dim?: string }[];
 }
 
 /** Orijin noktası her eskizde sabit (0,0) olarak bulunur */
@@ -120,7 +122,7 @@ export const ORIGIN = "O";
 /** Kenar referansı: orta noktası ve (doğrusalsa) yönü ile geometrik olarak saklanır */
 export interface EdgeRef { m: Vec3; d?: Vec3 | null; /** kalıcı referans imzası (worker doldurur) */ s?: any }
 /** worker'ın döndürdüğü referans onarımları: anahtar = eski konum (3 ondalık) */
-export type RefHeals = { e: Record<string, { m: Vec3; s: any }>; f: Record<string, { c: Vec3; s: any }> };
+export type RefHeals = { e: Record<string, { m: Vec3; s: any }>; f: Record<string, { c: Vec3; s: any }>; v?: Record<string, Vec3>; vs?: Record<string, any> };
 /** Yüz referansı: merkezi ve normali */
 export interface FaceRef { c: Vec3; n?: Vec3 | null; /** silindirik yüz yarıçapı (aynı merkezli yüzleri ayırmak için) */ r?: number }
 
@@ -811,6 +813,8 @@ export interface TextItem { text: string; x: number; y: number; size: number; an
 export interface KPlane { frame: Frame; face?: FaceRef; sketchId?: string }
 
 export type KFeature =
+  /** P-9 / D5-4: yüze bağlı düzlem referanslarını o andaki modelde bulup çerçevesini bildirir (geometri değiştirmez) */
+  | { id: string; type: "probe"; refs: { key: string; face: FaceRef; frame: Frame }[] }
   | { id: string; type: "extrude"; fromFace?: FaceRef | null; fromVtx?: Vec3 | null; vtx?: Vec3 | null; bodyRef?: FaceRef | null; dirVec?: Vec3 | null; flipCut?: boolean; startOff?: number; cut: boolean; pl: KPlane; loops: Loop[]; texts?: TextItem[]; end: EndCond; d1: number; rev: boolean; dir2: boolean; end2: "blind" | "through"; d2: number; face?: FaceRef | null; offd?: number; draft?: number; draftOut?: boolean; twist?: number; merge?: boolean }
   | { id: string; type: "revolve"; cut: boolean; pl: KPlane; loops: Loop[]; axis: [Vec2, Vec2]; angle: number; mid: boolean; rev: boolean; merge?: boolean }
   | { id: string; type: "fillet"; r: number; edges: EdgeRef[]; faces?: FaceRef[]; kind?: "const" | "var" | "full" | "face" | "conic"; rho?: number; r2?: number; radii?: number[]; faces2?: FaceRef[] }

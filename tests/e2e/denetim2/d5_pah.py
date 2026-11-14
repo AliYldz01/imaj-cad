@@ -89,7 +89,7 @@ with sync_playwright() as p:
     v = a.vol()
     chk("V3 derinlik 40 → köşe pahı yeni köşede (statik köşe P-9?)", near(v, 32000 - 1000 / 6, 0.3), (v, a.errs_tree(), a.lastfeat().get('verts')))
     rs = a.reselect("Yeniden seç")
-    chk("V4 'Eksik referans' penceresi çıktı", rs is not None, rs)
+    chk("V4 köşe izlendiği için 'Eksik referans' penceresi çıkmaz (v0.88 köşe imzası)", rs is None, rs)
     if a.pm_open():
         dr = a.draft()
         chk("V5 Yeniden seç → eski köşe listesi temizlendi", not dr.get('verts'), dr.get('verts'))
@@ -139,7 +139,7 @@ with sync_playwright() as p:
     a.edit_sketch_dim("Ekstrüzyon1", 0, 60)
     chk("K5 genişlik 60 → köşe pahı köşede (statik köşe?)", near(a.vol(), 36000 - 1000 / 6, 0.3), (a.vol(), a.errs_tree(), a.lastfeat().get('v')))
     rs = a.reselect("Yeniden seç")
-    chk("K5b eksik referans penceresi", rs is not None, rs)
+    chk("K5b köşe izlendiği için eksik referans penceresi çıkmaz (v0.88)", rs is None, rs)
     if a.pm_open():
         chk("K5c Yeniden seç → eski köşe temizlendi", not a.draft().get('v'), a.draft().get('v'))
         a.cancel("discard")

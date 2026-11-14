@@ -69,10 +69,12 @@ export class Kernel {
     await this.ready;
     return this.request({ type: "asm", op, parts } as any);
   }
+  /** köşe imzaları (belgeden; P-9 kalıcı köşe referansı) */
+  vsig: Record<string, any> = {};
   async build(features: KFeature[]): Promise<BuildResult> {
     await this.ready;
     const fontUrl = new URL("fonts/DejaVuSans.ttf", document.baseURI).href;
-    const r = await this.request<BuildResult>({ type: "build", features, fontUrl } as any, this.buildTimeout);
+    const r = await this.request<BuildResult>({ type: "build", features, fontUrl, vsig: this.vsig } as any, this.buildTimeout);
     return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {}, members: r.members ?? [], heals: r.heals };
   }
 

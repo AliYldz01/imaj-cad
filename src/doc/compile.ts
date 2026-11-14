@@ -247,6 +247,24 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
 
   for (const f of feats) {
     if (f.off) continue;
+    // yüze bağlı düzlem referansları (ayna düzlemi, düzlem tabanı, bölme düzlemi…): çekirdek o anki modelde yüzü bulup yeni çerçeveyi bildirir
+    if (f.type === "sketch" && f.data.links?.length)
+      kfeats.push({ id: `${f.id}~probe`, type: "probe", refs: f.data.links.map((l, i) => ({ key: `${f.id}|cv|${i}`, edge: l.e, face: null, frame: null })) } as any);
+    if (f.type !== "sketch") {
+      const refs: { key: string; face: any; frame: Frame }[] = [];
+      for (const k of ["plane", "base", "base2"]) {
+        const r = (f as any)[k];
+        if (r && r.k === "face" && r.face && r.frame) refs.push({ key: `${f.id}|${k}`, face: r.face, frame: r.frame });
+      }
+      const src = (f as any).src;
+      if (f.type === "axis" && src && (src.face || src.edge)) refs.push({ key: `${f.id}|axis`, face: src.face ?? null, edge: src.edge ?? null, frame: { o: (f as any).p, n: (f as any).d, x: (f as any).d } } as any);
+      // köşe referansları derleme anında kullanılan özellikler (3 noktalı düzlem, referans noktası): çekirdek köşeyi izler, ana iş parçacığı yazar
+      const vp: Vec3[] = f.type === "plane" ? ((f as any).pts ?? []) : f.type === "point" ? [(f as any).p, ...((f as any).more ?? [])].filter(Boolean) : [];
+      if (vp.length) refs.push({ key: `${f.id}|vtx`, pts: vp, face: null, frame: null } as any);
+      const cy = (f as any).cyl;
+      if (f.type === "plane" && cy?.f) refs.push({ key: `${f.id}|cyl`, face: cy.f, frame: { o: cy.c, n: cy.ax, x: cy.ax } });
+      if (refs.length) kfeats.push({ id: `${f.id}~probe`, type: "probe", refs } as any);
+    }
     try {
       switch (f.type) {
         case "sketch3d":

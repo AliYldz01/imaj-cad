@@ -23,7 +23,7 @@ import { flatToDxf } from "./sheet/dxf";
 import { PROFILES, ALIGN_NAMES, placedProfile, sampleLoop, loadLibrary, saveLibrary, type ProfileStd } from "./weld/profiles";
 import { extractLoops } from "./sketch/profile";
 import { sheetSvg, sheetsHtml, plateDxf, type SheetInfo } from "./weld/drawing";
-import { techSheet, techSheet2, sheetDxf, circlesOf, snapPoints, GDT_SYMS, type TechInfo, type FrontPlace, type UDim, type DimOvr, type Annot, type Tol } from "./drawing/techdraw";
+import { techSheet, techSheet2, sheetDxf, circlesOf, snapPoints, relOf, reloc, GDT_SYMS, type TechInfo, type FrontPlace, type UDim, type DimOvr, type Annot, type Tol } from "./drawing/techdraw";
 import { loadImageFile, pictureMesh } from "./sketch/picture";
 import { holeDefaults, MATERIALS, MECH, beamCalc, type BeamSupport, METRIC_PITCH, sizesFor, threadMajor, threadLabel } from "./doc/standards";
 import * as THREE from "three";
@@ -546,6 +546,29 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
   const info = (pg?: [number, number]): TechInfo => ({ title: asmIn ? asmIn.name : doc.name, material: o.material, drawnBy: o.drawnBy, date: new Date().toLocaleDateString("tr-TR"), no: o.no, paper: o.paper, scale: o.scale, dims: o.dims && !asmIn, third: doc.props?.std === "ANSI", dec: doc.props?.dec, props: [doc.props?.author ? `Yazar: ${doc.props.author}` : "", ...(doc.props?.custom ?? []).map((c) => `${c.k}: ${c.v}`)].filter(Boolean).join(" · ") || undefined, bom: asmIn?.bom, balloonOf: asmIn?.balloonOf, off: dr.off, detail: dr.detail, page: pg, user: dr.user, ovr: dr.ovr, notes: dr.notes, vOff: dr.vOff, ...(weldInfo && o.cutTable ? weldInfo : {}) });
   const draw = () => {
     const n = page2 ? 2 : 1;
+    // D9-6: açıklamaların görünüş kutusuna göre göreli konumu (ilk kez) — model değişince buna göre yeniden oturur
+    if (!asmIn) {
+      let add = false;
+      for (const u of dr.user) {
+        const v = viewOf(u.view);
+        if (!v) continue;
+        if (!u.ra) (u.ra = relOf(v, u.a)), (add = true);
+        if (!u.rb && u.dir !== "d") (u.rb = relOf(v, u.b)), (add = true);
+      }
+      for (const nt of dr.notes) {
+        const v = viewOf(nt.view);
+        if (v && !nt.rat) (nt.rat = relOf(v, nt.at)), (add = true);
+      }
+      const D = dr.detail as any, fv = viewOf("front");
+      if (D && fv) {
+        if (D.rx === undefined) [D.rx, D.ry] = relOf(fv, [D.x, D.y]);
+        else {
+          const q = reloc(fv, [D.x, D.y], [D.rx, D.ry], true).p;
+          [D.x, D.y] = q;
+        }
+      }
+      if (add) keepDr();
+    }
     cur = techSheet(data, info(n > 1 ? [1, n] : undefined));
     sheets = [cur.svg];
     if (page2) sheets.push(techSheet2(data, info([2, n]), cur.scale, asmIn?.exploded ?? null).svg);
@@ -632,7 +655,7 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
       if (vx < F.min[0] - 1 || vx > F.max[0] + 1 || vy < F.min[1] - 1 || vy > F.max[1] + 1) return;
       // delik merkezine yakınsa merkeze yakala
       const near = circlesOf(data.views[0]).find((c) => Math.hypot(c.c[0] - vx, c.c[1] - vy) < Math.max(2, 4 / F.s));
-      dr.detail = { ...dr.detail, x: near ? near.c[0] : Math.round(vx * 10) / 10, y: near ? near.c[1] : Math.round(vy * 10) / 10 };
+      dr.detail = { ...dr.detail, ...({ rx: undefined, ry: undefined } as any), x: near ? near.c[0] : Math.round(vx * 10) / 10, y: near ? near.c[1] : Math.round(vy * 10) / 10 };
       keepDr();
       draw();
     });
@@ -963,9 +986,37 @@ function offerReselect(fid: string, msg: string) {
 }
 
 /** worker'ın kalıcı referans onarımlarını belgeye işle (geri alma yığınına girmez) */
-function applyHeals(h: RefHeals) {
+function applyHeals(h: RefHeals): boolean {
+  let moved = false;
+  // köşe imzaları ve taşınan köşeler (P-9 / D5-5)
+  if (h.vs && Object.keys(h.vs).length) {
+    const vs = ((doc as any).vsig ??= {});
+    for (const [k, v] of Object.entries(h.vs)) if (!vs[k]) vs[k] = v;
+  }
+  if (h.v && Object.keys(h.v).length) {
+    const near = (a: any, k: string) => Array.isArray(a) && a.length === 3 && a.map((x: number) => (+x).toFixed(3)).join(",") === k;
+    for (const [k, np] of Object.entries(h.v)) {
+      for (const f of doc.features as any[]) {
+        const fix = (o: any, fld: string) => {
+          if (near(o[fld], k)) (o[fld] = np), (moved = moved || f.type === "plane" || f.type === "point");
+        };
+        fix(f, "vtx");
+        fix(f, "fromVtx");
+        if (f.type === "point") fix(f, "p");
+        if (Array.isArray(f.verts)) f.verts.forEach((_: any, i: number) => fix(f.verts, String(i)));
+        if (f.type === "point" && Array.isArray(f.more)) f.more.forEach((_: any, i: number) => fix(f.more, String(i)));
+        if (f.type === "plane" && Array.isArray(f.pts)) f.pts.forEach((_: any, i: number) => fix(f.pts, String(i)));
+        for (const d of f.dirs ?? []) fix(d, "upTo");
+        if (f.type === "vchamfer") fix(f, "v");
+      }
+      const vs = (doc as any).vsig;
+      if (vs?.[k] && !vs[np.map((x) => (+x).toFixed(3)).join(",")]) vs[np.map((x) => (+x).toFixed(3)).join(",")] = vs[k];
+    }
+    saveDoc();
+  }
+  kernel.vsig = (doc as any).vsig ?? {};
   const ek = Object.keys(h.e).length, fk = Object.keys(h.f).length;
-  if (!ek && !fk) return;
+  if (!ek && !fk) return moved;
   const key = (v: number[]) => v.map((x) => (+x).toFixed(3)).join(",");
   const isV3 = (v: any) => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
   let n = 0;
@@ -977,8 +1028,11 @@ function applyHeals(h: RefHeals) {
     for (const k in o) if (k !== "data" && k !== "s") walk(o[k]);
   };
   doc.features.forEach(walk);
+  if (doc.fea) walk(doc.fea);
   if (n) saveDoc();
+  return moved;
 }
+let refPass = 0;
 async function rebuild() {
   if (asmUI?.on) return;
   if (building) {
@@ -993,7 +1047,119 @@ async function rebuild() {
     const { feats, draftId } = viewFeatures();
     const { kfeats, errors } = compile(feats, doc.profiles ?? {});
     const t0 = performance.now();
+    kernel.vsig = (doc as any).vsig ?? {};
+    // D8-3: SEA sabitleme / yük yüzleri kalıcı referansla izlenir
+    if (doc.fea && !draftId) {
+      const refs: any[] = [];
+      doc.fea.fix.forEach((r, i) => refs.push({ key: `fea|fix|${i}`, face: r, frame: null }));
+      doc.fea.loads.forEach((l, i) => l.ref.forEach((r, j) => refs.push({ key: `fea|ld|${i}|${j}`, face: r, frame: null })));
+      if (refs.length) kfeats.push({ id: "__fea~probe", type: "probe", refs } as any);
+    }
     const res = await kernel.build(kfeats);
+    (window as any).__lastBuild = { frames: res.frames, heals: res.heals, ids: kfeats.map((k) => k.id) };
+    // P-9 / D5-4: yüze bağlı düzlem referansları (ayna, düzlem tabanı, bölme…) yüz taşındıysa güncellenir → bir kez daha kurulur
+    let refMoved = false;
+    for (const [key, fr] of Object.entries(res.frames)) {
+      if (!key.includes("|")) continue;
+      if (key.includes("|cv|")) {
+        // E-5: dönüştürülmüş öğeyi model kenarına göre güncelle
+        const [sid, , ii] = key.split("|");
+        const sf = getFeat(sid) as SketchFeature | undefined, ln = sf?.type === "sketch" ? sf.data.links?.[+ii] : undefined;
+        const fr0 = sf && resolveFrame(sf.plane, doc.features);
+        if (!sf || !ln || !fr0) continue;
+        const g = fr as any, sk = sf.data;
+        const setPt = (id: string | undefined, w: Vec3) => {
+          if (!id || !sk.pts[id]) return false;
+          const q = toLocal(fr0, w), p0 = sk.pts[id];
+          if (Math.hypot(q[0] - p0.x, q[1] - p0.y) < 1e-6) return false;
+          p0.x = q[0];
+          p0.y = q[1];
+          for (const rl of sk.rels as any[]) if (rl.t === "fix" && rl.refs?.[0] === id) (rl.fx = q[0]), (rl.fy = q[1]);
+          return true;
+        };
+        let ch = false;
+        if (ln.c && g.cc) {
+          ch = setPt(ln.c, g.cc) || ch;
+          const ce = sk.ents.find((e: any) => e.id === ln.ent) as any, dm = sk.dims.find((d) => d.id === ln.dim);
+          if (ce && g.r && Math.abs(ce.r - g.r) > 1e-6) (ce.r = g.r), (ch = true);
+          if (dm && g.r && Math.abs(dm.v - 2 * g.r) > 1e-6) (dm.v = 2 * g.r), (ch = true);
+        } else if (g.a && g.b) {
+          // uçlar yer değiştirmiş olabilir: eski noktalara yakın olanı eşle
+          const pa = ln.a && sk.pts[ln.a], pb = ln.b && sk.pts[ln.b];
+          const la = toLocal(fr0, g.a), lb = toLocal(fr0, g.b);
+          const dd = (p: any, q: number[]) => (p ? Math.hypot(p.x - q[0], p.y - q[1]) : 0);
+          const swap = dd(pa, la) + dd(pb, lb) > dd(pa, lb) + dd(pb, la);
+          ch = setPt(ln.a, swap ? g.b : g.a) || ch;
+          ch = setPt(ln.b, swap ? g.a : g.b) || ch;
+        }
+        if (g.m) ln.e.m = g.m;
+        if (!ln.e.s && g.s) ln.e.s = g.s;
+        if (ch) {
+          solveSketch(sk);
+          refMoved = true;
+        }
+        continue;
+      }
+      if (key.startsWith("fea|") && doc.fea) {
+        const pp = key.split("|"), c = (fr as any).c as Vec3;
+        const r = pp[1] === "fix" ? doc.fea.fix[+pp[2]] : doc.fea.loads[+pp[2]]?.ref[+pp[3]];
+        if (r && !(r as any).s && (fr as any).s) (r as any).s = (fr as any).s;
+        if (r && c && Math.hypot(r.c[0] - c[0], r.c[1] - c[1], r.c[2] - c[2]) > 1e-6) r.c = c;
+        continue;
+      }
+      const [fid, fld] = key.split("|");
+      if (fld === "axis") {
+        const af = getFeat(fid) as any, na = (fr as any).axis;
+        if (!af || !na) continue;
+        const sr = af.src?.face ?? af.src?.edge;
+        if (sr && !sr.s && (fr as any).s) sr.s = (fr as any).s;
+        const dp = Math.hypot(...([0, 1, 2].map((i) => na.p[i] - af.p[i]) as [number, number, number]));
+        const dd = 1 - Math.abs(na.d[0] * af.d[0] + na.d[1] * af.d[1] + na.d[2] * af.d[2]);
+        // eksen boyunca kayma önemli değil: yalnız eksen doğrusu değiştiyse yaz
+        const w = [0, 1, 2].map((i) => na.p[i] - af.p[i]), al = w[0] * af.d[0] + w[1] * af.d[1] + w[2] * af.d[2];
+        const perp = Math.hypot(w[0] - al * af.d[0], w[1] - al * af.d[1], w[2] - al * af.d[2]);
+        if ((perp > 1e-6 || dd > 1e-9) && dp > 1e-9) {
+          af.p = na.p;
+          af.d = na.d;
+          if (af.src?.face && (fr as any).c) af.src.face.c = (fr as any).c;
+          if (af.src?.edge && (fr as any).m) af.src.edge.m = (fr as any).m;
+          refMoved = true;
+        }
+        continue;
+      }
+      if (fld === "cyl") {
+        // teğet düzlemin silindiri: eksen / yarıçap yeni geometriden, dokunma noktası eksenle birlikte kayar
+        const pf = getFeat(fid) as any, nc = (fr as any).cyl;
+        if (!pf?.cyl || !nc) continue;
+        if (pf.cyl.f && !pf.cyl.f.s && (fr as any).s) pf.cyl.f.s = (fr as any).s;
+        const dc = [0, 1, 2].map((i) => nc.c[i] - pf.cyl.c[i]);
+        const ax = nc.ax, along = dc[0] * ax[0] + dc[1] * ax[1] + dc[2] * ax[2];
+        const perp = dc.map((v, i) => v - along * ax[i]);
+        if (Math.hypot(...perp) > 1e-6 || Math.abs(nc.r - pf.cyl.r) > 1e-6) {
+          pf.cyl = { ...pf.cyl, c: [pf.cyl.c[0] + perp[0], pf.cyl.c[1] + perp[1], pf.cyl.c[2] + perp[2]], r: nc.r, f: { ...pf.cyl.f, c: (fr as any).c, r: nc.r } };
+          if (pf.pts?.[0]) pf.pts[0] = pf.pts[0].map((v: number, i: number) => v + perp[i]);
+          refMoved = true;
+        }
+        continue;
+      }
+      const r = (getFeat(fid) as any)?.[fld];
+      if (!r || r.k !== "face") continue;
+      if (r.face && !r.face.s && (fr as any).s) r.face.s = (fr as any).s;
+      const moved = Math.hypot(...([0, 1, 2].map((i) => r.frame.o[i] - fr.o[i]) as [number, number, number])) > 1e-6;
+      if (moved) {
+        r.frame = { o: fr.o, x: fr.x, n: fr.n };
+        if (r.face && (fr as any).c) r.face.c = (fr as any).c;
+        refMoved = true;
+      }
+    }
+    if (refMoved && refPass < 2) {
+      refPass++;
+      saveDoc();
+      updatePlanes();
+      pending = true; // finally bloğu yeniden kurar
+      return;
+    }
+    refPass = 0;
     // yüz üzerindeki eskizler: yüz taşındıysa eskiz düzlemini güncelle
     for (const [sid, fr] of Object.entries(res.frames)) {
       const sf = getFeat(sid);
@@ -1002,7 +1168,12 @@ async function rebuild() {
         if (sf.plane.face) sf.plane.face = { ...sf.plane.face, c: [sf.plane.face.c[0] + (fr.o[0] - sf.plane.face.c[0]) * Math.abs(fr.n[0]), sf.plane.face.c[1] + (fr.o[1] - sf.plane.face.c[1]) * Math.abs(fr.n[1]), sf.plane.face.c[2] + (fr.o[2] - sf.plane.face.c[2]) * Math.abs(fr.n[2])] };
       }
     }
-    if (res.heals) applyHeals(res.heals);
+    if (res.heals && applyHeals(res.heals) && refPass < 2) {
+      refPass++;
+      updatePlanes();
+      pending = true;
+      return;
+    }
     viewer.setModel(res.mesh);
     void ghostPreview(feats);
     applyLook();
@@ -5296,7 +5467,7 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else if (d.type === "plane" && (d as any)._pick === "cyl" && m && hit.kind === "face") {
     const fc = m.faces[hit.index];
     if (!fc.r || !fc.ax || !fc.ac) return toast("Silindirik bir yüze dokunun", true);
-    d.cyl = { c: fc.ac, ax: fc.ax, r: fc.r };
+    d.cyl = { c: fc.ac, ax: fc.ax, r: fc.r, f: { c: fc.c, r: fc.r } } as any;
     d.pts = [hit.point];
     (d as any)._pick = undefined;
     renderFeaturePM("plane");
@@ -5429,12 +5600,14 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
   } else if (d.type === "axis" && hit.kind === "face" && m && m.faces[hit.index].r && m.faces[hit.index].ax) {
     const f = m.faces[hit.index];
     [d.p, d.d] = [f.ac ?? f.c, f.ax!];
+    (d as any).src = { face: { c: f.c, r: f.r } }; // P-9: eksen silindiri izler
     drawRefGeom();
   } else if (d.type === "axis" && hit.kind === "edge" && m) {
     const e = m.edges[hit.index];
     if (e.d) [d.p, d.d] = [e.m, e.d];
     else if (e.c && e.ax) [d.p, d.d] = [e.c, e.ax];
     else return toast("Doğrusal veya dairesel bir kenar seçin", true);
+    (d as any).src = { edge: e.d ? { m: e.m, d: e.d } : { m: e.m } };
     drawRefGeom();
   } else if (d.type === "point" && m && (d._pm ?? "auto") !== "auto") {
     if (refPointPick(d, hit, m) === false) return;

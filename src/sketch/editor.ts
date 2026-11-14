@@ -3410,7 +3410,7 @@ export class SketchEditor implements InputHandler {
         (lo = Math.min(lo, s2)), (hi = Math.max(hi, s2));
       }
       const P = (s2: number, k: number): Vec3 => [ac[0] + A[0] * s2 + w[0] * k * f.r!, ac[1] + A[1] * s2 + w[1] * k * f.r!, ac[2] + A[2] * s2 + w[2] * k * f.r!];
-      for (const k of [1, -1]) this.convertEdge({ type: "LINE", s: P(lo, k), e: P(hi, k), m: P((lo + hi) / 2, k), d: A } as any);
+      for (const k of [1, -1]) this.convertEdge({ type: "LINE", s: P(lo, k), e: P(hi, k), m: P((lo + hi) / 2, k), d: A, virt: true } as any);
       return this.host.toast("Silüet kenarları dönüştürüldü");
     }
     if (!f.n) return this.host.toast("Bu yüz türü dönüştürülemez (düz yüz ya da silindir seçin)", true);
@@ -3463,10 +3463,18 @@ export class SketchEditor implements InputHandler {
       addRel(sk, "fix", [id], { fx: q[0], fy: q[1] });
       return id;
     };
+    const link = (o: any) => {
+      if (!info.m || info.virt) return;
+      (sk.links ??= []).push({ e: info.d ? { m: info.m, d: info.d } : { m: info.m }, ...o });
+    };
     if (info.type === "LINE") {
       const a = L(info.s), b = L(info.e);
       if (d2(a, b) < 1e-6) return this.host.toast("Bu kenar eskiz düzlemine dik; dönüştürülemez", true);
-      this.op(() => addLine(sk, pt(a), pt(b)));
+      this.op(() => {
+        const ia = pt(a), ib = pt(b);
+        addLine(sk, ia, ib);
+        link({ a: ia !== ORIGIN ? ia : undefined, b: ib !== ORIGIN ? ib : undefined });
+      });
     } else if (info.type === "CIRCLE" && info.c && info.r && info.ax) {
       if (Math.abs(Math.abs(dot(info.ax, this.frame.n)) - 1) > 1e-4) return this.host.toast("Bu daire eskiz düzlemine paralel değil", true);
       const c = L(info.c);
@@ -3474,7 +3482,9 @@ export class SketchEditor implements InputHandler {
         const cid = pt(c);
         if (info.closed) {
           const ci = addCircle(sk, cid, info.r!);
-          sk.dims.push({ id: nid(sk, "d"), t: "dia", refs: [ci.id], v: info.r! * 2, lp: add2(c, [info.r! * 1.2, info.r! * 1.2]) });
+          const did = nid(sk, "d");
+          sk.dims.push({ id: did, t: "dia", refs: [ci.id], v: info.r! * 2, lp: add2(c, [info.r! * 1.2, info.r! * 1.2]) });
+          link({ c: cid !== ORIGIN ? cid : undefined, ent: ci.id, dim: did });
         } else {
           const s0 = L(info.s), e0 = L(info.e), m0 = L(info.m);
           const ccw = inArc(ang(c, m0), ang(c, s0), ang(c, e0));

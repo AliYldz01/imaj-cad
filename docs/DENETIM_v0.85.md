@@ -87,6 +87,17 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
 - **D5-2 teşhis düzeltmesi:** oyma doğruydu. Betikteki kare (z −5…5) silindirin (z 0…40) yalnız yarısının üstündeydi; kabartma ise silindirin ucundan dışarı taşıp havada malzeme ekliyordu. Sarma artık seçilen silindir yüzünün eksen boyundaki aralığıyla sınırlı. Betik kareyi silindirin tam üstüne alacak şekilde düzeltildi (orta düzlem silindir).
 - **D7-1 madde 3 teşhis düzeltmesi:** `d7_yuzey2` K1'deki "duvar" Ön düzlemde y = 0 doğrusu; Ön düzleme dik çekilince taban ile aynı düzlemde kalıyor (L değil, 40×50 düz levha). 4000 doğru sonuç; betik beklentisi düzeltildi. Gerçek L ve kapalı boru durumları (madde 1–2) yüz başına levha + yuvarlak köşe dolgusuyla doğru (2720 / 2862,8; 5280 / 5851,3 / 5582,8).
 
+### Paket 3 notları (v0.88)
+
+- **Yüze bağlı düzlem referansları** (ayna düzlemi, referans düzlem tabanı / ikinci tabanı, bölme düzlemi…): derleyici özellikten önce bir `probe` adımı ekler; çekirdek yüzü o anki modelde kalıcı referansla (konum, olmazsa imza) bulur, yeni çerçeveyi bildirir; ana iş parçacığı belgeye yazar ve bir kez daha kurar. Teğet düzlemin silindiri ve referans eksenin kaynağı (silindir yüzü / kenar) da aynı yolla izlenir.
+- **Köşe referansları** (köşeye kadar, köşeden başla, köşe pahı, Köşe Pahı, referansa kadar, 3 noktalı düzlem, referans noktası): köşe imzası (çıkan kenar yönleri + göreli konum) `doc.vsig`'de saklanır; köşe yer değiştirince imzayla bulunur ve belgedeki nokta güncellenir. Model köşesi olmayan noktalar eskisi gibi kullanılır.
+- **Mandal** noktası yüzün güncel düzlemine izdüşürülür.
+- **SEA** sabitleme / yük yüzleri ve **dönüştürülmüş eskiz öğeleri** (E-5, `SketchData.links`) aynı mekanizmayla izlenir; dönüştürülen çizginin uçları / dairenin merkezi ve çapı model kenarıyla güncellenir.
+- **Montaj (D9-2 / D9-5):** eşleşme varlığı, bileşenin derlenmiş özelliklerindeki çapalarla izlenir (delik / daire merkezleri = eksen, ekstrüzyon uç düzlemleri); delik taşınınca pim aynı deliğe gider, plaka kalınlaşınca pim yeni üst yüze çıkar. Göreli sınır kutusu yedeği daha seçici (belirsizse ⚠). Kütüphaneden güncelle eski ağı korur.
+- **Teknik resim (D9-6):** kullanıcı ölçüleri, açıklamalar ve Detay B merkezi görünüş kutusuna göre göreli konumu da saklar; model değişince en yakın yakalama noktasına / daireye yeniden oturur, değer yeniden ölçülür.
+- **Betik düzeltmeleri:** `d5_ref` N4 (çözücü dikdörtgeni simetrik büyütmüyor; köşe gerçek yeni köşeyi izlemeli) ve `d5_pah` V4 / K5b (köşe izlendiği için "Eksik referans" penceresi artık çıkmamalı).
+- Hâlâ açık (başka bulgular): teğet düzlem oluşturma (P14), iki düzlem / silindir eksen PM'i (X2 / X6), eşleşme çevirme (E4).
+
 ## 4. Önerilen düzeltme sırası
 
 1. ✅ **Paket 1, veri kaybı ve sessiz yanlış** (v0.86):
@@ -94,7 +105,7 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
    - D9-1, D9-3, D9-4, D10-1, D10-2, D10-3, D10-5;
    - P-2 / D7-3 çekirdek kilidi.
 2. ✅ **Paket 2, sessiz yanlış geometri** (v0.87): P-1, D4-1, D4-3, D5-1, D5-2, D6-1, D6-2, D7-1, D7-4, D8-1, geometri doğrulama altyapısı.
-3. **Paket 3, kalıcı referansların genişletilmesi:** D5-3, D5-4, D5-5, P-9, D8-3, D9-2, D9-5, D9-6, E-5.
+3. ✅ **Paket 3, kalıcı referansların genişletilmesi** (v0.88): D5-3, D5-4, D5-5, P-9, D8-3, D9-2, D9-5, D9-6, E-5.
 4. **Paket 4, telefon:** D2-5, D2-6, D3-5, D1-3, D1-8, D1-9, D10-8, D10-9, D10-10, A-2, A-3.
 5. **Paket 5:** Kalan Yüksek ve Orta bulgular, alan alan.
 6. **Paket 6:** Düşük bulgular.
@@ -1504,7 +1515,7 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/kernel.worker.ts:922` `ring = C(cyl.r).cut(C(r − depth))` — oyma halkasının dış silindiri parçanın silindir yüzüyle **çakışık**; OCC kesmesi dikiş çizgisinde (iki yarım yüz) yalnız bir yarıda başarılı.
 - **Öneri:** Oymada halkayı dışa taşır: `C(cyl.r + 1).cut(C(cyl.r − depth))` (çakışık yüz kalmaz); sonuç hacmini beklenenle (≈ alan × derinlik) karşılaştırıp uyarı ver.
 
-##### D5-3 · Mandal konum noktası mutlak: yüz yer değiştirince mandal eski yerinde kalıp gövdeye gömülüyor
+##### ✅ D5-3 · Mandal konum noktası mutlak: yüz yer değiştirince mandal eski yerinde kalıp gövdeye gömülüyor
 - **Önem:** Kritik · **Tür:** Hata (sessizce yanlış geometri)
 - **SolidWorks:** Mandal, seçilen yüze ve o yüzdeki konuma bağlıdır; parça uzayınca yüzle birlikte taşınır.
 - **Bizde:** 40×30×20 kutu → Mandal → üst yüze dokun → ✓ (+193,5, y max 35 = 20 + 15 ✓). Ağaçtan Ekstrüzyon1 → Derinlik 30 → ✓ → y max **35** (beklenen 45): mandal tabanı y = 20'de kaldı, 10 mm'si gövdenin içinde, hata yok.
@@ -1512,7 +1523,7 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/main.ts:5305` `d.p = hit.point` (dünya noktası); `src/kernel.worker.ts:1299` `P()` doğrudan `f.p`'yi kullanıyor, yüzden (`pf`) yalnız normal alınıyor.
 - **Öneri:** Noktayı yüz düzlemine izdüşür (`p + n·((pf.c − p)·n)`) ya da yüz çerçevesinde yerel (u, v) olarak sakla ve yüz bulununca dünya koordinatına çevir.
 
-##### D5-4 · Yüze bağlı düzlem referansları statik: ayna düzlemi, yüzden öteleme düzlemi ve teğet düzlem model değişince izlemiyor
+##### ✅ D5-4 · Yüze bağlı düzlem referansları statik: ayna düzlemi, yüzden öteleme düzlemi ve teğet düzlem model değişince izlemiyor
 - **Önem:** Kritik · **Tür:** Hata (sessizce yanlış geometri) — P-9 ile aynı kök ama P-9 listesinde olmayan, en sık kullanılan durumlar
 - **SolidWorks:** Ayna düzlemi / referans düzlem tabanı olarak seçilen model yüzü, yüz taşınınca izlenir.
 - **Bizde:**
@@ -1523,7 +1534,7 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/main.ts:1283` `planeRefFromHit` yüz için `{k:"face", frame: frameFromNormal(f.c, f.n)}` dondurulmuş çerçeve; `src/doc/compile.ts:57` `resolveFrame` `ref.frame`'i aynen döndürüyor; `src/main.ts:952–957` çerçeve onarımı yalnız `sketch` özelliklerine yapılıyor (`res.frames`).
 - **Öneri:** `PlaneRef{k:"face"}` için de çekirdekte `planarFace(face)` ile çerçeveyi yeniden bul (deliklerdeki `kplane` gibi) ve `frames` ile mirror / plane / splitbody / draft taraflarına geri yaz; teğet düzlemde silindiri `FaceRef` (r imzalı) olarak sakla.
 
-##### D5-5 · Köşe pahı (Pah > "Köşe pahı" ve Köşe Pahı komutu) köşe koordinatını sabit saklıyor; ebeveyn değişince özellik kayboluyor
+##### ✅ D5-5 · Köşe pahı (Pah > "Köşe pahı" ve Köşe Pahı komutu) köşe koordinatını sabit saklıyor; ebeveyn değişince özellik kayboluyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Köşe (vertex) referansı topolojik; parça boyutu değişince pah yeni köşede kalır.
 - **Bizde:** Pah → Pah türü "Köşe pahı" → mesafe 10 → (20,20,15) köşesine tıkla → ✓ (166,67 eksik ✓). Eskizi düzenle → derinlik 40 → ✓ → hacim **32000** (pah yok), ağaçta "Pah1 :: Köşe modelde bulunamadı", "Eksik referans" penceresi. Köşe Pahı komutunda aynı (genişlik 60 → "Köşe-Pahı1 :: Köşe modelde bulunamadı"). Radyüs / kenar pahı aynı değişiklikte doğru izliyor (kalıcı referans var).
@@ -2192,7 +2203,7 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/main.ts:5863` `chooseMaterial` → `commitDoc` yapıyor ama `renderFea()` / sonuç geçersizleme yok.
 - **Öneri:** Malzeme değişiminde (ve genel olarak `commitDoc` sonrasında) FEA paneli açıksa sonucu geçersiz kılıp paneli yeniden çiz.
 
-##### D8-3 — SEA sabitleme ve yük yüzleri statik koordinatla saklanıyor; model değişince sessizce kayboluyor
+##### ✅ D8-3 — SEA sabitleme ve yük yüzleri statik koordinatla saklanıyor; model değişince sessizce kayboluyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Fikstür ve yükler yüz kimliğine bağlıdır, model değişince yüzü izler.
 - **Bizde:** F1 etüdü (uç yüz z = 100 sabit, üst yüz yük) → Derinlik 150 → ▶ Çöz → "Önce en az bir sabit yüz seçin". Panel "Sabitlemeler (1 yüz)" diyor. İkinci düzen: sabit yüz yerinde kalan kiriş (ters ekstrüzyon, z = 0 sabit) → 100 → 150 → ▶ Çöz → "Yük yüzü ağda bulunamadı" uyarısıyla eski sonuç yerinde kalıyor (D8-1). Özelliklerdeki kalıcı referans iyileştirmesi (`s` imzası, heals) burada kullanılmıyor.
@@ -2524,7 +2535,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/main.ts:8090-8093` `target()`. Yalnız `mode.k !== "part" || !treeSel` denetleniyor; `asmUI.on` denetlenmiyor. `viewer.onRender(place)` montajda da çalışıyor.
 - Öneri: `target()` içinde `if (asmUI?.on) return null;` ekle. Montaja girerken `treeSel = null` yap. `hd.hidden = true` ayarla.
 
-#### D9-2 · Delik taşınınca eş merkezli eşleşme öbür deliğe atlıyor ya da kopuyor (göreli sınır kutusu eşlemesi)
+#### ✅ D9-2 · Delik taşınınca eş merkezli eşleşme öbür deliğe atlıyor ya da kopuyor (göreli sınır kutusu eşlemesi)
 - Önem: **Kritik** · Tür: Hata (eşleşme sessizce yanlış yüze kayıyor)
 - SolidWorks'te: Eşleşme yüzün kalıcı kimliğine bağlıdır. Delik nereye taşınırsa pim de oraya gider.
 - Bizde (`d9_parca.py` P1/P2, `d9_esles.py` E9):
@@ -2558,7 +2569,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/main.ts:107-108` `docUid` kimliği yalnız bellekteki nesneye yazıyor, kaydetmiyor. `src/main.ts:8169` `currentPart()` yalnız kimlik yoksa `saveDoc()` çağırıyor; kimlik `docUid` ile zaten atanmış olduğundan kaydedilmiyor. Yenileyince yeni kimlik üretiliyor.
 - Öneri: Kimlik atanan her yerde (`docUid`, `currentPart`) hemen `saveDoc()` çağır. `enter()` içinde parça kimliği tutmazsa ad + özellik özetiyle eşleştir ya da "parça bağı koptu" uyarısı ver.
 
-#### D9-5 · "Kütüphaneden güncelle" eşleşme referanslarını taşımıyor; pim kalınlaşan plakanın içine gömülü kalıyor
+#### ✅ D9-5 · "Kütüphaneden güncelle" eşleşme referanslarını taşımıyor; pim kalınlaşan plakanın içine gömülü kalıyor
 - Önem: **Kritik** · Tür: Hata (sessizce yanlış montaj)
 - SolidWorks'te: Bileşen yeni sürümle değişince eşleşmeler yeni yüzlere taşınır, olmuyorsa hata verir.
 - Bizde (`d9_parca.py` P5):
@@ -2568,7 +2579,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/asmui.ts:2433-2439` `this.meshes.delete(c.id)` refresh'ten önce çalışıyor. `refresh()` (satır 169) `old` ağı bulamadığı için `remapMates` çağrılmıyor.
 - Öneri: Ağı silme; `k_` anahtarını sıfırla (eski ağ `old` olarak kalsın). Ya da `replaceComp(c, lib[...])` kullan.
 
-#### D9-6 · Teknik resimde kullanıcı ölçüsü ve açıklamalar sabit koordinatlı: parça değişince eski değer yazılıyor
+#### ✅ D9-6 · Teknik resimde kullanıcı ölçüsü ve açıklamalar sabit koordinatlı: parça değişince eski değer yazılıyor
 - Önem: **Kritik** · Tür: Hata (sessizce yanlış resim ölçüsü)
 - SolidWorks'te: Çizimde eklenen ölçüler model kenarına / köşesine bağlıdır. Model değişince değer ve konum güncellenir. Bağ kopunca ölçü "asılı" (gri) gösterilir.
 - Bizde (`d9_resim.py` R2/R3/R10):
