@@ -132,14 +132,14 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Kod:** `src/sketch/model.ts:373-376` (`applicableRelations` mevcut H/V'yi süzmüyor); `src/sketch/editor.ts:360-405` `op()` çözümü kabul ediyor.
 - **Öneri:** Mevcut ilişkilerle çelişen ya da zaten var olan seçenekleri listeleme. Çözücüde sıfır boylu çizgiyi / sağlanmayan kısıtı aşırı tanım say ve reddet.
 
-#### E-3 — 3B eskizde Geri Al / İleri Al hiç çalışmıyor
+#### ✅ E-3 — 3B eskizde Geri Al / İleri Al hiç çalışmıyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** 3B eskizde Ctrl+Z son çizim / ölçü / ilişki adımını geri alır.
 - **Bizde (t13b):** 3B eskizde çizgiye 150 ölçüsü verildi, Ctrl+Z basıldı → `dims3` aynı kaldı. Üst çubuktaki geri al düğmesi de pm modunda devre dışı.
 - **Kod:** `src/main.ts:6909-6913` `undo()` → `if (mode.k !== "part") return;` (3B eskiz `pm` modunda açılıyor).
 - **Öneri:** `sketch3d` taslağı için ayrı bir geri alma yığını tut (her `s3tool` değişikliğinde anlık görüntü al) ve undo/redo'yu ona yönlendir.
 
-#### E-4 — Öteleme (offset) ilişkisel değil: ölçü değişince şekil bozuluyor
+#### ✅ E-4 — Öteleme (offset) ilişkisel değil: ölçü değişince şekil bozuluyor
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks:** Ötelenen zincir "Öteleme" ilişkisiyle bağlı kalır. Mesafe ölçüsü değişince tüm parçalar aynı mesafede yeniden konumlanır, serbestlik artmaz.
 - **Bizde (t09/t09b, fareyle seçim + Uygula):** 40×30 dikdörtgen 5 mm ötelendi. Yalnız kenarlar arası `parallel` ilişkileri ve **ilk kenar için** tek bir `pldist` ölçüsü ekleniyor. Serbestlik 8'den 11'e çıkıyor. Ölçüye çift tıklayıp 8 girilince sonuç: ilk kenar `(45.92,-5.01)-(-5,-5)`, öbür kenarlar 5 mm'de kalıyor, köşe 45.92'ye kayıyor. Şekil bozuk. Daire ötelemesine ölçü ya da ilişki hiç eklenmiyor.
@@ -160,7 +160,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Kod:** `src/sketch/editor.ts:3463-3478` (`info.closed` false → yay).
 - **Öneri:** Aynı merkez/yarıçap/eksendeki komşu yay kenarlarını birleştir. Toplam açı 360° ise daire üret.
 
-#### E-7 — Ölçü etiketi fareyle sürüklenemiyor (yalnız ilk adımda kıpırdıyor) ve sürükleme geri alınamıyor
+#### ✅ E-7 — Ölçü etiketi fareyle sürüklenemiyor (yalnız ilk adımda kıpırdıyor) ve sürükleme geri alınamıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Ölçü metni serbestçe sürüklenir. Sürükleme ayrı bir geri alma adımıdır.
 - **Bizde (t07c):** Etiket 60 px aşağı sürüklendi (20 adım). `lp.y` 10'dan 6.45'e indi ve orada kaldı. Beklenen yaklaşık −13.7. Ayrıca sürüklemeden sonra Ctrl+Z, bir önceki ölçü değeri değişikliğini de (45→40) geri aldı (t07b), çünkü etiket sürüklemesi anlık görüntü almıyor.
@@ -188,7 +188,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Kod:** `src/sketch/editor.ts:1222-1249`. Sürükleme başında `click(press.local)` zinciri başlatıyor. `up`'ta `dragCreates()` artık false olduğu için (`chainActive`) `return` ediliyor.
 - **Öneri:** Sürüklemeyle başlatılan çizimi işaretle (`dragStarted`) ve `up`'ta ikinci noktayı yerleştir. Çizgide zinciri bitir.
 
-#### E-11 — Merkez noktalı kanalda merkez noktası yok, orijine/merkeze bağlanmıyor
+#### ✅ E-11 — Merkez noktalı kanalda merkez noktası yok, orijine/merkeze bağlanmıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Merkez noktalı kanalda merkez noktası vardır ve merkez çizgisinin ortasına bağlıdır. Orijine tıklanırsa çakışık olur.
 - **Bizde (t04):** Merkez Kanal (0,0)→(30,0)→genişlik. Merkez çizgisi `(-30,0)-(30,0)`, ama orta nokta noktası / ilişkisi yok. Rels: `horizontal, tangent×4, equal`. Serbestlik 4 (düz kanalda aynı durumda 2). Kanal orijinden kayabiliyor.
@@ -267,7 +267,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Bizde:** Mesafe, Yönü ters çevir, Çift yön, Tabanı yapı geometrisi. **Yok:** Uçları kapat (yay/çizgi), Zincir seç, Ötelemeyi yapı geometrisi yap, Ölçü ekle aç/kapat, fareyle sürükleyerek mesafe.
 - **Kod:** `src/sketch/editor.ts:5189-5195`.
 
-#### E-23 — Doğrusal/dairesel çoğaltmada ilişki/ölçü yok, dairesel merkez seçimi kısıtlı
+#### ✅ E-23 — Doğrusal/dairesel çoğaltmada ilişki/ölçü yok, dairesel merkez seçimi kısıtlı
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde (t09b):** 4 örnekli doğrusal çoğaltma → `rels=[]`, `dims=[]`, serbestlik 3'ten 12'ye çıktı (örnekler bağımsız). Dairesel: merkez yalnız seçili nokta ya da orijin.
 - **SolidWorks:** Örnekler eşit ilişkisi + aralık/açı ölçüsüyle (isteğe bağlı) bağlıdır. Merkez, yön ve aralık grafik alanda tutamaçla seçilir.
@@ -289,7 +289,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Bizde (t17):** Yay kanal 7 öğe ve 4 ilişki (`midpoint, onLine ×2`). Uç yaylar arasında eşit, iç/dış yaylarla teğet ilişkisi yok. Merkezi orijinde iken serbestlik 6 (SolidWorks'te 4: yarıçap, iki açı, genişlik). Uç yaylardan sürükleme şekli değiştirmedi. 3 noktalı yay kanalı aracı yok.
 - **Kod:** `src/sketch/editor.ts:3046-3078` `arcSlotGeo/buildArcSlot`.
 
-#### E-27 — Sayıyla girişte dikdörtgen ölçüsüz oluşuyor; yalnız 5 araçta var
+#### ✅ E-27 — Sayıyla girişte dikdörtgen ölçüsüz oluşuyor; yalnız 5 araçta var
 - **Önem:** Düşük · **Tür:** Hata (tutarsızlık)
 - **Bizde (t11):** Çizgide 80 mm/30° → `dist:80` ölçüsü eklendi. Dairede çap ölçüsü ekleniyor. Dikdörtgen 50×30 → `dims=[]`. Yay, çokgen ve kanalda sayıyla giriş yok ("Sayıyla giriş: Çizgi, Dikdörtgen veya Daire aracında").
 - **Kod:** `src/sketch/editor.ts:497-545` `numericEntry`.
@@ -305,7 +305,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Bizde (t13):** "3B Eskiz" yalnız Kaynaklı Yapı sekmesinde (`main.ts:6507`). Eskiz sekmesinde bulunmuyor. Helis yalnız 3B eskiz PM'inde "+ Helis" ile sayısal (merkez/eksen/yarıçap/hatve), ya da süpürme içinde.
 - **SolidWorks:** Eskiz açılır menüsünde 3B Eskiz. Helis/Spiral, Özellikler > Eğriler'de ayrı komut.
 
-#### E-30 — 3B eskizde Seç modunda Esc çıkış onay penceresi açıyor
+#### ✅ E-30 — 3B eskizde Seç modunda Esc çıkış onay penceresi açıyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (tutarsızlık)
 - **Bizde (t13b):** Seç modunda Esc → "Çıkmak istediğinize emin misiniz?" penceresi açıldı (✓ düğmesini kapattı). 2B eskizde Esc hiçbir zaman çıkmıyor.
 - **Kod:** `src/sketch/sketch3d.ts:1425-1440` olayı tüketmiyor → `main.ts:7433` `guardedCancel`.

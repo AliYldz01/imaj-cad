@@ -58,7 +58,8 @@ function primitives(sk: SketchData, drag?: DragTarget): Prim[] {
     }
   }
   const ents = entMap(sk);
-  for (const r of sk.rels) out.push(...relPrims(r, ents, sk));
+  const seen = new Set<string>();
+  for (const r of sk.rels) out.push(...relPrims(r, ents, sk, seen));
   for (const d of sk.dims) if (!d.ref) out.push(...dimPrims(d, ents, sk));
   if (drag?.pts)
     for (const [id, [x, y]] of Object.entries(drag.pts)) {
@@ -77,8 +78,31 @@ function primitives(sk: SketchData, drag?: DragTarget): Prim[] {
 const isCurve = (e?: SEnt) => e?.t === "circle" || e?.t === "arc";
 const centerOf = (e: SEnt | undefined, id: string) => (e && (e.t === "circle" || e.t === "arc") ? e.c : id);
 
-function relPrims(r: SRel, ents: Map<string, SEnt>, sk: SketchData): Prim[] {
+/** doğrusal çoğaltma grubunun güncel adım vektörleri [V1x, V1y, V2x, V2y] */
+function groupVec(sk: SketchData, g: string, r0: SRel): number[] {
+  const v = (r0 as any).pv ? [...(r0 as any).pv] : [0, 0, 0, 0];
+  const got = [false, false];
+  const PT = (q: string) => (q === ORIGIN ? { x: 0, y: 0 } : sk.pts[q]);
+  for (const r of sk.rels) {
+    if (r.t !== "lpat" || (r.pg ?? r.id) !== g || !r.pk) continue;
+    const [i, j] = r.pk, S = PT(r.refs[0]), Q = PT(r.refs[1]);
+    if (!S || !Q) continue;
+    if (!j && i && !got[0]) ((v[0] = (Q.x - S.x) / i), (v[1] = (Q.y - S.y) / i), (got[0] = true));
+    if (!i && j && !got[1]) ((v[2] = (Q.x - S.x) / j), (v[3] = (Q.y - S.y) / j), (got[1] = true));
+  }
+  return v;
+}
+
+/** ortak serbest parametre (aynı adla bir kez eklenir) */
+function sharedParam(seen: Set<string>, name: string, value: number): Prim[] {
+  if (seen.has(name)) return [];
+  seen.add(name);
+  return [{ type: "param", name, value, free: true } as any];
+}
+
+function relPrims(r: SRel, ents: Map<string, SEnt>, sk: SketchData, seen: Set<string> = new Set()): Prim[] {
   const id = r.id;
+  const PT = (q: string) => (q === ORIGIN ? { x: 0, y: 0 } : sk.pts[q]);
   const [a, b, c] = r.refs;
   const ea = ents.get(a), eb = ents.get(b);
   switch (r.t) {
@@ -90,6 +114,85 @@ function relPrims(r: SRel, ents: Map<string, SEnt>, sk: SketchData): Prim[] {
       const len = (e: SEnt | undefined, k: string): Prim[] =>
         e?.t === "line" ? [{ id: id + k, type: "p2p_distance", p1_id: e.p1, p2_id: e.p2, distance: name }] : e?.t === "arc" ? [{ id: id + k, type: "arc_length", a_id: e.id, dist: name }] : [];
       return [{ type: "param", name, value: Math.max(1e-6, curveLength(sk, ea)), free: true } as any, ...len(ea, ""), ...len(eb, "#b")];
+    }
+    case "offset": {
+      // E-4: ötelenen her parça tabanından aynı (ortak) mesafede: çizgi = uç noktasının tabana uzaklığı, yay / daire = yarıçap farkı
+      const name = "O_" + id;
+      const out: Prim[] = [];
+      let v0 = 0;
+      for (let i = 0; i + 1 < r.refs.length; i += 2) {
+        const eo = ents.get(r.refs[i]) as any, en = ents.get(r.refs[i + 1]) as any;
+        if (!eo || !en) continue;
+        const k = id + "#" + i;
+        if (eo.t === "line" && en.t === "line") {
+          const A = PT(eo.p1), B = PT(eo.p2), Q = PT(en.p1);
+          const L = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+          const cr = (B.x - A.x) * (Q.y - A.y) - (B.y - A.y) * (Q.x - A.x);
+          v0 ||= Math.abs(cr) / L;
+          // işaretli: yardımcı ayak noktası F tabanda, F→Q taban yönüne +/−90° (öteleme karşı tarafa geçemez)
+          const ux = (B.x - A.x) / L, uy = (B.y - A.y) / L, t = (Q.x - A.x) * ux + (Q.y - A.y) * uy;
+          const F = k + "#F", an = k + "#A";
+          out.push({ id: F, type: "point", x: A.x + ux * t, y: A.y + uy * t, fixed: false });
+          out.push({ type: "param", name: an, value: Math.atan2(uy, ux), free: true } as any);
+          out.push({ id: k + "#ba", type: "p2p_angle", p1_id: eo.p1, p2_id: eo.p2, angle: an });
+          out.push({ id: k + "#on", type: "point_on_line_pl", p_id: F, l_id: eo.id });
+          out.push({ id: k + "#pa", type: "p2p_angle_incr_angle", p1_id: F, p2_id: en.p1, angle: an, incrAngle: cr >= 0 ? Math.PI / 2 : -Math.PI / 2 });
+          out.push({ id: k, type: "p2p_distance", p1_id: F, p2_id: en.p1, distance: name });
+        } else if ((eo.t === "arc" || eo.t === "circle") && (en.t === "arc" || en.t === "circle")) {
+          v0 ||= Math.abs(en.r - eo.r);
+          const big = en.r >= eo.r;
+          out.push({ id: k, type: "difference", param1: { o_id: big ? eo.id : en.id, prop: "radius" }, param2: { o_id: big ? en.id : eo.id, prop: "radius" }, difference: name });
+        }
+      }
+      return out.length ? [...sharedParam(seen, name, Math.max(1e-6, v0)), ...out] : [];
+    }
+    case "lpat": {
+      // E-23: örnek = tohum + i·V1 + j·V2 (V1, V2 grubun ortak serbest vektörleri)
+      const [i, j] = r.pk ?? [1, 0];
+      const g = r.pg ?? id, S = PT(a), Q = PT(b);
+      if (!S || !Q) return [];
+      const out: Prim[] = [];
+      // (proportional kısıtı bu derlemede oranı yok sayıyor) → tohumdan örneğe ara parametrelerle adım adım: i kez V1, j kez V2
+      for (const ax of ["x", "y"] as const) {
+        const dv = Q[ax] - S[ax];
+        // ilk tahmin: grubun tek yönlü örneklerinden (tutarlı başlangıç; yoksa kayıtlı vektör)
+        const gv = groupVec(sk, g, r);
+        const v1 = ax === "x" ? gv[0] : gv[1], v2 = ax === "x" ? gv[2] : gv[3];
+        void dv;
+        const steps: string[] = [];
+        if (i) out.push(...sharedParam(seen, `V1${ax}_${g}`, v1));
+        if (j) out.push(...sharedParam(seen, `V2${ax}_${g}`, v2));
+        for (let k = 0; k < i; k++) steps.push(`V1${ax}_${g}`);
+        for (let k = 0; k < j; k++) steps.push(`V2${ax}_${g}`);
+        let prev: any = { o_id: a, prop: ax }, cur = S[ax];
+        steps.forEach((st, k) => {
+          const last = k === steps.length - 1;
+          cur += st.startsWith("V1") ? v1 : v2;
+          const nx: any = last ? { o_id: b, prop: ax } : `T${ax}${k}_${id}`;
+          if (!last) out.push({ type: "param", name: nx, value: cur, free: true } as any);
+          out.push({ id: `${id}#${ax}${k}`, type: "difference", param1: prev, param2: nx, difference: st });
+          prev = nx;
+        });
+      }
+      return out;
+    }
+    case "cpat": {
+      // E-23: örnek noktası merkezden tohumla aynı uzaklıkta ve tohum açısı + artım açısında
+      const [cc, sp, qp] = r.refs;
+      const C = PT(cc), S = PT(sp);
+      if (!C || !S) return [];
+      const g = r.pg ?? id;
+      const R0 = Math.hypot(S.x - C.x, S.y - C.y);
+      const rn = `R_${g}_${sp}`, an = `A_${g}_${sp}`;
+      const out: Prim[] = [];
+      if (!seen.has(rn)) {
+        out.push(...sharedParam(seen, rn, Math.max(1e-6, R0)), ...sharedParam(seen, an, Math.atan2(S.y - C.y, S.x - C.x)));
+        out.push({ id: `${id}#sr`, type: "p2p_distance", p1_id: cc, p2_id: sp, distance: rn });
+        out.push({ id: `${id}#sa`, type: "p2p_angle", p1_id: cc, p2_id: sp, angle: an });
+      }
+      out.push({ id: `${id}#r`, type: "p2p_distance", p1_id: cc, p2_id: qp, distance: rn });
+      out.push({ id: `${id}#a`, type: "p2p_angle_incr_angle", p1_id: cc, p2_id: qp, angle: an, incrAngle: r.pa ?? 0 });
+      return out;
     }
     case "onLine":
       return [{ id, type: "point_on_line_pl", p_id: a, l_id: b }];

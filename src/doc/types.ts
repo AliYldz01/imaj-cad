@@ -60,6 +60,9 @@ export type RelType =
   | "midpoint" // nokta, çizgi
   | "symmetric" // nokta, nokta, merkez çizgisi
   | "eqcurve" // eşit eğri uzunluğu (çizgi / yay)
+  | "offset" // E-4: öteleme — refs [taban1, yeni1, taban2, yeni2, …] hepsi ortak mesafe
+  | "lpat" // E-23: doğrusal çoğaltma örneği — refs [tohum noktası, örnek noktası], pk = [i, j], pg = grup
+  | "cpat" // E-23: dairesel çoğaltma örneği — refs [merkez, tohum noktası, örnek noktası], pa = açı artımı (rad), pg = grup
   | "fix"; // nokta
 
 export type DimType =
@@ -79,6 +82,12 @@ export interface SRel {
   /** sabitle için kayıtlı konum */
   fx?: number;
   fy?: number;
+  /** çoğaltma ilişkisi: örnek çarpanları (i, j), grup kimliği, dairesel açı artımı (rad) */
+  pk?: number[];
+  pg?: string;
+  pa?: number;
+  /** doğrusal çoğaltma oluşturulurken adım vektörleri (ilk tahmin yedeği) */
+  pv?: number[];
 }
 export interface SDim {
   id: string;

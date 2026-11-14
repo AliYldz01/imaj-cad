@@ -3,7 +3,7 @@ import { Viewer, type InputHandler, type PickHit } from "./viewer";
 import { Kernel } from "./kernel";
 import type { RefHeals } from "./doc/types";
 import { initSolver } from "./sketch/solver";
-import { SketchEditor, TOOL_NAMES, PICK_TOOLS, type SkTool } from "./sketch/editor";
+import { SketchEditor, TOOL_NAMES, PICK_TOOLS, NUM_TOOLS, type SkTool } from "./sketch/editor";
 import { newSketch, nid, addPt, addLine } from "./sketch/model";
 import { mesh3mf, jpegPdf, sketchDxf, loopsDxf, faceLoops2D } from "./io/export";
 import { pointPos } from "./sketch/profile";
@@ -2753,6 +2753,7 @@ function editFeature(id: string) {
 function renderFeaturePM(kind: string) {
   if (mode.k !== "pm") return;
   const d = mode.draft as any;
+  if (kind === "sketch3d") s3Record();
   const body = $("#pm-body");
   body.innerHTML = "";
   const upd = () => schedulePreview();
@@ -7660,7 +7661,41 @@ function runCmd(c: { id: string; run: () => unknown }, t: string) {
   renderCommands();
   updateUndo();
 }
+// E-3: 3B eskiz taslağının geri alma geçmişi (her değişiklikte anlık görüntü; zincir durumu `_act` sayılmaz)
+let s3H: { d: object | null; last: string; hist: string[]; fut: string[] } = { d: null, last: "", hist: [], fut: [] };
+function s3Json(d: any) {
+  return JSON.stringify(d, (k, v) => (k === "_act" ? undefined : v));
+}
+function s3Record() {
+  const d = s3tool?.active() ? (mode as any).draft : null;
+  if (!d || s3tool.dragging()) return;
+  const j = s3Json(d);
+  if (s3H.d !== d) s3H = { d, last: j, hist: [], fut: [] };
+  else if (j !== s3H.last) s3H.hist.push(s3H.last), (s3H.fut = []), (s3H.last = j);
+  updateUndo();
+}
+function s3Restore(from: string[], to: string[]) {
+  const d = (mode as any).draft;
+  const j = from.pop();
+  if (!d || j === undefined) return;
+  to.push(s3H.last);
+  s3H.last = j;
+  for (const k of Object.keys(d)) delete d[k];
+  Object.assign(d, JSON.parse(j), { _act: -1 });
+  s3tool.reset();
+  s3tool.resolve();
+  s3H.last = s3Json(d);
+  renderFeaturePM("sketch3d");
+  drawSketches();
+  schedulePreview();
+  updateUndo();
+}
 function updateUndo() {
+  if (s3tool?.active()) {
+    ($("#undo") as HTMLButtonElement).disabled = s3H.d !== (mode as any).draft || !s3H.hist.length;
+    ($("#redo") as HTMLButtonElement).disabled = s3H.d !== (mode as any).draft || !s3H.fut.length;
+    return;
+  }
   if (asmUI?.on && mode.k === "part") {
     ($("#undo") as HTMLButtonElement).disabled = !asmUI.canUndo();
     ($("#redo") as HTMLButtonElement).disabled = !asmUI.canRedo();
@@ -7673,6 +7708,7 @@ function updateUndo() {
 function undo() {
   eqSketchErr.clear();
   if (mode.k === "sketch") return mode.editor.undo(), updateUndo();
+  if (s3tool?.active()) return s3H.d === (mode as any).draft ? s3Restore(s3H.hist, s3H.fut) : undefined;
   // montaj açıkken montajın kendi geçmişi (arkadaki parça belgesi değişmez)
   if (asmUI?.on) return void (mode.k === "part" && asmUI.undo().then(updateUndo));
   if (mode.k !== "part") return;
@@ -7690,6 +7726,7 @@ function undo() {
 function redo() {
   eqSketchErr.clear();
   if (mode.k === "sketch") return mode.editor.redo(), updateUndo();
+  if (s3tool?.active()) return s3H.d === (mode as any).draft ? s3Restore(s3H.fut, s3H.hist) : undefined;
   if (asmUI?.on) return void (mode.k === "part" && asmUI.redo().then(updateUndo));
   if (mode.k !== "part") return;
   const s = redoStack.pop();
@@ -8277,7 +8314,7 @@ window.addEventListener("keydown", (e) => {
   if (document.querySelector("dialog[open]")) return;
   const plain = !(e.ctrlKey || e.metaKey || e.altKey);
   // eskizde sayıyla giriş (rakama bas)
-  if (plain && /^[0-9.,-]$/.test(e.key) && mode.k === "sketch" && ["line", "centerline", "rect", "crect", "circle"].includes(mode.editor.tool)) return e.preventDefault(), mode.editor.numericEntry(e.key);
+  if (plain && /^[0-9.,-]$/.test(e.key) && mode.k === "sketch" && NUM_TOOLS.includes(mode.editor.tool)) return e.preventDefault(), mode.editor.numericEntry(e.key);
   if (e.key === "Escape") return e.preventDefault(), escAction();
   const c = comboOf(e);
   const a = c ? keyMap(allActs()).get(c) : undefined;
@@ -8295,6 +8332,7 @@ function escAction() {
       else mode.editor.sel.clear(), mode.editor.render(), mode.editor.renderPanel();
       renderCommands();
     } else if (mode.k === "pickSketchPlane") cancelPick();
+    else if (s3tool?.active()) s3tool.escape(); // E-30: 3B eskizde Esc yalnız aracı / seçimi bırakır (2B gibi)
     else if (mode.k === "pm") void guardedCancel(true);
     else if (mode.k === "measure" || mode.k === "section" || mode.k === "flat") endAux(), renderCommands();
     else if (asmUI?.on) {
@@ -8718,7 +8756,7 @@ function renderActBar() {
     b("✓", ed.isDrawing() ? "Bitir" : "Eskizden çık", () => (ed.isDrawing() ? ed.finishChain() : exitSketch(true)), "ok");
     b("✕", "İptal / Seç", () => escAction());
     if (ed.tool === "line") b("A", "Çizgi ↔ teğet yay", () => ed.toggleLineArc(), (ed as any).st?.arc ? "on" : "");
-    if (["line", "centerline", "rect", "crect", "circle"].includes(ed.tool)) b("123", "Sayıyla gir", () => ed.numericEntry(), "small");
+    if (NUM_TOOLS.includes(ed.tool)) b("123", "Sayıyla gir", () => ed.numericEntry(), "small");
   } else if (mode.k === "pm") {
     b("✓", "Tamam", () => pmOk(), "ok");
     b("✕", "İptal", () => pmCancel());

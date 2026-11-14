@@ -78,6 +78,39 @@ export class Sketch3DTool {
   active() {
     return !!this.ctx.draft();
   }
+  /** nokta sürükleniyor mu (geri alma anlık görüntüsü sürükleme bitince alınır) */
+  dragging() {
+    return !!this.drag?.moved;
+  }
+  /** geçici araç durumunu sıfırla (geri al / ileri al sonrası) */
+  reset() {
+    document.querySelector(".s3-relbar")?.remove();
+    this.selDim = null;
+    this.rectP = null;
+    this.arcPick = [];
+    this.dimPick = [];
+    this.dimPend = null;
+    this.splP = [];
+    this.sel = [];
+    this.last = null;
+    this.drag = null;
+    this.clear();
+  }
+  /** E-30: Esc — çıkmaz; sırayla bekleyen seçim / ölçü, zincir, araç bırakılır (2B eskiz gibi) */
+  escape() {
+    if (this.rectP || this.dimPick.length || this.sel.length || this.arcPick.length || this.dimPend || this.selDim) {
+      this.selDim = null;
+      document.querySelector(".s3-relbar")?.remove();
+      this.rectP = null;
+      this.arcPick = [];
+      this.dimPick = [];
+      this.dimPend = null;
+      this.sel = [];
+      this.ctx.changed();
+    } else if (this.mode === "spline" && this.splP.length) this.finishSpline();
+    else if (this.mode === "line" && this.anchor() >= 0) this.endChain();
+    else if (this.mode !== "select") this.setMode("select");
+  }
   get planeName() {
     return PLANES[this.plane];
   }
@@ -423,7 +456,7 @@ export class Sketch3DTool {
       this.press = null;
       const dg = this.drag;
       this.drag = null;
-      if (dg?.moved) return;
+      if (dg?.moved) return this.ctx.changed();
       if (this.mode === "select" || this.mode === "dim") return this.pickClick(e);
       // Ctrl + düz yüz: eksen takımını yüze hizala (XY = yüz); Ctrl + boşluk: global eksenler
       if (e.ctrlKey || e.metaKey) return this.alignTo(this.ctx.faceNormal?.(e.clientX, e.clientY) ?? null);
@@ -1458,25 +1491,10 @@ export class Sketch3DTool {
       e.stopPropagation();
       this.dimPend = { ...this.dimPend, t: this.dimPend.t === "rad" ? "dia" : "rad" };
       this.ctx.viewer.requestRender();
-    } else if (e.key === "Escape" && (this.rectP || this.dimPick.length || this.sel.length || this.arcPick.length || this.dimPend || this.selDim)) {
+    } else if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
       e.preventDefault();
       e.stopPropagation();
-      this.selDim = null;
-      document.querySelector(".s3-relbar")?.remove();
-      this.rectP = null;
-      this.arcPick = [];
-      this.dimPick = [];
-      this.dimPend = null;
-      this.sel = [];
-      this.ctx.changed();
-    } else if (e.key === "Escape" && this.mode !== "select" && !(this.mode === "line" && this.anchor() >= 0)) {
-      e.preventDefault();
-      e.stopPropagation();
-      this.setMode("select");
-    } else if (e.key === "Escape" && this.anchor() >= 0) {
-      e.preventDefault();
-      e.stopPropagation();
-      this.endChain();
+      this.escape();
     } else if (/^[0-9.,]$/.test(e.key) && !e.ctrlKey && !e.metaKey && this.anchor() >= 0 && this.last) {
       e.preventDefault();
       e.stopPropagation();

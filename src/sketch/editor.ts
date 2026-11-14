@@ -53,6 +53,8 @@ function ghostSafe(box: HTMLElement, x: number, y: number) {
 /** D2-5: dokunulan öğeyi işleyen (yeni nokta koymayan) araçlar — telefonda imleç kayması ve kaldırınca yerleştir yok */
 export const PICK_TOOLS: SkTool[] = ["select", "trim", "extend", "fillet", "schamfer", "split", "convert", "pierce", "isect", "dim", "eqcurve", "ordinate", "jog", "block", ...OP_TOOLS];
 
+/** E-27: sayıyla girişin çalıştığı araçlar */
+export const NUM_TOOLS: string[] = ["line", "centerline", "rect", "crect", "circle", "carc", "polygon", "slot", "cslot"];
 export const TOOL_NAMES: Record<SkTool, string> = {
   select: "Seç",
   free: "Serbest Çizim",
@@ -545,6 +547,15 @@ export class SketchEditor implements InputHandler {
 
   /** Sayıyla çizim: çizgi (X,Y / uzunluk, açı), dikdörtgen (G, Y), daire (Ø) */
   private numDims = new Set<string>();
+  /** dikdörtgen kenarlarına sayıyla girilen uzunluk ölçüleri */
+  private numDimLine(ls: SLine[], vs: number[]) {
+    ls.forEach((l, i) => {
+      const did = nid(this.data, "d");
+      this.numDims.add(did);
+      const m = mul2(add2(P(this.data, l.p1), P(this.data, l.p2)), 0.5);
+      this.data.dims.push({ id: did, t: "dist", refs: [l.p1, l.p2], sub: "a", v: vs[i], lp: m } as SDim);
+    });
+  }
   numericEntry(first = "") {
     const st = this.st, t = this.tool;
     const r1 = (v: number) => Math.round(v * 100) / 100;
@@ -595,7 +606,82 @@ export class SketchEditor implements InputHandler {
       if (!st.aPos) startXY();
       else {
         fields = [["Genişlik", 50], ["Yükseklik", 30]];
-        apply = (v) => at(add2(st.aPos, t === "rect" ? [v[0], v[1]] : [v[0] / 2, v[1] / 2]));
+        apply = (v) => {
+          if (!v[0] || !v[1]) return;
+          const n0 = this.data.ents.length;
+          at(add2(st.aPos, t === "rect" ? [v[0], v[1]] : [v[0] / 2, v[1] / 2]));
+          // E-27: girilen genişlik / yükseklik ölçü olarak eklenir (çizgi ve dairedeki gibi)
+          const ls = this.data.ents.slice(n0).filter((e) => e.t === "line" && !e.cons) as SLine[];
+          const hl = ls.find((l) => this.data.rels.some((r) => r.t === "horizontal" && r.refs[0] === l.id));
+          const vl = ls.find((l) => this.data.rels.some((r) => r.t === "vertical" && r.refs[0] === l.id));
+          if (hl && vl) this.op(() => this.numDimLine([hl, vl], [Math.abs(v[0]), Math.abs(v[1])]), "");
+        };
+      }
+    } else if (t === "carc") {
+      if (!st.aPos) startXY();
+      else if (!st.bPos) {
+        fields = [["Yarıçap R", 20], ["Başlangıç açısı °", 0]];
+        apply = (v) => {
+          if (!(v[0] > 0)) return;
+          const a = (v[1] * Math.PI) / 180;
+          at(add2(st.aPos, [v[0] * Math.cos(a), v[0] * Math.sin(a)]));
+        };
+      } else {
+        const a0 = ang(st.aPos, st.bPos), r = d2(st.aPos, st.bPos);
+        fields = [["Bitiş açısı °", r1(((a0 * 180) / Math.PI + 90) % 360)]];
+        apply = (v) => {
+          const a1 = (v[0] * Math.PI) / 180;
+          let sw = a1 - a0;
+          while (sw <= 0) sw += TAU;
+          while (sw > TAU) sw -= TAU;
+          st.lastAng = a1;
+          st.sweep = sw;
+          const n0 = this.data.ents.length;
+          at(add2(st.aPos, [r * Math.cos(a1), r * Math.sin(a1)]));
+          const e = this.data.ents.slice(n0).find((x) => x.t === "arc");
+          if (e) this.op(() => this.data.dims.push({ id: nid(this.data, "d"), t: "rad", refs: [e.id], v: r, lp: add2(P(this.data, (e as SArc).c), [r * 0.5, r * 0.5]) } as SDim), "");
+        };
+      }
+    } else if (t === "polygon") {
+      if (!st.aPos) startXY();
+      else {
+        fields = [["Daire çapı Ø", 40], ["Açı °", 90]];
+        apply = (v) => {
+          if (!(v[0] > 0)) return;
+          const n0 = this.data.ents.length;
+          const a = (v[1] * Math.PI) / 180;
+          at(add2(st.aPos, [(v[0] / 2) * Math.cos(a), (v[0] / 2) * Math.sin(a)]));
+          const cc = this.data.ents.slice(n0).find((x) => x.t === "circle" && x.cons);
+          if (cc) this.op(() => this.data.dims.push({ id: nid(this.data, "d"), t: "dia", refs: [cc.id], v: v[0], lp: add2(P(this.data, (cc as SCircle).c), [v[0] * 0.4, v[0] * 0.6]) } as SDim), "");
+        };
+      }
+    } else if (t === "slot" || t === "cslot") {
+      if (!st.aPos) startXY();
+      else if (!st.bPos) {
+        fields = [[t === "slot" ? "Merkezler arası" : "Merkezler arası", 40], ["Açı °", 0]];
+        apply = (v) => {
+          if (!(v[0] > 0)) return;
+          const a = (v[1] * Math.PI) / 180, L = t === "slot" ? v[0] : v[0] / 2;
+          st.numAng = ((v[1] % 180) + 180) % 180;
+          at(add2(st.aPos, [L * Math.cos(a), L * Math.sin(a)]));
+        };
+      } else {
+        fields = [["Genişlik", 10]];
+        apply = (v) => {
+          if (!(v[0] > 0)) return;
+          const u = norm2(sub2(st.bPos, st.aPos)), k = st.numAng;
+          const n0 = this.data.ents.length, sd = this.opts.slotDims;
+          // ölçüler: merkezler arası + genişlik (Ø) — kanal paneli seçimi "yok" olsa da girilen değerler ölçü olur
+          if (sd === "none") this.opts.slotDims = "cc";
+          try {
+            at(add2(st.bPos, mul2(perp(u), v[0] / 2)));
+          } finally {
+            this.opts.slotDims = sd;
+          }
+          const cl = this.data.ents.slice(n0).find((x) => x.t === "line" && x.cons) as SLine | undefined;
+          if (cl && (k === 0 || k === 90) && !this.data.rels.some((r) => (r.t === "horizontal" || r.t === "vertical") && r.refs[0] === cl.id))
+            this.op(() => addRel(this.data, k === 0 ? "horizontal" : "vertical", [cl.id]), "");
+        };
       }
     } else if (t === "circle") {
       if (!st.aPos) startXY();
@@ -608,7 +694,7 @@ export class SketchEditor implements InputHandler {
           if (c?.t === "circle") this.op(() => this.data.dims.push({ id: nid(this.data, "d"), t: "dia", refs: [c.id], v: v[0], lp: add2(P(this.data, c.c), [v[0] * 0.4, v[0] * 0.6]) } as SDim));
         };
       }
-    } else return this.host.toast("Sayıyla giriş: Çizgi, Dikdörtgen veya Daire aracında");
+    } else return this.host.toast("Sayıyla giriş: Çizgi, Dikdörtgen, Daire, Merkez Yay, Çokgen veya Kanal aracında");
     document.querySelector(".dim-prompt")?.remove();
     const box = document.createElement("div");
     box.className = "dim-prompt quick num-entry";
@@ -2576,6 +2662,7 @@ export class SketchEditor implements InputHandler {
         const b = st.bPos as Vec2;
         let ainf = st.ainf as Inference;
         const binf = st.binf as Inference;
+        const minf = this.tool === "cslot" ? ainf : null;
         if (this.tool === "cslot") {
           a = [2 * a[0] - b[0], 2 * a[1] - b[1]];
           ainf = { p: a };
@@ -2588,6 +2675,13 @@ export class SketchEditor implements InputHandler {
           const c2 = this.makePoint(binf);
           const cl = addLine(sk, c1, c2, true);
           if (binf.hv) addRel(sk, binf.hv === "h" ? "horizontal" : "vertical", [cl.id]);
+          // E-11: merkez noktalı kanalda ilk tıklama merkez noktasıdır (orijin / var olan noktaya bağlanır), merkez çizgisinin ortasında
+          if (minf) {
+            const had = new Set(Object.keys(sk.pts));
+            const m = this.makePoint(minf);
+            if (m !== ORIGIN && !had.has(m)) addPointEnt(sk, m);
+            addRel(sk, "midpoint", [m, cl.id]);
+          }
           const t1 = addPt(sk, add2(a, mul2(n, w))), t2 = addPt(sk, add2(b, mul2(n, w)));
           const b1 = addPt(sk, add2(a, mul2(n, -w))), b2 = addPt(sk, add2(b, mul2(n, -w)));
           const a1 = addArc(sk, c1, t1, b1);
@@ -3808,7 +3902,7 @@ export class SketchEditor implements InputHandler {
         const pts = [...this.sel].filter((id) => id === ORIGIN || sk.pts[id]);
         const cpt = pts.length === 1 ? P(sk, pts[0]) : ([0, 0] as Vec2);
         if (!ents.length) return "Çoğaltılacak öğeleri seçin";
-        circularPattern(sk, ents, { c: cpt, n: Math.max(2, Math.round(o.cn)), total: o.ctotal, skip: skipList(o.pskip) });
+        circularPattern(sk, ents, { c: cpt, cid: pts.length === 1 ? pts[0] : ORIGIN, n: Math.max(2, Math.round(o.cn)), total: o.ctotal, skip: skipList(o.pskip) });
         return null;
       }
       case "move": {
@@ -4954,14 +5048,10 @@ export class SketchEditor implements InputHandler {
   private dimClickT = { id: "", t: 0 };
   private wireDimLabel(el: HTMLElement, d: SDim) {
     let start: { x: number; y: number; moved: boolean } | null = null;
-    el.addEventListener("pointerdown", (e) => {
-      e.stopPropagation();
-      el.setPointerCapture(e.pointerId);
-      start = { x: e.clientX, y: e.clientY, moved: false };
-    });
-    el.addEventListener("pointermove", (e) => {
+    // E-7: sürükleme pencere düzeyinde izlenir (render etiketi yeniden kurunca öğe olayları kesiliyordu); sürükleme ayrı geri alma adımı
+    const mv = (e: PointerEvent) => {
       if (!start) return;
-      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) start.moved = true;
+      if (!start.moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) ((start.moved = true), this.snapshot());
       if (start.moved) {
         const p = this.local(e);
         if (p) {
@@ -4969,12 +5059,30 @@ export class SketchEditor implements InputHandler {
           this.render();
         }
       }
-    });
-    el.addEventListener("pointerup", (e) => {
+    };
+    const end = () => (removeEventListener("pointermove", mv, true), removeEventListener("pointerup", up, true), removeEventListener("pointercancel", up, true));
+    const up = (e: PointerEvent) => {
+      end();
       if (!start) return;
       const moved = start.moved;
+      if (moved) {
+        start = null;
+        e.stopPropagation();
+        this.renderPanel();
+        return this.host.changed();
+      }
+      onUp(e);
+    };
+    el.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      start = { x: e.clientX, y: e.clientY, moved: false };
+      end();
+      addEventListener("pointermove", mv, true);
+      addEventListener("pointerup", up, true);
+      addEventListener("pointercancel", up, true);
+    });
+    const onUp = (e: PointerEvent) => {
       start = null;
-      if (moved) return this.host.changed();
       // fare: SolidWorks gibi tek tık seçer, çift tık Değiştir kutusunu açar
       if (e.pointerType === "mouse" && this.tool === "select") {
         const now = performance.now();
@@ -4995,7 +5103,7 @@ export class SketchEditor implements InputHandler {
         return;
       }
       this.editDim(d, e.clientX, e.clientY);
-    });
+    };
   }
 
   // ---------------- İlişki simgeleri ----------------
@@ -5470,7 +5578,7 @@ export class SketchEditor implements InputHandler {
     as.value = String(this.opts.angSnap);
     as.addEventListener("change", () => ((this.opts.angSnap = +as.value), keep()));
     box.appendChild(as);
-    if (["line", "centerline", "rect", "crect", "circle"].includes(this.tool)) {
+    if (NUM_TOOLS.includes(this.tool)) {
       const nb = h("button", "btn", "Sayıyla gir (123)");
       nb.addEventListener("click", () => this.numericEntry());
       box.appendChild(nb);

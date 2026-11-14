@@ -317,6 +317,9 @@ export const REL_NAMES: Record<RelType, string> = {
   midpoint: "Orta nokta",
   symmetric: "Simetrik",
   eqcurve: "Eşit eğri uzunluğu",
+  offset: "Öteleme",
+  lpat: "Doğrusal çoğaltma",
+  cpat: "Dairesel çoğaltma",
   fix: "Sabit",
 };
 export const REL_GLYPH: Record<RelType, string> = {
@@ -334,6 +337,9 @@ export const REL_GLYPH: Record<RelType, string> = {
   midpoint: "◇",
   symmetric: "⇋",
   eqcurve: "≗",
+  offset: "⫽",
+  lpat: "⋰",
+  cpat: "⟳",
   fix: "⚓",
 };
 

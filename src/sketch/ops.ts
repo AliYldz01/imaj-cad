@@ -119,24 +119,68 @@ export function mirrorEnts(sk: SketchData, ents: SEnt[], axis: SLine) {
   for (const e of ents) if (e.t === "circle") addRel(sk, "equal", [e.id, map.get(e.id)!]);
 }
 
+/** E-23: çoğaltma örneklerinin bağları — daireler tohumla eşit, noktalar ilişkiyle bağlı (kopyalanan iç ilişkiler gereksiz olurdu) */
+function patternRest(sk: SketchData, ents: SEnt[], map: Map<string, string>) {
+  for (const e of ents) if (e.t === "circle" && map.get(e.id)) addRel(sk, "equal", [e.id, map.get(e.id)!]);
+}
+/** çoğaltılan öğelerin tohum noktaları (sabit / orijin dışı) */
+function seedPoints(ents: SEnt[]) {
+  const pts: string[] = [];
+  for (const e of ents) for (const q of entPoints(e)) if (q !== ORIGIN && !pts.includes(q)) pts.push(q);
+  return pts;
+}
+
 /** Doğrusal eskiz çoğaltma */
 export function linearPattern(sk: SketchData, ents: SEnt[], o: { n1: number; s1: number; a1: number; n2: number; s2: number; a2: number; skip?: string[] }) {
   const d1: Vec2 = [Math.cos((o.a1 * Math.PI) / 180), Math.sin((o.a1 * Math.PI) / 180)];
   const d2v: Vec2 = [Math.cos((o.a2 * Math.PI) / 180), Math.sin((o.a2 * Math.PI) / 180)];
+  const g = nid(sk, "g");
+  const seeds = seedPoints(ents);
+  // yön başına aralık ölçüsü için en yakın örnek
+  const first: Record<1 | 2, { k: number; map: Map<string, string> } | null> = { 1: null, 2: null };
   for (let i = 0; i < Math.max(1, o.n1); i++)
     for (let j = 0; j < Math.max(1, o.n2); j++) {
       if (!i && !j) continue;
       // örnek atla: "satır,sütun" (1'den başlar) ya da tek yönde sıra no
       if (o.skip?.includes(`${i + 1},${j + 1}`) || (o.n2 <= 1 && o.skip?.includes(String(i + 1)))) continue;
       const off = add2(mul2(d1, i * o.s1), mul2(d2v, j * o.s2));
-      copyEnts(sk, ents, (p) => add2(p, off), { copyRels: true });
+      const map = copyEnts(sk, ents, (p) => add2(p, off));
+      for (const q of seeds) if (map.get(q)) addRel(sk, "lpat", [q, map.get(q)!], { pk: [i, j], pg: g, pv: [d1[0] * o.s1, d1[1] * o.s1, d2v[0] * o.s2, d2v[1] * o.s2] });
+      patternRest(sk, ents, map);
+      if (!j && (!first[1] || i < first[1].k)) first[1] = { k: i, map };
+      if (!i && (!first[2] || j < first[2].k)) first[2] = { k: j, map };
     }
+  // aralık ölçüsü + 0° / 90° yönde yatay / dikey ilişki (SolidWorks: aralık ve açı ölçüsü)
+  const s0 = seeds[0];
+  ([1, 2] as const).forEach((w) => {
+    const f = first[w];
+    if (!s0 || !f) return;
+    const q = f.map.get(s0)!;
+    const a = (((w === 1 ? o.a1 : o.a2) % 180) + 180) % 180;
+    if (Math.abs(a) < 1e-9) addRel(sk, "horizontal", [s0, q]);
+    else if (Math.abs(a - 90) < 1e-9) addRel(sk, "vertical", [s0, q]);
+    const v = f.k * (w === 1 ? o.s1 : o.s2);
+    if (v > 1e-9) sk.dims.push({ id: nid(sk, "d"), t: "dist", sub: "a", refs: [s0, q], v, lp: add2(mul2(add2(P(sk, s0), P(sk, q)), 0.5), [0, 4]) } as any);
+  });
 }
 
-/** Dairesel eskiz çoğaltma */
-export function circularPattern(sk: SketchData, ents: SEnt[], o: { c: Vec2; n: number; total: number; skip?: string[] }) {
+/** Dairesel eskiz çoğaltma (cid: merkez noktası kimliği) */
+export function circularPattern(sk: SketchData, ents: SEnt[], o: { c: Vec2; cid?: string; n: number; total: number; skip?: string[] }) {
   const step = Math.abs(o.total - 360) < 1e-9 ? o.total / o.n : o.total / Math.max(1, o.n - 1);
-  for (let i = 1; i < o.n; i++) if (!o.skip?.includes(String(i + 1))) copyEnts(sk, ents, rotateFn(o.c, step * i), { copyRels: true, skipHV: true });
+  const g = nid(sk, "g");
+  const cid = o.cid ?? ORIGIN;
+  const seeds = seedPoints(ents);
+  for (let i = 1; i < o.n; i++) {
+    if (o.skip?.includes(String(i + 1))) continue;
+    const map = copyEnts(sk, ents, rotateFn(o.c, step * i));
+    for (const q of seeds) {
+      const m = map.get(q);
+      if (!m) continue;
+      if (q === cid || d2(P(sk, q), P(sk, cid)) < 1e-9) addRel(sk, "coincident", [q, m]);
+      else addRel(sk, "cpat", [cid, q, m], { pa: (step * i * Math.PI) / 180, pg: g });
+    }
+    patternRest(sk, ents, map);
+  }
 }
 
 /** Taşı / kopyala / döndür */
@@ -273,11 +317,14 @@ export function offsetEnts(sk: SketchData, ents: SEnt[], dist: number, reverse: 
   const circles = curves.filter((e) => e.t === "circle");
   const segs = curves.filter((e) => e.t !== "circle") as (SLine | SArc)[];
   if (!curves.length) return "Ötelemek için çizgi, yay veya daire seçin";
+  // E-4: taban ↔ ötelenmiş çiftleri tek "öteleme" ilişkisinde (ortak mesafe) toplanır
+  const pairs: string[] = [];
+  let firstLine: { orig: SLine; neu: SLine } | null = null;
   for (const c of circles) {
     if (c.t !== "circle") continue;
     const r = c.r + (reverse ? -dist : dist);
     if (r <= 0) return "Öteleme mesafesi daire yarıçapından büyük";
-    addCircle(sk, c.c, r, c.cons);
+    pairs.push(c.id, addCircle(sk, c.c, r, c.cons).id);
   }
   for (const ch of chains(sk, segs)) {
     // kapalı zincirde varsayılan: dışa doğru
@@ -323,21 +370,24 @@ export function offsetEnts(sk: SketchData, ents: SEnt[], dist: number, reverse: 
       else joins.push(addPt(sk, joinPt((i - 1 + n) % n, i)));
     }
     const last = ch.closed ? joins[0] : addPt(sk, endOf(offs[n - 1], ch.pieces[n - 1].fwd, offs[n - 1].t === "l"));
-    let firstLine: { orig: SLine; neu: SLine } | null = null;
     for (let i = 0; i < n; i++) {
       const { e, fwd } = ch.pieces[i];
       const p0 = joins[i], p1 = i === n - 1 ? last : joins[i + 1];
       if (e.t === "line") {
         const l = addLine(sk, p0, p1, e.cons);
         addRel(sk, "parallel", [e.id, l.id]);
+        pairs.push(e.id, l.id);
         if (!firstLine) firstLine = { orig: e, neu: l };
       } else {
         const a = fwd ? addArc(sk, e.c, p0, p1, e.cons) : addArc(sk, e.c, p1, p0, e.cons);
         a.r = Math.max(1e-6, d2(P(sk, e.c), P(sk, p0)));
+        pairs.push(e.id, a.id);
       }
     }
-    if (firstLine) sk.dims.push({ id: nid(sk, "d"), t: "pldist", refs: [firstLine.orig.id, firstLine.neu.id], v: Math.abs(dist), lp: mul2(add2(P(sk, firstLine.neu.p1), P(sk, firstLine.neu.p2)), 0.5) });
   }
+  if (pairs.length > 2 || (pairs.length && !firstLine)) addRel(sk, "offset", pairs);
+  // mesafe ölçüsü (tüm öteleme bunu izler)
+  if (firstLine) sk.dims.push({ id: nid(sk, "d"), t: "pldist", refs: [firstLine.orig.id, firstLine.neu.id], v: Math.abs(dist), lp: mul2(add2(P(sk, firstLine.neu.p1), P(sk, firstLine.neu.p2)), 0.5) });
   return null;
 }
 
