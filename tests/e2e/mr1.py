@@ -92,7 +92,8 @@ with sync_playwright() as p:
     pg.mouse.move(R["x"]+200, R["y"]+200)
     for _ in range(2): pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.08)
     time.sleep(0.3)
-    chk("çift orta tık sığdırır", ev("window.__app.viewer.camera.zoom") < z0 * 0.6, (z0, ev("window.__app.viewer.camera.zoom")))
+    chk("çift orta tık sığdırmaz (v0.94)", abs(ev("window.__app.viewer.camera.zoom") - z0) < 1e-6, (z0, ev("window.__app.viewer.camera.zoom")))
+    pg.keyboard.press("f"); time.sleep(0.3)
     # 8) montajda: iki bileşen, bir bileşenin köşesinden basıp sürükle → montajın merkezi sabit, yuvarlanma yok
     pg.evaluate("localStorage.removeItem('imajcad.asm')")
     A = lambda js: pg.evaluate(f"(()=>{{const a=window.__app.asm; {js}}})()")

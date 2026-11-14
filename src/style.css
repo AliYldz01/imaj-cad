@@ -666,3 +666,7 @@ body.land #side.min { bottom: auto; box-shadow: 0 4px 14px rgba(0,0,0,.14); }
 body.land.sheet:has(#side.min) .actbar, body.land.asm-pm:has(#side.min) .actbar, body.land.sheet.has-doctabs:has(#side.min) .actbar { top: calc(var(--land-top, 40px) + 6px); max-height: calc(100vh - var(--land-top, 40px) - 12px); }
 body.land.sheet:has(#side.min) .vcube { left: 14px; top: 66px; }
 body.land.sheet:has(#side.min) #hint { left: 50%; transform: translateX(-50%); }
+
+/* v0.94: tarayıcının kendi iki parmak kaydırma / yakınlaştırması (bırakınca geri yaylanan sayfa) kapalı; grafik alanın üstündeki tüm katmanlarda da */
+html, body { touch-action: pan-x pan-y; overscroll-behavior: none; }
+#view, #view * { touch-action: none; }

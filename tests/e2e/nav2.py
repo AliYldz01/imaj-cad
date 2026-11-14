@@ -25,7 +25,9 @@ with sync_playwright() as p:
     time.sleep(0.6); pg.mouse.move(200,700); pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.1); pg.mouse.move(500,300); pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.3)
     chk("farklı yerlerdeki iki orta tık sığdırmaz", T() == t2, (t2, T()))
     time.sleep(0.6); pg.mouse.move(600,400); pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.1); pg.mouse.down(button="middle"); pg.mouse.up(button="middle"); time.sleep(0.4)
-    chk("aynı yerde çift orta tık sığdırır", T() != t2, T())
+    chk("aynı yerde çift orta tık da sığdırmaz (v0.94: yalnız düğme / F)", T() == t2, T())
+    pg.keyboard.press("f"); time.sleep(0.4)
+    chk("F tuşu sığdırır", T() != t2, T())
     # telefon
     ctx = b.new_context(viewport={"width":390,"height":844}, is_mobile=True, has_touch=True)
     pg = ctx.new_page(); pg.goto(URL); wait_ready(pg); time.sleep(0.4); ev = pg.evaluate; cdp = ctx.new_cdp_session(pg)

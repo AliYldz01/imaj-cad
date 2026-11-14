@@ -690,3 +690,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.92 | Telefon yatay modu: ince üst bant, sol komut kolonu, sol çekmece, sağda ekran çubuğu | ✅ |
 
 | v0.93 | Kaydırırken görünümün kendiliğinden ortalanması / telefonda yanlışlıkla geri alma düzeltildi | ✅ |
+
+| v0.94 | Ekrana sığdırma yalnız düğme / F ile; çift orta tık ve tarayıcı iki parmak hareketi kapalı | ✅ |

@@ -54,7 +54,7 @@ with sync_playwright() as p:
         a.pg.mouse.move(vc[0] + 200, vc[1] + 150)
         a.pg.mouse.click(vc[0] + 200, vc[1] + 150, button="middle"); time.sleep(0.08)
         a.pg.mouse.click(vc[0] + 200, vc[1] + 150, button="middle"); time.sleep(0.5)
-        chk("çift orta tık: sığdırır", not near(a.cam()["zoom"], z0, 1e-3), (z0, a.cam()["zoom"]))
+        chk("çift orta tık: sığdırmaz (v0.94)", near(a.cam()["zoom"], z0, 1e-3), (z0, a.cam()["zoom"]))
         # Ctrl+orta kaydır 1:1
         p0 = scr(a, [40, 20, 30])
         mid_drag(a, vc[0], vc[1], 80, 40, mods=("Control",))

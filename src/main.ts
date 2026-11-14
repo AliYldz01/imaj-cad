@@ -8813,6 +8813,9 @@ function openOrientation() {
   });
 }
 viewer.controls.addEventListener("fit", () => fitAll());
+// tarayıcının sayfa düzeyindeki iki parmak hareketi (iOS'ta user-scalable=no yok sayılır; bırakınca sayfa geri yaylanır) engellenir
+document.addEventListener("touchmove", (e) => void (e.touches.length > 1 && e.cancelable && e.preventDefault()), { passive: false });
+for (const g of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(g, (e) => e.preventDefault(), { passive: false } as any);
 
 // =====================================================================
 // Telefon / tablet: kalem ve parmak kontrolleri

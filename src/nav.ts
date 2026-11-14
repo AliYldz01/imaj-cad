@@ -140,9 +140,9 @@ export class NavControls extends EventTarget {
         this.lastClick = 0;
       } else if (now - this.lastClick < 400 && now - this.downTime < 300 && Math.hypot(e.clientX - this.lastClickAt.x, e.clientY - this.lastClickAt.y) < 6) {
         // iki gerçek tık → ekrana sığdır
+        // çift orta tık artık sığdırmaz (kullanıcı isteği, v0.94): ekrana sığdırma yalnız düğme / F tuşu / menü ile
         this.sticky = null;
         this.lastClick = 0;
-        this.dispatchEvent(new Event("fit"));
       } else if (now - this.downTime < 300) {
         // kısa, kıpırdamadan orta tık: varlığı döndürme merkezi seç (köşe / kenar / yüz)
         this.sticky = this.pivotAt?.(e.clientX, e.clientY, true) ?? null;

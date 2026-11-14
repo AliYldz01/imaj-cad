@@ -66,6 +66,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - **v0.91:** denetimlerin kalan bulguları: 3B eskizde geri al ve Esc, ötele / çoğalt ilişkileri, kabuk ve tam yuvarlak, bindirmeli sac köşesi açınımı, montaj resminde ölçü, sac resminde açınım sayfası, simetrik / kam eşleşmesi.
 - **v0.92:** telefon yatay tutulunca yeni düzen: komutlar solda dar kolonda, ağaç ve özellik paneli sol çekmecede, çizim alanı ekranın %80'inden fazlası.
 - **v0.93:** kaydırırken görünüm artık kendiliğinden ortalanmıyor; telefonda kısa iki parmak kaydırması geri al sayılmıyor.
+- **v0.94:** ekrana sığdırma yalnız düğmeyle (⤢ / F); farenin orta tuşu ya da parmak hareketi görünümü ortalamaz.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)
