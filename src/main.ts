@@ -71,11 +71,39 @@ function loadDoc(): PartDoc {
   }
   return emptyDoc();
 }
+/** D10-3: tarayıcı deposu dolu / yazılamıyor uyarısı (kalıcı şerit) */
+let storeFailed = false;
+function storeWarn(on: boolean) {
+  storeFailed = on;
+  let b = document.getElementById("store-warn");
+  if (!on) return void b?.remove();
+  if (!b) {
+    b = document.createElement("div");
+    b.id = "store-warn";
+    b.setAttribute("role", "alert");
+    b.textContent = "⚠ Tarayıcı deposu dolu: son değişiklikler bu cihazda saklanamıyor. Dosya › Kaydet ile dosyaya kaydedin (fotoğrafları silmek yer açar).";
+    b.addEventListener("click", () => b!.remove());
+    document.body.appendChild(b);
+  }
+}
 function saveDoc() {
+  const json = JSON.stringify(doc);
   try {
-    localStorage.setItem(STORE, JSON.stringify(doc));
+    localStorage.setItem(STORE, json);
+    if (storeFailed) storeWarn(false);
+    return true;
   } catch {
-    /* depolama yok */
+    // önce son belgeler kopyalarını boşalt, yeniden dene
+    try {
+      localStorage.removeItem("imajcad.recent");
+      localStorage.setItem(STORE, json);
+      if (storeFailed) storeWarn(false);
+      return true;
+    } catch {
+      if (!storeFailed) setTimeout(() => toast("Kaydedilemedi: tarayıcı deposu dolu. Dosya › Kaydet ile dosyaya kaydedin.", true), 0);
+      storeWarn(true);
+      return false;
+    }
   }
 }
 const undoStack: string[] = [];
@@ -105,12 +133,19 @@ let activeTab = (() => {
   }
 })();
 function docUid(d: PartDoc) {
-  return ((d as any).uid ??= Math.random().toString(36).slice(2, 10));
+  if (!(d as any).uid) {
+    (d as any).uid = Math.random().toString(36).slice(2, 10);
+    // D9-4: yeni kimlik hemen kaydedilir (yenileyince montaj bağı kopmasın)
+    if (d === doc) setTimeout(saveDoc, 0);
+  }
+  return (d as any).uid as string;
 }
 function saveTabs() {
   try {
     localStorage.setItem("imajcad.tabs", JSON.stringify({ active: activeTab, tabs: docTabs.map((t, i) => ({ uid: t.uid, json: i === activeTab ? null : t.json })) }));
-  } catch {}
+  } catch {
+    storeWarn(true);
+  }
 }
 function ensureTabs() {
   if (!docTabs.length || activeTab >= docTabs.length || activeTab < 0) {
@@ -121,10 +156,9 @@ function ensureTabs() {
   docTabs[activeTab].uid = docUid(doc);
 }
 /** etkin sekmeyi değiştir: geçerli belge sekmesine yazılır, hedef belge yüklenir */
-function switchTab(i: number) {
+async function switchTab(i: number) {
   if (i === activeTab || !docTabs[i]) return renderDocTabs();
-  if (mode.k === "sketch") exitSketch(true);
-  if (mode.k === "pm") cancelFeature();
+  if (!(await settleWork())) return;
   endAux?.();
   const cur = docTabs[activeTab];
   cur.json = JSON.stringify(doc);
@@ -147,7 +181,8 @@ function switchTab(i: number) {
   renderDocTabs();
 }
 /** yeni sekmede belge aç (boş belge ya da verilen) */
-function openInNewTab(d?: PartDoc, handle: any = null) {
+async function openInNewTab(d?: PartDoc, handle: any = null) {
+  if (!(await settleWork())) return;
   ensureTabs();
   const cur = docTabs[activeTab];
   cur.json = JSON.stringify(doc);
@@ -321,6 +356,8 @@ setEqHook({
   },
 });
 /** Değişkenler değişince bağlı alanları ve eskiz ölçülerini günceller */
+/** D3-2: denklem / değişken sonrası çözülemeyen eskizler (özellik kimliği → ileti) */
+const eqSketchErr = new Map<string, string>();
 function applyEquations(): string[] {
   const errs: string[] = [];
   for (const [k, ex] of Object.entries(doc.eqs ?? {})) {
@@ -357,7 +394,15 @@ function applyEquations(): string[] {
         changed = true;
       }
     }
-    if (changed) solveSketch(f.data);
+    if (!f.data.dims.some((d) => d.expr)) eqSketchErr.delete(f.id);
+    else if (changed) {
+      const r = solveSketch(f.data);
+      if (!r.ok || r.conflicts.length) {
+        const m = `${f.name}: ölçüler bu değerlerle çözülemiyor (eskiz aşırı tanımlı)`;
+        eqSketchErr.set(f.id, m);
+        errs.push(m);
+      } else eqSketchErr.delete(f.id);
+    }
   }
   return errs;
 }
@@ -384,6 +429,7 @@ function consumerOf(sketchId: string) {
 // =====================================================================
 const viewer = new Viewer($("#view"));
 const kernel = new Kernel();
+kernel.onRestart = () => toast("Geometri işlemi çok uzun sürdü; çekirdek yeniden başlatıldı. Son değişikliği kontrol edin.", true);
 let featureErrors = new Map<string, string>();
 /** bu oturumda hatasız kurulmuş özellikler (sonradan referans kaybolursa yeniden seç sorulur) */
 const builtOk = new Set<string>();
@@ -967,6 +1013,7 @@ async function rebuild() {
     }
     memberBodies = res.members;
     const errs = new Map(errors);
+    for (const [k, m] of eqSketchErr) if (!errs.has(k)) errs.set(k, m);
     res.errors.forEach((e) => errs.set(e.featureId.split("~")[0], e.message));
     if (mode.k === "part") {
       // SolidWorks "eksik referans": yeni ortaya çıkan referans hatası için yeniden seç penceresi
@@ -1699,7 +1746,9 @@ function saveDocSoon() {
 function exitSketch(keep: boolean) {
   if (mode.k !== "sketch") return;
   const { featId, isNew, orig, editor } = mode;
+  editor.settlePrompt(keep);
   editor.dispose();
+  if (keep) eqSketchErr.delete(featId);
   const f = getFeat(featId) as SketchFeature;
   const removeNew = () => {
     const i = featIndex(featId);
@@ -1707,14 +1756,19 @@ function exitSketch(keep: boolean) {
     if (doc.rollback != null && i < doc.rollback) doc.rollback--;
   };
   if (!keep) {
-    if (isNew) removeNew();
-    else f.data = JSON.parse(orig);
-    undoStack.pop();
+    // D1-1: var olan eskizden vazgeçince geri alma yığınına dokunulmaz (önceki adım kaybolmasın)
+    if (isNew) {
+      removeNew();
+      undoStack.pop();
+    } else f.data = JSON.parse(orig);
   } else if (isNew && !f.data.ents.length) {
     removeNew();
     undoStack.pop();
   } else if (!isNew) {
-    undoStack.push(JSON.stringify({ ...doc, features: doc.features.map((x) => (x.id === featId ? { ...x, data: JSON.parse(orig) } : x)) }));
+    if (JSON.stringify(f.data) !== orig) {
+      undoStack.push(JSON.stringify({ ...doc, features: doc.features.map((x) => (x.id === featId ? { ...x, data: JSON.parse(orig) } : x)) }));
+      redoStack.length = 0; // D3-4
+    }
   }
   mode = { k: "part" };
   viewer.handler = partInput;
@@ -1778,6 +1832,8 @@ $("#pm-cancel").addEventListener("click", () => guardedCancel(false));
 
 // ---------- Çıkış onayı: eskiz / özellik paneli açıkken Esc, ✕, geri tuşu, sayfayı kapatma ----------
 let pmStartSnap = "";
+/** D7-2: PM açılırken alan denklemleri (✕ geri yükler, ✓ tek geri alma adımına katar) */
+let pmEqSnap = "{}";
 /** açık işlemde kaydedilmemiş değişiklik var mı */
 function workDirty(): boolean {
   if (mode.k === "sketch") {
@@ -1826,7 +1882,18 @@ async function guardedCancel(fromKey: boolean) {
   else if (v === "discard") pmCancel();
   void fromKey;
 }
-(window as any).__exitGuard = { workDirty, guardedCancel };
+/** D10-5: belge / dosya komutundan önce açık işlemi sonuçlandır (değişiklik varsa sorar). false = vazgeçildi */
+async function settleWork(): Promise<boolean> {
+  if (mode.k === "sketch") exitSketch(true);
+  if (mode.k !== "pm") return true;
+  if (!workDirty()) return cancelFeature(), true;
+  const v = await askExit("Bu işlemde", "Uygula ve devam et");
+  if (v === "stay") return false;
+  if (v === "save") pmOk();
+  else cancelFeature();
+  return mode.k !== "pm";
+}
+(window as any).__exitGuard = { workDirty, guardedCancel, settleWork };
 // telefon/tarayıcı geri tuşu: işlem açıkken sayfadan çıkmak yerine sorar
 function armBack() {
   if (!history.state?.imajWork) history.pushState({ imajWork: 1 }, "");
@@ -2176,6 +2243,7 @@ function patternable(before = insertAt()) {
 function openFeaturePM(draft: Feature, editingId: string | undefined, kind: string) {
   mode = { k: "pm", draft, editingId };
   pmStartSnap = JSON.stringify(draft);
+  pmEqSnap = JSON.stringify(doc.eqs ?? {});
   armBack();
   clearPartSel();
   hoverHit = null;
@@ -2190,6 +2258,7 @@ function openFeaturePM(draft: Feature, editingId: string | undefined, kind: stri
 }
 
 function cancelFeature() {
+  if (mode.k === "pm") doc.eqs = JSON.parse(pmEqSnap);
   mode = { k: "part" };
   hidePM();
   renderCommands();
@@ -2236,7 +2305,10 @@ function commitFeature(kind: string) {
   if (draftError && !["fillet", "chamfer", "shell", "draft", "edgeflange", "hem", "miterflange", "combine", "delbody", "indent", "thread", "tosheet"].includes(draft.type)) return toast(draftError, true);
   mode = { k: "part" };
   hidePM();
+  const newEqs = doc.eqs;
+  doc.eqs = JSON.parse(pmEqSnap);
   commitDoc(() => {
+    doc.eqs = newEqs;
     if (editingId) doc.features = doc.features.map((f) => (f.id === editingId ? draft : f));
     else {
       nextName(kind);
@@ -2570,7 +2642,7 @@ function renderFeaturePM(kind: string) {
         break;
       }
       const sks = doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }));
-      body.appendChild(group(d.mode === "planar" ? "Düzlemsel yüzey" : "Yüzey ekstrüzyon", selectField("Eskiz (açık veya kapalı)", sks, d.sketch, (v) => ((d.sketch = v), upd())), ...(d.mode === "extrude" ? [numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { unit: "mm" }), checkField("Orta düzlem", !!d.mid, (v) => ((d.mid = v || undefined), upd()))] : []), h("p", "pm-hint", "Yüzey kalınlıksızdır; Kalınlaştır ile katı yapılır ya da Yüzeyle Kes ile katı kesilir.")));
+      body.appendChild(group(d.mode === "planar" ? "Düzlemsel yüzey" : "Yüzey ekstrüzyon", selectField("Eskiz (açık veya kapalı)", sks, d.sketch, (v) => ((d.sketch = v), upd())), ...(d.mode === "extrude" ? [numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { min: 0.001, unit: "mm" }), checkField("Orta düzlem", !!d.mid, (v) => ((d.mid = v || undefined), upd()))] : []), h("p", "pm-hint", "Yüzey kalınlıksızdır; Kalınlaştır ile katı yapılır ya da Yüzeyle Kes ile katı kesilir.")));
       break;
     }
     case "thicken":
@@ -6956,6 +7028,7 @@ function updateUndo() {
   ($("#redo") as HTMLButtonElement).disabled = ed ? !ed.canRedo() : redoStack.length === 0 || mode.k !== "part";
 }
 function undo() {
+  eqSketchErr.clear();
   if (mode.k === "sketch") return mode.editor.undo(), updateUndo();
   // montaj açıkken montajın kendi geçmişi (arkadaki parça belgesi değişmez)
   if (asmUI?.on) return void (mode.k === "part" && asmUI.undo().then(updateUndo));
@@ -6969,6 +7042,7 @@ function undo() {
   afterDocChange();
 }
 function redo() {
+  eqSketchErr.clear();
   if (mode.k === "sketch") return mode.editor.redo(), updateUndo();
   if (asmUI?.on) return void (mode.k === "part" && asmUI.redo().then(updateUndo));
   if (mode.k !== "part") return;
@@ -7102,15 +7176,18 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
     if (act === "input") return openInputSettings();
     if (act === "wizard") return openWizard();
     if (act === "welcome") return openWelcome();
-    if (mode.k === "sketch" && act !== "save") exitSketch(true);
-    if (mode.k === "pm") cancelFeature();
+    if (act !== "save" && !(await settleWork())) return;
     if (act === "new") {
       // SolidWorks: yeni belge ayrı sekmede açılır (geçerli belge kapanmaz)
       if (doc.features.length) openInNewTab();
       else {
         fileHandle = null;
         treeSel = null;
-        commitDoc(() => (doc = emptyDoc()));
+        // D10-2: yeni belge geri alma geçmişine girmez (SolidWorks)
+        doc = emptyDoc();
+        undoStack.length = redoStack.length = 0;
+        saveDoc();
+        afterDocChange();
         firstBuild = true;
       }
       viewer.viewStd("iso");
@@ -7158,10 +7235,30 @@ function openDocText(text: string, handle: any) {
     treeSel = null;
     // aynı belge zaten bir sekmede açıksa ona geç; dolu belgedeyken yeni sekmede aç
     ensureTabs();
-    const ex = (d as any).uid ? docTabs.findIndex((t, i) => i !== activeTab && t.uid === (d as any).uid) : -1;
-    if (ex >= 0) return switchTab(ex);
-    if (doc.features.length && !(doc as any).uid?.startsWith?.("__")) openInNewTab(d, handle);
-    else commitDoc(() => (doc = d));
+    // aynı kimlikli belge açıksa: içerik aynıysa ona geç; farklıysa dosyadakini ayrı belge olarak yeni sekmede aç (D10-1)
+    const uidOf = (d as any).uid;
+    const same = (t: DocTab, i: number) => {
+      const j = i === activeTab ? JSON.stringify(doc) : t.json;
+      try {
+        return !!j && JSON.stringify(JSON.parse(j).features) === JSON.stringify(d.features);
+      } catch {
+        return false;
+      }
+    };
+    const exi = uidOf ? docTabs.findIndex((t) => t.uid === uidOf) : -1;
+    if (exi >= 0 && same(docTabs[exi], exi)) {
+      if (exi !== activeTab) return void switchTab(exi);
+      return void toast(`${d.name} zaten açık`);
+    }
+    if (exi >= 0) (d as any).uid = Math.random().toString(36).slice(2, 10);
+    if (doc.features.length && !(doc as any).uid?.startsWith?.("__")) return void openInNewTab(d, handle).then(() => (pushRecent(), toast(`${d.name} açıldı`)));
+    // D10-2: dosya açmak geri alma geçmişine girmez
+    doc = d;
+    undoStack.length = redoStack.length = 0;
+    if (docTabs[activeTab]) docTabs[activeTab].uid = docUid(doc);
+    saveDoc();
+    saveTabs();
+    afterDocChange();
     fileHandle = handle;
     firstBuild = true;
     pushRecent();
@@ -7172,11 +7269,19 @@ function openDocText(text: string, handle: any) {
 }
 async function saveFile(asNew: boolean) {
   const w = window as any;
+  // D10-1: Farklı kaydet yeni belge kimliği üretir (orijinal dosya ayrı belge kalır)
+  const newIdentity = () => {
+    ensureTabs();
+    (doc as any).uid = Math.random().toString(36).slice(2, 10);
+    if (docTabs[activeTab]) docTabs[activeTab].uid = (doc as any).uid;
+    saveTabs();
+  };
   const text = () => JSON.stringify(doc, null, 1);
   if (w.showSaveFilePicker) {
     try {
       if (!fileHandle || asNew) {
         fileHandle = await w.showSaveFilePicker({ suggestedName: `${doc.name}.icad`, types: [{ description: "İmaj CAD parçası", accept: { "application/json": [".icad"] } }] });
+        if (asNew) newIdentity();
         const nm = String(fileHandle.name ?? "").replace(/\.icad$|\.json$/i, "");
         if (nm) doc.name = nm;
       }
@@ -7192,6 +7297,7 @@ async function saveFile(asNew: boolean) {
     }
   }
   if (asNew || !(doc as any)._named) {
+    if (asNew) newIdentity();
     const name = (prompt("Dosya adı", doc.name) || doc.name).replace(/[\\/:*?"<>|]/g, "_");
     doc.name = name;
     (doc as any)._named = true;
@@ -8085,6 +8191,8 @@ addEventListener("resize", () => renderCommands());
   let st: { f: ExtrudeFeature; base: Vec3; dir: Vec3; d0: number; x: number; y: number; px: number } | null = null;
   const target = () => {
     // ekstrüzyon paneli açıkken (telefonda da) taslağın derinlik oku; parça modunda seçili ekstrüzyonun
+    // D9-1: montajda parça tutamağı yok (SolidWorks)
+    if (asmUI?.on) return null;
     const inPm = mode.k === "pm" && mode.draft.type === "extrude";
     if (!inPm && (mode.k !== "part" || !treeSel)) return null;
     const f = (inPm ? (mode as any).draft : getFeat(treeSel!)) as Feature | undefined;
@@ -8166,7 +8274,8 @@ asmUI = new AsmUI({
   hidePM,
   download,
   currentPart: () => {
-    if (!(doc as any).uid) ((doc as any).uid = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), saveDoc();
+    if (!(doc as any).uid) (doc as any).uid = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    saveDoc(); // D9-4: kimlik her durumda kayıtta olsun
     return { name: doc.name, features: doc.features, eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: (doc as any).uid, material: doc.material, vars: doc.vars, configs: doc.configs as any, config: doc.config };
   },
   // SolidWorks: montajda parçayı düzenle → parça açılır, "Montaja dön" ile bileşen güncellenir

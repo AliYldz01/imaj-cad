@@ -137,14 +137,17 @@ export class AsmUI {
     this.ctx.hint(this.doc.comps.length ? "" : "Montaj: 'Bileşen Ekle' ile parça ekleyin");
     // parça dosyası değiştiyse (aynı kimlik) önce eski geometriyi kur, sonra güncelle → eşleşmeler taşınır
     const cur = this.ctx.currentPart();
+    let synced = false;
     if (cur.key && this.doc.comps.some((c) => c.part.key === cur.key && JSON.stringify([c.part.features, c.part.vars, c.part.configs]) !== JSON.stringify([cur.features, cur.vars, cur.configs]))) {
       await this.refresh();
       const n = this.syncFromPart(cur);
-      if (n) this.ctx.toast(`"${cur.name}" parçası değişmiş: ${n} bileşen güncellendi`), this.save();
+      if (n) this.ctx.toast(`"${cur.name}" parçası değişmiş: ${n} bileşen güncellendi`), (synced = true);
     }
-    if (cur.key) for (const c of this.doc.comps) if (c.part.key === cur.key && (c.part.material ?? "") !== (cur.material ?? "")) (c.part.material = cur.material), this.save();
+    if (cur.key) for (const c of this.doc.comps) if (c.part.key === cur.key && (c.part.material ?? "") !== (cur.material ?? "")) (c.part.material = cur.material), (synced = true);
     await this.refresh();
     if (this.lost.size || this.doc.mates.length) (this.solve(), this.draw(), this.renderTree());
+    // D9-3: eşitlenmiş hâl (yeni konumlar + taşınan eşleşme referansları) çözümden SONRA kaydedilir
+    if (synced) this.save();
     this.ctx.viewer.fit();
   }
   leave() {

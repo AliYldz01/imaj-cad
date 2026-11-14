@@ -337,6 +337,9 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
             kfeats.push({ id: f.id, type: "flatcut", pl, loops: selectContours(loops, f.contours), t: sp.t, k: sp.k });
             break;
           }
+          // P-2: sıfır / eksi derinlik OCC prizmasını kilitliyor (denklemle 0 olabilir)
+          if ((f.end === "blind" || f.end === "mid") && !(f.d1 > 1e-6)) throw new Error("Derinlik sıfırdan büyük olmalı");
+          if (f.dir2 && f.end2 === "blind" && !(f.d2 > 1e-6)) throw new Error("Yön 2 derinliği sıfırdan büyük olmalı");
           const pr0 = f.thin ? { ...thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one", f.thinT2, f.thinR), texts: [] } : profileOf(f.sketch);
           const pr = { ...pr0, loops: selectContours(pr0.loops, f.contours) };
           if (f.thin && f.thinCap && f.thinCap > 0 && !f.cut) {
@@ -793,6 +796,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
             path = { segs: p.segs, closed: p.closed };
           }
           if (f.mode === "planar" && !loops.length) throw new Error("Düzlemsel yüzey için kapalı kontur gerekir");
+          if (f.mode !== "planar" && !(Math.abs(f.d) > 1e-6)) throw new Error("Mesafe sıfırdan büyük olmalı");
           kfeats.push({ id: f.id, type: "surface", mode: f.mode, pl, loops, path, d: f.d, mid: f.mid });
           break;
         }

@@ -7,12 +7,19 @@ export type BuildResult = { mesh: MeshData | null; errors: { featureId: string; 
 export interface BeamSec { ax: number; u: number; v: number; L: number; A: number; Iu: number; Iv: number; Iuv: number; cu: number; cv: number; c: [number, number] }
 
 export class Kernel {
-  private worker: Worker;
+  private worker!: Worker;
   private nextId = 1;
   private pending = new Map<number, (r: any) => void>();
-  readonly ready: Promise<void>;
+  ready!: Promise<void>;
+  /** P-2: kurulum bu süreyi aşarsa çekirdek yeniden başlatılır (kilitlenen OCC işlemi) */
+  buildTimeout = 120000;
+  onRestart?: () => void;
 
   constructor() {
+    this.spawn();
+  }
+
+  private spawn() {
     this.worker = new Worker(new URL("./kernel.worker.ts", import.meta.url), { type: "module" });
     let resolveReady!: () => void;
     let rejectReady!: (e: Error) => void;
@@ -33,11 +40,23 @@ export class Kernel {
     this.worker.onerror = (e) => rejectReady(new Error(e.message || "Çekirdek başlatılamadı"));
   }
 
-  private request<T>(req: Omit<KernelRequest, "id">): Promise<T> {
+  /** kilitlenen çekirdeği durdurur, bekleyen isteklere hata döner, yenisini başlatır */
+  restart(msg = "Çekirdek yanıt vermedi; yeniden başlatıldı") {
+    this.worker.terminate();
+    const cbs = [...this.pending.values()];
+    this.pending.clear();
+    this.spawn();
+    for (const cb of cbs) cb({ error: msg, message: msg, mesh: null, errors: [{ featureId: "", message: msg }] });
+    this.onRestart?.();
+  }
+
+  private request<T>(req: Omit<KernelRequest, "id">, timeout = 0): Promise<T> {
     const id = this.nextId++;
     return new Promise((res) => {
-      this.pending.set(id, res);
+      let t = 0;
+      this.pending.set(id, (r) => (clearTimeout(t), res(r)));
       this.worker.postMessage({ ...req, id });
+      if (timeout) t = window.setTimeout(() => this.pending.has(id) && this.restart(`İşlem ${Math.round(timeout / 1000)} sn içinde bitmedi; çekirdek yeniden başlatıldı (son değişikliği kontrol edin)`), timeout);
     });
   }
 
@@ -53,7 +72,7 @@ export class Kernel {
   async build(features: KFeature[]): Promise<BuildResult> {
     await this.ready;
     const fontUrl = new URL("fonts/DejaVuSans.ttf", document.baseURI).href;
-    const r = await this.request<BuildResult>({ type: "build", features, fontUrl } as any);
+    const r = await this.request<BuildResult>({ type: "build", features, fontUrl } as any, this.buildTimeout);
     return { mesh: r.mesh, errors: r.errors, frames: r.frames ?? {}, members: r.members ?? [], heals: r.heals };
   }
 

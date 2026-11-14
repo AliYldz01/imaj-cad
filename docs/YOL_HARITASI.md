@@ -674,3 +674,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.84 | Eskizi düzenledikten sonra ölçü / sürükleme değişikliği modele ve kayda geçer; var olan eskiz Seç aracıyla açılır | ✅ |
 
 | v0.85 | Orta tuşla döndürme: ekran eksenleri (yuvarlanma yok), model merkezi / ekran ortası merkez (sıçrama yok), çift tık yalnız gerçek tıkta | ✅ |
+
+| v0.86 | Denetim 2 Paket 1: eskiz vazgeç geri alma, açık Değiştir kutusu, çözülemeyen denklem uyarısı, PM denklem sızıntısı, sıfır derinlik / çekirdek zaman aşımı, montaj Instant3D / kayıt / kimlik, Farklı kaydet kimliği, açma geri alınmaz, depo dolu uyarısı, PM açıkken sekme / dosya sorusu | ✅ |

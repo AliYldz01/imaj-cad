@@ -245,7 +245,7 @@ export class SketchEditor implements InputHandler {
   }
 
   dispose() {
-    document.querySelector(".dim-prompt.quick")?.remove();
+    document.querySelectorAll(".dim-prompt").forEach((e) => e.remove());
     this.clearGroup();
     this.host.viewer.overlay.remove(this.group);
     this.labelBox.remove();
@@ -435,7 +435,7 @@ export class SketchEditor implements InputHandler {
   // ---------------- Araçlar ----------------
   setTool(t: SkTool) {
     this.chainSt = null;
-    document.querySelector(".dim-prompt.quick")?.remove();
+    document.querySelectorAll(".dim-prompt").forEach((e) => e.remove());
     this.finishChain();
     this.tool = t;
     this.st = {};
@@ -1651,7 +1651,7 @@ export class SketchEditor implements InputHandler {
       const c = circles[0];
       fields.push({ label: "Çevre dairesi çapı", cur: 2 * c.r, make: (v) => ({ t: "dia", refs: [c.id], v, lp: add2(P(sk, c.c), [c.r, c.r]) }) });
     }
-    document.querySelector(".dim-prompt.quick")?.remove();
+    document.querySelectorAll(".dim-prompt").forEach((e) => e.remove());
     if (!fields.length) return;
     const box = document.createElement("div");
     box.className = "dim-prompt quick";
@@ -3949,6 +3949,15 @@ export class SketchEditor implements InputHandler {
   /** son girilen değer değişken içeren bir ifadeyse (ör. "=kalinlik*2") */
   lastExpr: string | null = null;
 
+  private openPrompt: { box: HTMLElement; apply: () => boolean; cancel: () => void } | null = null;
+  /** D3-1: eskizden çıkarken açık Değiştir kutusu — ✓ = değeri uygula, ✕ = vazgeç (SolidWorks) */
+  settlePrompt(accept: boolean) {
+    const p = this.openPrompt;
+    if (!p || !p.box.isConnected) return (this.openPrompt = null);
+    if (!(accept && p.apply())) p.cancel();
+    this.openPrompt = null;
+  }
+
   private promptValue(x: number, y: number, cur: number, unit: string, done: (v: number) => void, extra?: { live: (v: number | null, flip?: boolean) => void; cancel: () => void; canFlip: boolean }) {
     document.querySelector(".dim-prompt")?.remove();
     if (unit === "mm" && units === "in") {
@@ -3975,18 +3984,23 @@ export class SketchEditor implements InputHandler {
     box.style.top = Math.max(8, Math.min(window.innerHeight - r.height - 8, y - r.height - 24)) + "px";
     inp.focus();
     inp.select();
-    const close = () => box.remove();
+    const close = () => {
+      box.remove();
+      if (this.openPrompt?.box === box) this.openPrompt = null;
+    };
     const apply = () => {
       const raw = inp.value.trim();
       const v = evalNum(raw);
       if (v === null) {
         inp.classList.add("bad");
-        return;
+        return false;
       }
       this.lastExpr = /[a-zA-ZçğıöşüÇĞİÖŞÜ_]/.test(raw.replace(/^=/, "")) ? raw.replace(/^=/, "") : null;
       close();
       done(v);
+      return true;
     };
+    this.openPrompt = { box, apply, cancel: () => (close(), extra?.cancel()) };
     box.querySelector(".ok")!.addEventListener("click", apply);
     box.querySelector(".no")!.addEventListener("click", () => (close(), extra?.cancel()));
     // SolidWorks Değiştir kutusu: tekerlek / ↑↓ ile artım (Shift ×10, Alt ×0,1)

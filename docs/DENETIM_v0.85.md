@@ -82,7 +82,7 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
 
 ## 4. Önerilen düzeltme sırası
 
-1. **Paket 1, veri kaybı ve sessiz yanlış:**
+1. ✅ **Paket 1, veri kaybı ve sessiz yanlış** (v0.86):
    - D1-1 (×4), D3-1, D3-2, D3-4, D7-2;
    - D9-1, D9-3, D9-4, D10-1, D10-2, D10-3, D10-5;
    - P-2 / D7-3 çekirdek kilidi.
@@ -229,7 +229,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 
 ### Bulgular
 
-#### D1-1 — Var olan eskizi düzenleyip ✕ ile çıkınca parçanın geri alma kaydı bir adım siliniyor
+#### ✅ D1-1 — Var olan eskizi düzenleyip ✕ ile çıkınca parçanın geri alma kaydı bir adım siliniyor
 - **Önem:** Yüksek · **Tür:** Hata (geri alma tutarsızlığı)
 - **SolidWorks'te:** Eskizi açıp değiştirmeden ya da "değişiklikleri at" ile çıkmak geri alma geçmişini değiştirmez. Sonraki Ctrl+Z son özelliği geri alır.
 - **Bizde (`d1_duzlem.py` §7):**
@@ -541,7 +541,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 
 ### Bulgular
 
-##### D2-1 — Var olan eskizi ✕ ile kapatmak parça geri alma yığınından ilgisiz bir adımı siliyor; sonraki Ctrl+Z iki adım geri gidiyor (burada tüm model kayboldu)
+##### ✅ D2-1 — Var olan eskizi ✕ ile kapatmak parça geri alma yığınından ilgisiz bir adımı siliyor; sonraki Ctrl+Z iki adım geri gidiyor (burada tüm model kayboldu)
 - **Önem:** Kritik · **Tür:** Hata (sessiz veri / adım kaybı)
 - **SolidWorks:** Eskizi düzenleyip değişiklik yapmadan (ya da atarak) çıkmak geri alma geçmişini değiştirmez. Ctrl+Z son kullanıcı adımını geri alır.
 - **Bizde:** hazır model (plaka + silindir e2, 54283,19 mm³) → ağaçta e2 → **Bastır** (48000) → e1 → **Eskizi düzenle** → hiçbir şey yapmadan **✕** → Ctrl+Z → beklenen 54283,19 (bastırma geri alınır); ölçülen: **özellik sayısı 0, hacim yok** (Ctrl+Z bastırmadan önceki adımı da geri aldı). Ölçü 80→100 yapıp "Kaydetmeden çık" ile de aynı. Gerçek kullanımda: kullanıcı A ve B adımlarını yapar, eskize bakıp ✕ ile çıkar, B'yi geri almak için Ctrl+Z basar → A da geri alınır; yeni bir değişiklik yaparsa ileri alma yığını silinir ve A kalıcı kaybolur.
@@ -861,7 +861,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 
 ### Bulgular
 
-##### D3-1 — Eskizden çıkınca Değiştir kutusu açık kalıyor. Enter eskiz kaydını değiştiriyor, model yeniden oluşturulmuyor
+##### ✅ D3-1 — Eskizden çıkınca Değiştir kutusu açık kalıyor. Enter eskiz kaydını değiştiriyor, model yeniden oluşturulmuyor
 - **Önem:** Kritik (model ile kayıt sessizce farklı) · **Tür:** Hata (E-35 türü)
 - **SolidWorks'te:** Eskizden çıkınca (✓ / Eskizden çık) Değiştir kutusu kapanır. Değer ya uygulanır ya atılır. Eskiz dışında eskiz verisini değiştiren bir kutu kalmaz.
 - **Bizde:** Hazır model 80×50 + 20 mm. Eskizi düzenle → D2 ölçüsüne çift tık → `70` yazılır (canlı önizleme), Enter'a basılmaz → panel ✓. Model 70 (canlı değer alındı). `.dim-prompt` ekranda kalıyor. Bu kutuya `20` yazılıp Enter'a basılınca belgede ve localStorage'da `D2 = 20`, `p4.y = 20` oluyor. Model 70'te kalıyor (yeniden oluşturma yok) ve geri alma yığınına girmiyor. Ctrl+Z 50'ye atlıyor. Sayfa yenilenince model 50 (`x9` denemesi, `d3_olcu2.py` "açık Değiştir kutusu eskizden çıkınca kapanır" HATA).
@@ -869,7 +869,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:247-256` `dispose()` yalnız `.dim-prompt.quick` kaldırıyor, `editDim` → `promptValue` kutusu (`.dim-prompt`, `:3962`) kalıyor. `done` geri çağrısı eskiz kapandıktan sonra `this.op` → `putData` ile `f.data`'yı (aynı nesne) değiştiriyor, `host.changed` yalnız `saveDocSoon`.
 - **Öneri:** `dispose()` içinde `document.querySelectorAll(".dim-prompt, .s3-len").forEach(e => e.remove())`. Kutu açıksa ✓'de önce `apply()` ya da `cancel()` çağırın (SolidWorks: ✓ = değeri kabul et).
 
-##### D3-2 — Global değişkenle sürülen ölçü çözülemeyen değere gelince ölçü ile geometri ayrışıyor, uyarı yok
+##### ✅ D3-2 — Global değişkenle sürülen ölçü çözülemeyen değere gelince ölçü ile geometri ayrışıyor, uyarı yok
 - **Önem:** Kritik (yanlış geometri sessizce) · **Tür:** Hata
 - **SolidWorks'te:** Denklem değişince eskiz çözülemiyorsa yeniden oluşturma hatası verir. Eskiz ağaçta kırmızı / "aşırı tanımlı" görünür, "Ne yanlış?" açılır.
 - **Bizde:** Hazır model: üçgen (0,0)-(40,0)-(40,30), ölçüler 40, 30 ve 3. kenar `=d2` (d2 = 50). Değerlendir → Denklemler → d2 = 100 → Uygula. Kayıtta `E3.v = 100`, geometri hâlâ 50. Toast boş, ağaçta hata yok, durum "Hazır". Eskiz açılınca "Aşırı tanımlı" görünüyor ve `ok:false, conflicts:[]`.
@@ -877,7 +877,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/main.ts:343-360` `applyEquations` → `solveSketch(f.data)` dönüşü yok sayılıyor. Hata `errs`'e eklenmiyor.
 - **Öneri:** `const r = solveSketch(f.data); if (!r.ok || r.conflicts.length) errs.push(\`${f.name}: ölçüler çözülemiyor\`)`. Özelliği hatalı işaretleyin (ağaçta kırmızı) ve değişikliği geri almayı önerin.
 
-##### D3-3 — "Eskizi düzenle" ✕ (vazgeç) önceki geri alma adımını siliyor
+##### ✅ D3-3 — "Eskizi düzenle" ✕ (vazgeç) önceki geri alma adımını siliyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks'te:** Değişiklik yapmadan çıkılan eskiz geri alma geçmişini etkilemez. Ctrl+Z bir önceki işlemi geri alır.
 - **Bizde:** Hazır model 80×50 + 20. e1 → Düzenle → derinlik 35 → ✓. e1 → Eskizi düzenle → ✕ (değişiklik yok, ya da değişiklik + Kaydetmeden çık). Ctrl+Z derinliği 20'ye döndürmüyor. Bir adım daha geri gidiyor. Testte model tamamen boşaldı (`bbox = None`, hazır model öncesi durum).
@@ -885,7 +885,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/main.ts:1708-1712` `exitSketch(false)` → `undoStack.pop()` var olan eskizde de çalışıyor. Var olan eskiz açılırken (`openSketch(f,false)`, `:2265`) yığına bir şey konmuyor.
 - **Öneri:** `pop()`'u yalnız `isNew` için yapın (yeni eskiz `startSketch`'te yığına giriyor).
 
-##### D3-4 — Geri al → eskiz düzenle ✓ → İleri al: eskiz değişikliği siliniyor
+##### ✅ D3-4 — Geri al → eskiz düzenle ✓ → İleri al: eskiz değişikliği siliniyor
 - **Önem:** Yüksek (veri kaybı, kayda da yazılıyor) · **Tür:** Hata
 - **SolidWorks'te:** Yeni bir işlem yapılınca İleri al geçmişi temizlenir.
 - **Bizde:** Derinlik 35 ✓ → Ctrl+Z (20) → Eskizi düzenle → genişlik 120 → ✓ (model 120) → Ctrl+Y → genişlik 80, derinlik 35. Eskiz değişikliği kayboldu (localStorage'a da yazılıyor). Ancak Ctrl+Z ile fark edilirse geri getirilebiliyor.
@@ -1931,7 +1931,7 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 - **Kod:** `src/kernel.worker.ts:3893–3916` `thick()` → `BRepOffsetAPI_MakeThickSolid.MakeThickSolidBySimple` (basit öteleme köşe birleşimi yapmaz; çok yüzlü kabuklarda kendini kesen / eksik katı üretir), ardından yalnız `volOf < 0` ise `Reversed()`.
 - **Öneri:** Çok yüzlü kabukta `MakeThickSolidByJoin` (Intersection = true, GeomAbs_Intersection birleşimi) kullan; sonucu `BRepCheck` + hacim beklentisi (alan × t ± köşe payı) ile doğrula, tutmuyorsa yüz başına ince prizma + birleştirme yedeği ya da Türkçe hata.
 
-#### D7-2 · PM alanına yazılan =ifade ✕'te geri alınmıyor (denklem sızıntısı / bağlantı kaybı)
+#### ✅ D7-2 · PM alanına yazılan =ifade ✕'te geri alınmıyor (denklem sızıntısı / bağlantı kaybı)
 - **Önem:** Kritik · **Tür:** Hata (vazgeçilen değişiklik sonra modele geçiyor)
 - **SolidWorks:** PM'de ✕ tüm değişiklikleri (alan denklemleri dahil) atar.
 - **Bizde:**
@@ -1941,7 +1941,7 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 - **Kod:** `src/ui/dom.ts:38–41` `numField` her `input` olayında `eqHook.set(...)` ile **belgeyi** (`doc.eqs`) doğrudan değiştiriyor; `src/main.ts:315–322` `setEqHook`; `applyEquations` (main.ts:324) PM taslağını yalnız PM açıkken atlıyor.
 - **Öneri:** Alan denklemlerini taslakta tut (`draft._eqs`), ✓'de (`commitFeature`) `doc.eqs`'e yaz; ✕'te at.
 
-#### D7-3 · Yüzey Ekstrüzyon mesafesi 0 çekirdeği kilitliyor (P-2'nin yeni, kolay yolu)
+#### ✅ D7-3 · Yüzey Ekstrüzyon mesafesi 0 çekirdeği kilitliyor (P-2'nin yeni, kolay yolu)
 - **Önem:** Yüksek · **Tür:** Hata (uygulama donar)
 - **Bizde:** Yol eskizi → Yüzey Ekstrüzyon → Mesafe alanına `0` → (alan kırmızı olmuyor) → ✓ → durum çubuğu "Hesaplanıyor…" 120 sn sonra hâlâ meşgul, sonraki hiçbir kurulum bitmiyor (sayfa yenilenmeli). Katı ekstrüzyonda alan min 0,001 olduğu için P-2 yalnız denklemle oluşuyordu; burada kullanıcı doğrudan 0 yazarak tetikliyor. İki koşuda tekrarlandı. `d7_yuzey1.py` Y5.
 - **Kod:** `src/main.ts:2573` "Mesafe" `numField` `min` yok; `src/doc/compile.ts:796` denetimsiz `d`; worker `BRepPrimAPI_MakePrism` sıfır vektör (main.ts / worker zaman aşımı yok — P-2).
@@ -2505,7 +2505,7 @@ Telefon 390×844 (CDP dokunma):
 
 ### Bulgular
 
-#### D9-1 · Parçanın Instant3D oku montajda kalıyor; montajda sürüklenince parça derinliği sessizce değişiyor
+#### ✅ D9-1 · Parçanın Instant3D oku montajda kalıyor; montajda sürüklenince parça derinliği sessizce değişiyor
 - Önem: **Kritik** · Tür: Hata (sessiz parça değişikliği, giriş engeli)
 - SolidWorks'te: Montaj belgesinde parça özelliğinin tutamağı görünmez. Parça yalnız bağlam içi düzenlemede değişir.
 - Bizde (`d9_i3d.py`, masaüstü ve telefon):
@@ -2528,7 +2528,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/asmui.ts:194-238` `remapMates`. Aday, eski ağ sınır kutusuna göre göreli konum `U()` ile seçiliyor. Eşik 0,35. En yakın aday kabul ediliyor.
 - Öneri: Parça çekirdeğindeki kalıcı referans imzasını (`s`, v0.36) eşleşme varlığına da yaz ve onunla eşle. En azından ikinci aday yakınsa ⚠ ver, sessizce seçme. Yüzü üreten özelliğin kimliği ve döngü indeksiyle eşle.
 
-#### D9-3 · Parça değişikliğinden sonra montajın eşitlenmiş hâli kaydedilmiyor; yenileyince eski (artık olmayan) geometriye dönüyor
+#### ✅ D9-3 · Parça değişikliğinden sonra montajın eşitlenmiş hâli kaydedilmiyor; yenileyince eski (artık olmayan) geometriye dönüyor
 - Önem: **Kritik** · Tür: Hata (kayda geçmeyen değişiklik, sessizce yanlış montaj)
 - SolidWorks'te: Parça değişince montaj yeniden kurulur. Bileşen konumları ve eşleşmeler kaydedilir.
 - Bizde (`d9_parca.py` P8 masaüstü, `d9_mobil.py` F8 telefon):
@@ -2539,7 +2539,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/asmui.ts:139-147` `enter()`. `syncFromPart` sonrası `this.save()` çağrısı `refresh()`'ten (remapMates) ve `solve()`'dan **önce**. Sonra kayıt yok (satır 147 yalnız `solve/draw/renderTree`).
 - Öneri: `enter()` sonunda `refresh()` + `solve()` bittikten sonra `save()` çağır. Aynısını `replaceComp`, `setCompConfig`, "Kütüphaneden güncelle" için denetle.
 
-#### D9-4 · Kimliği kaydedilmemiş parça belgesiyle montaj: yenileyince parça–montaj bağı kopuyor
+#### ✅ D9-4 · Kimliği kaydedilmemiş parça belgesiyle montaj: yenileyince parça–montaj bağı kopuyor
 - Önem: **Kritik** · Tür: Hata (parça değişikliği montaja hiç geçmiyor, uyarısız)
 - SolidWorks'te: Montaj parça dosyasına bağlıdır. Parça değişince montaj güncellenir.
 - Bizde (`d9_parca.py` P3):
@@ -3033,7 +3033,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 
 ### Bulgular
 
-#### D10-1 · Farklı kaydet belge kimliğini (uid) değiştirmiyor: orijinal dosyayı açınca kopya gösteriliyor, son belgelerden orijinal düşüyor
+#### ✅ D10-1 · Farklı kaydet belge kimliğini (uid) değiştirmiyor: orijinal dosyayı açınca kopya gösteriliyor, son belgelerden orijinal düşüyor
 - **Önem:** Kritik · **Tür:** Hata (yanlış belge, veri karışması)
 - **SolidWorks:** "Farklı kaydet" yeni bir belge oluşturur (kimlik dosya yoludur). Orijinal dosya açılınca orijinal içerik gelir. İki dosya ayrı belgelerdir.
 - **Bizde:**
@@ -3053,7 +3053,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - `openDocText` aynı uid'li sekme bulunca içerik farklıysa sorsun ("Açık sürüme geç / Dosyadakini yeni sekmede aç") ya da en azından dosyayı yeni sekmede açsın.
   - Son belgeler (uid + ad) ile tekilleştirilsin.
 
-#### D10-2 · Dosya açma geri alınabiliyor; Ctrl+Z sonrası Ctrl+S açılan dosyanın üstüne başka belgeyi yazıyor
+#### ✅ D10-2 · Dosya açma geri alınabiliyor; Ctrl+Z sonrası Ctrl+S açılan dosyanın üstüne başka belgeyi yazıyor
 - **Önem:** Kritik · **Tür:** Hata (diskteki dosyanın sorgusuz ezilmesi)
 - **SolidWorks:** Belge açmak geri alma geçmişine girmez. Ctrl+Z açılan belgeyi kapatmaz. Kaydet her zaman o belgenin dosyasına, o belgenin içeriğini yazar.
 - **Bizde:** Masaüstü Chrome/Edge (dosya erişim API'si; sahte tutamaçla):
@@ -3071,7 +3071,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - Açma ve aynı sekmede Yeni, `commitDoc` yerine doğrudan atama + `undoStack.length = redoStack.length = 0` ile yapılsın (SolidWorks gibi yeni geçmiş).
   - Ek güvenlik: belge kimliği tutamaçla eşleşmiyorsa Kaydet "Farklı kaydet" gibi sorsun.
 
-#### D10-3 · localStorage dolunca kayıt sessizce başarısız: sonraki tüm değişiklikler yenilemede kayboluyor
+#### ✅ D10-3 · localStorage dolunca kayıt sessizce başarısız: sonraki tüm değişiklikler yenilemede kayboluyor
 - **Önem:** Kritik · **Tür:** Hata (sessiz veri kaybı)
 - **SolidWorks:** Kaydetme başarısızsa açık hata verilir. Çalışılan belge kaybolmaz.
 - **Bizde:**
@@ -3092,7 +3092,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - Fotoğraflar ve büyük içe aktarmalar IndexedDB'de tutulsun, belgede yalnız başvuru kalsın.
   - Kota dolunca önce `imajcad.recent` kopyaları kırpılsın.
 
-#### D10-4 · Var olan eskiz ✕ "Kaydetmeden çık" ile kapatılınca geri al yığınından bir adım siliniyor
+#### ✅ D10-4 · Var olan eskiz ✕ "Kaydetmeden çık" ile kapatılınca geri al yığınından bir adım siliniyor
 - **Önem:** Yüksek · **Tür:** Hata (geri alma tutarsızlığı; Ctrl+Y ile kurtarılabilir, başka işlem yapılırsa kalıcı kayıp)
 - **SolidWorks:** Eskiz düzenlemesinden vazgeçmek geçmişi değiştirmez. Ctrl+Z bir önceki işlemi geri alır.
 - **Bizde (W4, sıfırdan arayüzle):**
@@ -3109,7 +3109,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - `openSketch` (`src/main.ts:1654`) var olan eskizde yığına bir şey koymuyor. Yalnız `startSketch` (yeni eskiz, `src/main.ts:1648`) koyuyor.
 - **Öneri:** `undoStack.pop()` yalnız `isNew` iken yapılsın. Var olan eskizde `!keep` kolunda yığına dokunulmasın.
 
-#### D10-5 · Açık PM'deki değişiklik sekme değiştirme ve dosya komutlarında sorulmadan atılıyor
+#### ✅ D10-5 · Açık PM'deki değişiklik sekme değiştirme ve dosya komutlarında sorulmadan atılıyor
 - **Önem:** Yüksek · **Tür:** Hata (uyarısız kayıp)
 - **SolidWorks:** Belgeler arası geçişte açık PropertyManager o belgede açık kalır. Dışa aktarma gibi komutlar PM açıkken ya bekler ya da sorar.
 - **Bizde:**
