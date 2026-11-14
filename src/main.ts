@@ -8059,6 +8059,7 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
       return;
     }
     if (act === "keys") return ($("#help") as HTMLDialogElement).showModal();
+    if (act === "navlog") return navLog.toggle();
     if (act === "input") return openInputSettings();
     if (act === "wizard") return openWizard();
     if (act === "welcome") return openWelcome();
@@ -8813,6 +8814,79 @@ function openOrientation() {
   });
 }
 viewer.controls.addEventListener("fit", () => fitAll());
+// ---- Gezinme tanılaması (Dosya › Gezinme tanılaması ya da ?navlog): kamerayı neyin oynattığını ekranda listeler ----
+const navLog = (() => {
+  let on = false;
+  try {
+    on = /[?&]navlog/.test(location.search) || localStorage.getItem("imajcad.navlog") === "1";
+  } catch {}
+  const box = h("div", "navlog");
+  box.style.cssText = "position:fixed;left:4px;top:50%;z-index:90;max-width:62vw;font:11px/1.35 ui-monospace,monospace;background:rgba(15,25,45,.82);color:#e8f0ff;padding:5px 7px;border-radius:8px;pointer-events:none;white-space:pre;display:none";
+  document.body.appendChild(box);
+  const lines: string[] = [];
+  let seen: string[] = [];
+  const t0 = performance.now();
+  const add = (s: string) => {
+    if (!on) return;
+    lines.push(`${((performance.now() - t0) / 1000).toFixed(2)} ${s}`);
+    if (lines.length > 14) lines.shift();
+    box.textContent = (document.querySelector("#help")?.textContent?.match(/v\d+\.\d+/)?.[0] ?? "?") + " · gezinme kaydı\n" + lines.join("\n");
+  };
+  const show = () => (box.style.display = on ? "block" : "none");
+  show();
+  // kamera değiştiren işlemler etiketlenir
+  const wrap = (o: any, name: string, label: string, quiet = false) => {
+    const f = o[name].bind(o);
+    o[name] = (...args: any[]) => {
+      if (!quiet) add(label);
+      if (!seen.includes(label)) seen.push(label); // bu karede kamerayı oynatan işlemler
+      return f(...args);
+    };
+  };
+  wrap(viewer, "fit", "SIĞDIR (fit)");
+  wrap(viewer, "centerOn", "ORTALA (centerOn)");
+  wrap(viewer, "setView", "görünüm (setView)");
+  wrap(viewer, "previousView", "önceki görünüm");
+  for (const [n, l] of [["pan", "kaydır"], ["zoomAt", "yakınlaştır"], ["rotate", "döndür"], ["roll", "çevir"]] as const) wrap(viewer.controls, n, l, true);
+  // her karede hedef değiştiyse kim yaptı (etiketsiz değişim = bilinmeyen kaynak)
+  let last = viewer.controls.target.clone(), lastZ = viewer.camera.zoom, run = "", runN = 0;
+  const flush = () => (runN ? add(`${run} ×${runN}`) : 0, (run = ""), (runN = 0));
+  const tick = () => {
+    const tg = viewer.controls.target, z = viewer.camera.zoom;
+    if (on && (tg.distanceTo(last) > 1e-6 || Math.abs(z - lastZ) > 1e-9)) {
+      const who = seen.join("+") || "BİLİNMEYEN";
+      if (who === run) runN++;
+      else (flush(), (run = who), (runN = 1));
+      if (who === "BİLİNMEYEN") add("! kamera kaynağı bilinmeyen bir yerden değişti");
+    }
+    last = tg.clone();
+    lastZ = z;
+    seen = [];
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  const cv = viewer.renderer.domElement;
+  for (const ev of ["pointerdown", "pointerup", "pointercancel"]) cv.addEventListener(ev, (e: any) => e.pointerType !== "mouse" && (flush(), add(`${ev.replace("pointer", "")} #${e.pointerId % 100} ${e.pointerType}`)), true);
+  addEventListener("resize", () => add(`pencere ${innerWidth}×${innerHeight}`));
+  const vv = (window as any).visualViewport;
+  if (vv) {
+    const r = () => add(`sayfa ölçeği ${vv.scale.toFixed(2)} kayma ${Math.round(vv.offsetLeft)},${Math.round(vv.offsetTop)}`);
+    vv.addEventListener("resize", r);
+    vv.addEventListener("scroll", r);
+  }
+  return {
+    toggle() {
+      on = !on;
+      try {
+        localStorage.setItem("imajcad.navlog", on ? "1" : "0");
+      } catch {}
+      lines.length = 0;
+      show();
+      add("açık — iki parmakla kaydırıp bırakın, sonra ekran görüntüsü alın");
+      toast(on ? "Gezinme tanılaması açık" : "Gezinme tanılaması kapalı");
+    },
+  };
+})();
 // tarayıcının sayfa düzeyindeki iki parmak hareketi (iOS'ta user-scalable=no yok sayılır; bırakınca sayfa geri yaylanır) engellenir
 document.addEventListener("touchmove", (e) => void (e.touches.length > 1 && e.cancelable && e.preventDefault()), { passive: false });
 for (const g of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(g, (e) => e.preventDefault(), { passive: false } as any);

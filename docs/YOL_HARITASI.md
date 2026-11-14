@@ -692,3 +692,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.93 | Kaydırırken görünümün kendiliğinden ortalanması / telefonda yanlışlıkla geri alma düzeltildi | ✅ |
 
 | v0.94 | Ekrana sığdırma yalnız düğme / F ile; çift orta tık ve tarayıcı iki parmak hareketi kapalı | ✅ |
+
+| v0.95 | Gezinme tanılaması (telefonda iki parmak sonrası görünüm sıçramasının kaynağı) | ✅ |
