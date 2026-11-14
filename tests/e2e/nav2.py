@@ -54,6 +54,13 @@ with sync_playwright() as p:
     q1 = ev("window.__app.viewer.camera.quaternion.toArray()")
     chk("telefon: iki parmak sonrası kalan parmak görünümü döndürmez", max(abs(a-b) for a,b in zip(q0,q1)) < 1e-9, (q0, q1))
     n0 = nf()
+    # iki parmakla kaydırıp hepsini kaldırdıktan sonra tek parmakla döndürmek görünümü orijine çekmez
+    T0 = ev("window.__app.viewer.controls.target.toArray()")
+    touch("touchStart",[(200,300)])
+    for i in range(1,6): touch("touchMove",[(200+5*i,300)]); time.sleep(0.03)
+    touch("touchEnd",[]); time.sleep(0.4)
+    T1 = ev("window.__app.viewer.controls.target.toArray()")
+    chk("telefon: kaydırmadan sonra tek parmakla döndürme hedefi korur", max(abs(a-b) for a,b in zip(T0,T1)) < 3 and max(abs(a) for a in T0) > 5, (T0, T1))
     touch("touchStart",[(150,400),(230,400)]); time.sleep(0.06); touch("touchEnd",[]); time.sleep(0.5)
     chk("telefon: gerçek iki parmak dokunuşu geri alır", nf() != n0, (n0, nf()))
     b.close()

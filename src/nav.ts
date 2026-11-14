@@ -214,7 +214,7 @@ export class NavControls extends EventTarget {
         .setFromAxisAngle(up, -dx * 0.008)
         .multiply(new THREE.Quaternion().setFromAxisAngle(right, -dy * 0.008));
     // merkez etrafında katı dönüş: kamera ve hedef birlikte döner, merkez ekranda yerinde kalır
-    const P = pv?.p ?? this.target;
+    const P = (pv?.p ?? this.target).clone(); // kopya: hedefin kendisi olursa target.sub(P) onu sıfırlayıp görünümü orijine çekiyordu
     cam.position.sub(P).applyQuaternion(q).add(P);
     this.target.sub(P).applyQuaternion(q).add(P);
     cam.up.applyQuaternion(q);

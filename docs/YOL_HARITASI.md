@@ -696,3 +696,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.95 | Gezinme tanılaması (telefonda iki parmak sonrası görünüm sıçramasının kaynağı) | ✅ |
 
 | v0.96 | İki parmakla kaydırdıktan sonra kalan parmak görünümü döndürmez (merkeze sıçrama) | ✅ |
+
+| v0.97 | Kaydırdıktan sonra tek parmakla döndürünce görünüm orijine sıçramıyor | ✅ |
