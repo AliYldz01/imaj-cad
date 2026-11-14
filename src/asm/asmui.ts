@@ -1,6 +1,7 @@
 // Montaj çalışma alanı (SolidWorks gibi): bileşenler, eşleşmeler (standart / gelişmiş / mekanik), eşzamanlı çözücü,
 // eşleşmelere uyarak sürükleme / döndürme, SmartMates (Alt+sürükle), bileşen taşı / döndür / aynala / çoğalt,
 // patlatılmış görünüm adımları, girişim, kütle özellikleri, malzeme listesi, STEP.
+import { openAR } from "../ar/ar";
 import * as THREE from "three";
 import type { Viewer, InputHandler } from "../viewer";
 import type { Kernel } from "../kernel";
@@ -2837,6 +2838,7 @@ export class AsmUI {
       { id: "physics", label: "Fiziksel Dinamik", icon: "move", run: () => ((this.physics = !this.physics), this.ctx.toast(this.physics ? "Fiziksel dinamik açık: sürüklenen bileşen değdiğini iter" : "Fiziksel dinamik kapalı")), active: () => this.physics },
       { id: "explodeView", label: "Patlatılmış Görünüm", icon: "lpattern", run: () => this.openExplode() },
       { id: "explode", label: this.doc.exploded ? "Daralt" : "Patlat", icon: "cpattern", run: () => this.toggleExplode(), active: () => !!this.doc.exploded },
+      { id: "ar", label: "AR'de Gör", icon: "ar", run: () => void openAR(this.ctx.viewer.arMeshes(), this.ctx.toast) },
       "sep",
       { id: "toolbox", label: "Bağlantı Elemanı", icon: "hole", run: () => this.openToolbox() },
       { id: "motion", label: "Hareket Etüdü", icon: "revolve", run: () => this.openMotion() },

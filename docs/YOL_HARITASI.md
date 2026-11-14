@@ -698,3 +698,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.96 | İki parmakla kaydırdıktan sonra kalan parmak görünümü döndürmez (merkeze sıçrama) | ✅ |
 
 | v0.97 | Kaydırdıktan sonra tek parmakla döndürünce görünüm orijine sıçramıyor | ✅ |
+
+| v0.98 | AR görüntüleme (Android WebXR, iPhone / iPad AR Quick Look, kamera önizleme) | ✅ (gerçek cihaz denemesi bekliyor) |

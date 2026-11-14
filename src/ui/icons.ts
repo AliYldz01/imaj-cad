@@ -5,6 +5,7 @@ export const ICONS: Record<string, string> = {
   pmgr: s("M4 6h16 M4 12h16 M4 18h16 M8 4v4 M15 10v4 M10 16v4"),
   zarea: s("M10 10m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0 M14.5 14.5L21 21 M7 8h6v4H7z"),
   prevview: s("M9 7L4 12l5 5 M4 12h11a5 5 0 0 1 0 10h-2"),
+  ar: s("M4 8V5a1 1 0 011-1h3 M16 4h3a1 1 0 011 1v3 M20 16v3a1 1 0 01-1 1h-3 M8 20H5a1 1 0 01-1-1v-3 M12 7l4.5 2.5v5L12 17l-4.5-2.5v-5z M12 12l4.5-2.5 M12 12v5 M12 12L7.5 9.5"),
   cube: s("M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5 M12 12v9 M12 12L4 7.5"),
   sketch: s("M4 20l4-1 11-11-3-3L5 16z M14 7l3 3 M3 21h18"),
   exitSketch: s("M4 20l4-1 11-11-3-3L5 16z M15 19l2 2 4-5"),

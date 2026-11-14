@@ -1,4 +1,5 @@
 import "./style.css";
+import { openAR, arKind, buildArModel, usdzBytes } from "./ar/ar";
 import { Viewer, type InputHandler, type PickHit } from "./viewer";
 import { Kernel } from "./kernel";
 import type { RefHeals } from "./doc/types";
@@ -551,6 +552,11 @@ function setStatus(kind: "ok" | "busy" | "err" | "load" | "under" | "over", text
   $("#status-text").textContent = text;
 }
 let toastTimer = 0;
+/** AR görüntüleme (Android WebXR / iPhone AR Quick Look / kamera önizleme) */
+function openArView() {
+  if (mode.k === "sketch") return toast("Önce eskizden çıkın", true);
+  void openAR(viewer.arMeshes(), toast);
+}
 function toast(msg: string, isErr = false) {
   const t = $("#toast");
   t.textContent = msg;
@@ -7414,6 +7420,7 @@ function commands(): Cmd[] {
       { id: "techdraw", label: "Teknik Resim", icon: "dxf", run: () => void openTechDrawing() },
       { id: "analysis", label: "Mukavemet", icon: "measure", run: () => void openAnalysis() },
       { id: "fea", label: "Statik Analiz", icon: "measure", run: () => openFea(), active: () => !!fea },
+      { id: "ar", label: "AR'de Gör", icon: "ar", run: () => openArView() },
       { id: "photos", label: "Fotoğraflar", icon: "measure", run: () => photos.gallery() },
       { id: "caliper", label: "Kumpas", icon: "measure", run: () => caliper.dialog() },
       { id: "whatswrong", label: "Ne Yanlış?", icon: "measure", run: () => openWhatsWrong() },
@@ -8060,6 +8067,7 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
     }
     if (act === "keys") return ($("#help") as HTMLDialogElement).showModal();
     if (act === "navlog") return navLog.toggle();
+    if (act === "ar") return openArView();
     if (act === "input") return openInputSettings();
     if (act === "wizard") return openWizard();
     if (act === "welcome") return openWelcome();
@@ -10162,6 +10170,22 @@ function showCmd(title: string) {
   return false;
 }
 (window as any).__app = {
+  ar: {
+    kind: arKind,
+    open: openArView,
+    model: () => {
+      const r = buildArModel(viewer.arMeshes());
+      if (!r) return null;
+      const b = new (window as any).__app.THREE.Box3().setFromObject(r.model);
+      return { size: r.size, parts: r.model.children[0].children.length, min: b.min.toArray(), max: b.max.toArray() };
+    },
+    usdz: async () => {
+      const r = buildArModel(viewer.arMeshes());
+      if (!r) return null;
+      const u = await usdzBytes(r.model);
+      return { n: u.length, head: Array.from(u.slice(0, 4)) };
+    },
+  },
   voiceInput,
   openEndCond: (pt: Vec3, fid?: string) => openEndCond(pt, fid),
   get photos() { return photos; },

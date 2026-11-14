@@ -706,6 +706,14 @@ export class Viewer {
     this.scene.children.forEach(walk);
     return out;
   }
+  /** AR için görünür model ağları (sarı önizleme hariç) */
+  arMeshes(): THREE.Mesh[] {
+    const g = this.ghost;
+    return this.navMeshes().filter((m) => {
+      for (let o: THREE.Object3D | null = m; o; o = o.parent) if (o === g) return false;
+      return true;
+    });
+  }
   /** döndürme merkezi: imleç altındaki model noktası (yakın köşeye yakalanır); boşlukta model tümüyle görünüyorsa model merkezi,
    * değilse hedef (null). entity: orta tıkla seçilen varlık → köşe = nokta, kenar / silindir = eksen, düz yüz = normal ekseni */
   navPivot(x: number, y: number, entity: boolean): Pivot | null {

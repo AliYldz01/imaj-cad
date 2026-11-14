@@ -70,6 +70,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - **v0.95:** Dosya menüsünde "Gezinme tanılaması": ekranda görünümü neyin oynattığını gösterir (sorun bildirmek için).
 v0.96: telefonda iki parmakla kaydırıp parmakları kaldırınca görünüm artık sıçramıyor.
 v0.97: telefonda kaydırdıktan sonra tek parmakla döndürünce görünüm artık orijine sıçramıyor.
+v0.98: AR'de Gör — parça ve montajı telefonda / tablette gerçek boyutta masaya / zemine koy.
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

@@ -670,3 +670,21 @@ body.land.sheet:has(#side.min) #hint { left: 50%; transform: translateX(-50%); }
 /* v0.94: tarayıcının kendi iki parmak kaydırma / yakınlaştırması (bırakınca geri yaylanan sayfa) kapalı; grafik alanın üstündeki tüm katmanlarda da */
 html, body { touch-action: pan-x pan-y; overscroll-behavior: none; }
 #view, #view * { touch-action: none; }
+
+/* AR görüntüleme */
+.ar-canvas { position: fixed; inset: 0; z-index: 900; }
+.ar-video { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 899; background: #000; }
+.ar-ui { position: fixed; inset: 0; z-index: 901; display: flex; flex-direction: column; justify-content: space-between; touch-action: none; user-select: none; font: 15px system-ui, sans-serif; color: #fff; }
+.ar-top { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 12px 8px; background: linear-gradient(rgba(0, 20, 60, 0.75), rgba(0, 20, 60, 0)); }
+.ar-info { flex: 1; text-align: right; text-shadow: 0 1px 2px #000; }
+.ar-scale { color: #ffb066; margin-right: 2px; }
+.ar-hint { margin: auto 16px 8px; align-self: center; text-align: center; padding: 8px 14px; border-radius: 18px; background: rgba(0, 20, 60, 0.6); max-width: 92vw; }
+.ar-bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; padding: 10px 10px calc(14px + env(safe-area-inset-bottom)); background: linear-gradient(rgba(0, 20, 60, 0), rgba(0, 20, 60, 0.75)); }
+.ar-btn { min-width: 52px; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(10, 50, 120, 0.85); color: #fff; font: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+.ar-close { background: rgba(200, 60, 30, 0.9); }
+.ar-ql { position: fixed; inset: 0; z-index: 950; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; }
+.ar-ql-box { background: #fff; color: #102040; border-radius: 14px; padding: 18px; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 12px; font: 15px system-ui, sans-serif; }
+.ar-ql-box h3 { margin: 0; }
+.ar-ql-box .ar-btn { color: #fff; }
+.ar-open { background: #f07c1e; border-color: #f07c1e; }
+.ar-open img { width: 1px; height: 1px; opacity: 0; }
