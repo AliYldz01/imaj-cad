@@ -209,7 +209,12 @@ class T:
     def tclick(self, x, y, off=None):
         """telefonda eskiz noktasına dokun: parmak imleci OFF px yukarıda olduğundan OFF px aşağıya dokunulur"""
         sx, sy = self.sc(x, y)
-        self.tap_xy(sx, sy + (self.OFF if off is None else off))
+        if off is None:
+            # v0.89 (D2-5): seçerek çalışan araçlarda (Akıllı Ölçü, kırp, radyüs…) imleç kayması yok
+            tool = self.ev("(()=>{const m=window.__app.mode;return m.k==='sketch'?m.editor.tool:''})()")
+            pick = ["select", "trim", "extend", "fillet", "schamfer", "split", "convert", "pierce", "isect", "dim", "eqcurve", "ordinate", "jog", "block", "offset", "mirror", "spat", "scpat", "move"]
+            off = 0 if tool in pick else self.OFF
+        self.tap_xy(sx, sy + off)
 
     def pick(self, x, y, **kw):
         if self.mobile:

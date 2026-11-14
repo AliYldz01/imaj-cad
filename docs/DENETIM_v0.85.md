@@ -98,6 +98,18 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
 - **Betik düzeltmeleri:** `d5_ref` N4 (çözücü dikdörtgeni simetrik büyütmüyor; köşe gerçek yeni köşeyi izlemeli) ve `d5_pah` V4 / K5b (köşe izlendiği için "Eksik referans" penceresi artık çıkmamalı).
 - Hâlâ açık (başka bulgular): teğet düzlem oluşturma (P14), iki düzlem / silindir eksen PM'i (X2 / X6), eşleşme çevirme (E4).
 
+### Paket 4 notları (v0.89)
+
+- Seçerek çalışan eskiz araçlarında (Seç, Akıllı Ölçü, Kırp, Uzat, Radyüs, Pah, Ayır, Dönüştür, Delme, Kesişim, Ötele / Aynala / Çoğalt / Taşı…) parmak imleç kayması ve "kaldırınca yerleştir" yok: dokunulan öğe işlenir (D2-5). Çizim araçlarında kayma sürüyor.
+- Seç ve Akıllı Ölçü'de nokta / öğe gerçek uzaklığa göre seçilir (D2-6); ilişki simgeleri başka bir araç etkinken dokunuşu yutmaz (telefonda kırparken araç Seç'e dönüyordu).
+- Seç aracında parmak altında nokta / öğe varsa sürüklenir (D3-5, `touchGrab`).
+- Hızlı ölçü / Değiştir kutusu parmağın altına açılmaz, açıldıktan sonraki 300 ms içindeki tıklama yutulur (D1-3).
+- Çok parmak dokunuşu parmakların hangi yola gittiğinden bağımsız sayılır (3 parmak = ileri al) (D1-8); yarım spline ✓ / Esc ile tamamlanır (D1-5).
+- Bildirim dokunuşları yutmaz ve tepsinin üstünde (D1-9); Dosya menüsü kaydırılabilir (D10-8); belge sekmeleri açıkken görünüm çubuğu / küp / kırıntılar aşağı kayar (D10-9); bağlam mini çubuğu 5 sn sonra ya da başka yere dokununca kapanır, ekran çubuğunu örtmez (D10-10).
+- Telefonda ekran çubuğu sekmelerin altından başlar, sığmayan düğmeler sola yeni sütuna geçer; görünüm çubuğu ekran çubuğunun solunda, kırıntılar küpün altında (A-3). İki parmakla kaydırmada istenmeyen yuvarlanma yok (A-2).
+- Betik düzeltmeleri: `d2_mobile`, `d1_mobil`, `d1_akis`, `d1_lib`, `d3_telefon` seçim araçlarında artık kaymasız dokunur; dar ekranda ekran çubuğu / görünüm çubuğu altına düşen noktalar yerine tuvaldeki noktalar kullanılır; iki parmak testi son işlemin (sürükleme) geri alındığını denetler.
+- Hâlâ açık (başka bulgular): A-1 görüntü stili telefonda menüde yok, küpün "Üst" hücresi 3B izdüşümde kutu merkezine denk gelmiyor (betik yapıtı).
+
 ## 4. Önerilen düzeltme sırası
 
 1. ✅ **Paket 1, veri kaybı ve sessiz yanlış** (v0.86):
@@ -106,7 +118,7 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
    - P-2 / D7-3 çekirdek kilidi.
 2. ✅ **Paket 2, sessiz yanlış geometri** (v0.87): P-1, D4-1, D4-3, D5-1, D5-2, D6-1, D6-2, D7-1, D7-4, D8-1, geometri doğrulama altyapısı.
 3. ✅ **Paket 3, kalıcı referansların genişletilmesi** (v0.88): D5-3, D5-4, D5-5, P-9, D8-3, D9-2, D9-5, D9-6, E-5.
-4. **Paket 4, telefon:** D2-5, D2-6, D3-5, D1-3, D1-8, D1-9, D10-8, D10-9, D10-10, A-2, A-3.
+4. ✅ **Paket 4, telefon** (v0.89): D2-5, D2-6, D3-5, D1-3, D1-8, D1-9, D10-8, D10-9, D10-10, A-2, A-3.
 5. **Paket 5:** Kalan Yüksek ve Orta bulgular, alan alan.
 6. **Paket 6:** Düşük bulgular.
 
@@ -266,7 +278,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/sketch/editor.ts:1718` `if (e.pointerType === "mouse") inputs[0].focus();` ve `:1668-1676` keydown `ev.stopPropagation()`.
 - **Öneri:** Kutuyu odaklamadan göster. Kullanıcı rakam yazmaya başlayınca (ilk rakam tuşu) odağı ver. Ya da odaklıyken A / Esc / Ctrl+Z'yi kutu dışına geçir (A → kutuyu kapat + `toggleLineArc`). SolidWorks'teki gibi varsayılanı masaüstünde kapalı yapmak da çözer (E-28).
 
-#### D1-3 — Telefonda dokunma hayalet tıklaması ölçü kutusunun 🎤 (ya da ✓ / ✕) düğmesine gidiyor
+#### ✅ D1-3 — Telefonda dokunma hayalet tıklaması ölçü kutusunun 🎤 (ya da ✓ / ✕) düğmesine gidiyor
 - **Önem:** Yüksek · **Tür:** Hata (telefon)
 - **SolidWorks'te:** — (telefon yok). Beklenen: bir noktaya dokunmak yalnız o noktayı koyar.
 - **Bizde (`d1_mobil.py`, `/tmp` deneme `pm10`):**
@@ -289,7 +301,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/sketch/editor.ts:527-532` `numericEntry` → `op(() => { addRel(horizontal|vertical); dims.push(...) })`. Çizgi aracı (`:2203-2210`) zaten aynı yatay / dikey ilişkiyi ekliyor. İkinci kez eklenen ilişki gereksiz (`redundant`) sayılıyor ve `op()` (`:395-403`) **işlemin tamamını, ölçüyle birlikte** geri alıyor.
 - **Öneri:** İlişkiyi yalnız çizgide yoksa ekle (`relationsOf(sk, l.id).some(r => r.t === tp)`). Ya da ilişkiyi ve ölçüyü ayrı `op` çağrılarında ekle.
 
-#### D1-5 — Telefonda spline çizerken ekran çubuğundaki ✓ ("Bitir") spline'ı oluşturmak yerine siliyor
+#### ✅ D1-5 — Telefonda spline çizerken ekran çubuğundaki ✓ ("Bitir") spline'ı oluşturmak yerine siliyor
 - **Önem:** Orta · **Tür:** Hata (çizim kaybı)
 - **SolidWorks'te:** Spline çift tık ya da sağ tık > "Spline'ı bitir" ile tamamlanır. Girilen noktalar korunur.
 - **Bizde (`d1_mobil.py` §10):** Telefonda Spline ile 4 noktaya dokunuldu (`st.infs = 4`). Ekran çubuğunda ✓ (çizerken "Bitir") → **hiç öğe yok**, noktalar kayboldu. Aynı yol masaüstünde sağ tık > "Zinciri bitir" ve Esc için de geçerli (Esc sonrası 3 noktalı spline kayboldu). Telefonda spline yalnız çok hızlı çift dokunmayla (< 400 ms) ya da küçültülmüş alt paneldeki "Spline'ı bitir" düğmesiyle bitirilebiliyor.
@@ -321,14 +333,14 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/sketch/editor.ts:886-897` (`prev` yalnız aynı zincirin `st.lastEnt`'i).
 - **Öneri:** Zincirin ilk noktası bir yayın / çizginin ucuna (`ptId`) yakalandıysa o öğeyi `prev` say ve Teğet / Doğrusal / Dik adaylarını üret. Teğet ile yatay çakışırsa ikisinden yalnız birini ekle.
 
-#### D1-8 — Telefonda üç parmak dokunuşu "ileri al" yerine "geri al" yapıyor
+#### ✅ D1-8 — Telefonda üç parmak dokunuşu "ileri al" yerine "geri al" yapıyor
 - **Önem:** Orta · **Tür:** Hata (telefon)
 - **Beklenen (v0.10 notu):** 2 parmak = geri al, 3 parmak = ileri al.
 - **Bizde (`d1_mobil.py`, deneme `pm7`):** Eskizde 2 çizgi → 2 parmak dokunuşu → 1 çizgi (✓). 3 parmak dokunuşu → **0 çizgi** (bir adım daha geri aldı). `onFingerTap` 3 parmakta `n = 2` ile çağrılıyor (`__ft = [2, 2]`).
 - **Kod:** `src/viewer.ts:226-245`. İlk parmak çizim parmağı (`drawTouch`) olarak `touches`'tan çıkarılıyor. İkinci parmak gelince geri ekleniyor ama `if (!touches.size) gesture = …` koşulu atlanıyor. `gesture.max` sayımı bu yüzden bir eksik kalıyor. `src/main.ts:7771`. Kök tam doğrulanmadı.
 - **Öneri:** `drawTouch` dönüştürülürken `gesture`'ı (yoksa) `max: 1` ile başlat. `max`'ı `touches.size` yerine o hareketteki farklı `pointerId` sayısıyla hesapla.
 
-#### D1-9 — Telefonda bildirim (#toast) alttaki komut tepsisini örtüp dokunuşları yutuyor
+#### ✅ D1-9 — Telefonda bildirim (#toast) alttaki komut tepsisini örtüp dokunuşları yutuyor
 - **Önem:** Orta · **Tür:** Hata (telefon arayüzü)
 - **Bizde (`d1_akis.py` M1, deneme `pm9`):** Herhangi bir bildirimden sonra 2,6–5 sn boyunca tepsideki "Daire" düğmesine dokunmak işe yaramıyor. `elementFromPoint` → `<div id="toast">`. Araç Dikdörtgen'de kalıyor. Kullanıcının sonraki dokunuşu yanlış araçla çizim yapıyor (M1'de daire yerine dikdörtgen başlangıcı oluştu).
 - **Kod:** `src/style.css:172` `#toast { bottom: calc(24px + …); z-index: 60 }`. `pointer-events: none` yok, konum telefon tepsisinin (`#tray`) üstünde.
@@ -591,7 +603,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/ops.ts:177` (yalnız H/V ilişkileri süzülüyor; `dist` ölçülerinin `sub: "h"/"v"` kısmı ya da açıya bağlı ölçüler dokunulmuyor).
 - **Öneri:** Döndürmede seçili öğelerin noktalarını kullanan yatay/dikey `dist` ölçülerini ya hizalı (`sub: "a"`) ölçüye çevir (90°/270°'de h↔v değiş), ya sil ve bildir; "İlişkileri koru" seçeneği ekle.
 
-##### D2-5 — Telefonda Kırp / Radyüs / Pah / Uzat / Ayır / Delme gibi seçim araçlarında dokunulan yer değil 70 px yukarısı işleniyor
+##### ✅ D2-5 — Telefonda Kırp / Radyüs / Pah / Uzat / Ayır / Delme gibi seçim araçlarında dokunulan yer değil 70 px yukarısı işleniyor
 - **Önem:** Yüksek · **Tür:** Hata (telefon kullanımı)
 - **SolidWorks (mobil karşılığı yok):** Seçerek çalışan araçlarda (kırp, radyüs, pah…) parmağın dokunduğu öğe işlenmeli. İmleç kayması yalnız yeni nokta çizen araçlarda anlamlı.
 - **Bizde (390×844, CDP dokunma, profil otomatik → parmak):** eskiz → **Kırp** → taşan çizgi ucuna doğrudan dokun → hiçbir şey olmadı (çizgi `[20,-45]-[20,45]` aynı). Aynı yerin **70 px altına** dokununca kırpıldı. Radyüs: köşeye doğrudan dokunma → değişiklik yok; 70 px altı → yay. Kısa dokunuşta imleç görünmediği için kullanıcı nereye işlendiğini bilemez; dokunulan yerin 70 px üstünde başka bir öğe varsa **yanlış öğe kırpılır / radyüslenir**. Ayrıca güç kırpma (sürükleyerek) telefonda "kaldırınca yerleştir"e gittiği için çalışmıyor.
@@ -599,7 +611,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/main.ts:7764-7765` `sketchDrawing = tool !== "select"` → `src/viewer.ts:264-283` `activeDy = touchOffset()` her araç için; `src/sketch/editor.ts:1189` `liftMode` (trim / fillet de dahil).
 - **Öneri:** `touchDrawOk` / `liftMode`'u yalnız çizim araçlarında (line, rect, circle, arc, spline, point…) aç; trim, extend, fillet, schamfer, split, convert, pierce, isect, OP_TOOLS için dokunma doğrudan (kayma yok) olsun; güç kırpmayı dokunmada da sürüklemeyle etkinleştir.
 
-##### D2-6 — Seçimde nokta önceliği: telefonda küçük daire (ve yakın merkezli daire) çevresine dokununca merkez noktası seçiliyor; sonraki Taşı / Aynala / Sil sessizce etkisiz
+##### ✅ D2-6 — Seçimde nokta önceliği: telefonda küçük daire (ve yakın merkezli daire) çevresine dokununca merkez noktası seçiliyor; sonraki Taşı / Aynala / Sil sessizce etkisiz
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks:** İmlece en yakın öğe seçilir; çevreye dokunmak daireyi seçer.
 - **Bizde:** telefonda Seç → R3 dairenin çevresine (3,18) dokun → seçim `['p15']` (merkez noktası). R10 dairenin çevresine, yakında başka bir dairenin merkezi (5 mm) varken dokun → o dairenin merkezi `p33` seçildi; bir denemede ilişki simgesi `r25` seçildi. Ardından Taşı → "Taşınacak öğeleri seçin" (model değişmedi), Aynala / Sil de etkisiz.
@@ -911,7 +923,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/main.ts:1716-1717` `undoStack.push(...)` sonrası `redoStack.length = 0` yok (`startSketch :1649` temizliyor).
 - **Öneri:** Var olan eskiz ✓ ile kapanırken (değişiklik varsa) `redoStack.length = 0`.
 
-##### D3-5 — Telefonda (parmak) eskizde nokta / çizgi / ölçü etiketi sürüklenemiyor
+##### ✅ D3-5 — Telefonda (parmak) eskizde nokta / çizgi / ölçü etiketi sürüklenemiyor
 - **Önem:** Yüksek (telefonda "tanımsız geometri sürüklenir" işlevi yok) · **Tür:** Hata / eksik
 - **SolidWorks'te:** (Masaüstü) Seç durumunda tanımsız geometri sürüklenir. Telefon hedefi için montajdaki B3'e (`touchGrab`) karşılık gelen davranış beklenir.
 - **Bizde:** 390×844, parmak profili. Seç aracında serbest çizgi ucundan 40×30 px parmakla sürükleme yapıldı. Nokta yerinde kaldı, kamera kaydı (konum (-20.9, 15.7) → (-41.9, 31.4)). Noktanın 70 px altından sürükleme de aynı sonucu verdi. Dokunarak seçim çalışıyor.
@@ -3167,7 +3179,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** Başlangıç bloğu (`src/main.ts:8501-8521`) `renderDocTabs()` çağırmıyor. `afterDocChange` çağırıyor ama başlangıçta çalışmıyor.
 - **Öneri:** Başlangıçta `renderDocTabs()` çağrılsın.
 
-#### D10-8 · Telefonda Dosya listesi ekrana sığmıyor ve kaydırılamıyor: Kalem / dokunmatik ayarlarına ulaşılamıyor
+#### ✅ D10-8 · Telefonda Dosya listesi ekrana sığmıyor ve kaydırılamıyor: Kalem / dokunmatik ayarlarına ulaşılamıyor
 - **Önem:** Orta · **Tür:** Hata (telefonda işlev erişilemez)
 - **SolidWorks:** – (mobil yok). Beklenen: tüm menü öğeleri dokunulabilir olmalı.
 - **Bizde:**
@@ -3179,7 +3191,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `index.html` `#file-menu` + stil (`.popover`), `max-height` / `overflow-y: auto` eksik.
 - **Öneri:** `#file-menu { max-height: calc(100dvh - top - 8px); overflow-y: auto }`. Telefonda ayarlar ekran çubuğu ☰ menüsüne de eklensin.
 
-#### D10-9 · Telefon ve tablette iki belge açıkken sekme çubuğu görünüm çubuğunu ve küpün üstünü örtüyor
+#### ✅ D10-9 · Telefon ve tablette iki belge açıkken sekme çubuğu görünüm çubuğunu ve küpün üstünü örtüyor
 - **Önem:** Orta · **Tür:** Arayüz (dokunulamayan düğmeler)
 - **SolidWorks:** –
 - **Bizde:**
@@ -3191,7 +3203,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `#doctabs` / `#viewbar` / `.vcube` mobil konumları (`style.css`).
 - **Öneri:** Sekmeler açıkken görünüm çubuğu ve küp sekme yüksekliği kadar aşağı alınsın. Ya da telefonda sekmeler başlığa / Dosya listesine taşınsın.
 
-#### D10-10 · Dokunmatikte bağlam mini çubuğu kapanmıyor ve ekran çubuğu düğmesini örtüyor
+#### ✅ D10-10 · Dokunmatikte bağlam mini çubuğu kapanmıyor ve ekran çubuğu düğmesini örtüyor
 - **Önem:** Orta · **Tür:** Arayüz
 - **SolidWorks:** Bağlam araç çubuğu imleç uzaklaşınca kaybolur (fare).
 - **Bizde:**

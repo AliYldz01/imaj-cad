@@ -144,6 +144,8 @@ export class Viewer {
   touchDrawOk: (() => boolean) | null = null;
   /** tek parmak bu noktada nesneyi tutar mı (montajda bileşen sürükleme); true → olaylar işleyiciye, kaydırma yok */
   touchGrab: ((x: number, y: number) => boolean) | null = null;
+  /** D2-5: dokunulan öğeyi işleyen araçlarda (kırp, radyüs…) parmak imleç kayması yok */
+  touchNoOffset: (() => boolean) | null = null;
   /** uzun basma menüsüne izin (çizim sırasında kalem sabit tutulabilir) */
   longPressOk: ((pointerType: string) => boolean) | null = null;
   onLongPress: ((x: number, y: number, pointerType: string) => void) | null = null;
@@ -181,6 +183,8 @@ export class Viewer {
     const touches = new Map<number, { x: number; y: number; t: number; moved: boolean }>();
     let multi = false;
     let gesture: { max: number; t: number; moved: boolean } | null = null;
+    /** basılı parmaklar (çok parmak dokunuşu sayımı) */
+    const live = new Map<number, [number, number]>();
     /** parmakla çizim (tek dokunuş araç olarak) */
     let drawTouch: { id: number; t: number; moved: boolean; x: number; y: number; tp?: boolean } | null = null;
     const blocked = new Set<number>();
@@ -216,6 +220,12 @@ export class Viewer {
         observe(e);
         if (e.target !== canvas) return;
         if (e.pointerType === "pen") this.lastPen = performance.now();
+        if (e.pointerType === "touch" && e.target === canvas && !penRecent()) {
+          // D1-8: çok parmak dokunuşu (2 = geri al, 3 = ileri al) parmağın hangi yola (çizim / tutma / gezinme) gittiğinden bağımsız sayılır
+          if (!live.size) gesture = { max: 0, t: performance.now(), moved: false };
+          live.set(e.pointerId, [e.clientX, e.clientY]);
+          if (gesture) gesture.max = Math.max(gesture.max, live.size);
+        }
         if (e.pointerType === "touch") {
           if (penRecent() || blocked.size) {
             // avuç reddi: kalem kullanılırken parmak/avuç dokunuşları yok sayılır
@@ -240,9 +250,7 @@ export class Viewer {
               return;
             }
           }
-          if (!touches.size) gesture = { max: 0, t: performance.now(), moved: false };
           touches.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), moved: false });
-          if (gesture) gesture.max = Math.max(gesture.max, touches.size);
           if (touches.size > 1) {
             multi = true;
             clearLp();
@@ -268,7 +276,7 @@ export class Viewer {
             drawTouch = { id: e.pointerId, t: performance.now(), moved: false, x: e.clientX, y: e.clientY };
             active = e.pointerId;
             activeType = "touch";
-            activeDy = touchOffset();
+            activeDy = this.touchNoOffset?.() ? 0 : touchOffset();
             try { canvas.setPointerCapture(e.pointerId); } catch {}
             if (prefs.touchpad) {
               // dokunmatik fare: imleç göreli hareket eder, kısa dokunuş tıklar
@@ -308,6 +316,10 @@ export class Viewer {
         observe(e);
         if (e.pointerType === "pen") this.lastPen = performance.now();
         lpMove(e);
+        if (e.pointerType === "touch" && gesture) {
+          const st0 = live.get(e.pointerId);
+          if (st0 && Math.hypot(e.clientX - st0[0], e.clientY - st0[1]) > 10) gesture.moved = true;
+        }
         if (e.pointerType === "touch") {
           if (blocked.has(e.pointerId)) return void e.stopPropagation();
           if (drawTouch && drawTouch.id === e.pointerId) {
@@ -333,7 +345,6 @@ export class Viewer {
           const t = touches.get(e.pointerId);
           if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) {
             t.moved = true;
-            if (gesture) gesture.moved = true;
           }
           return;
         }
@@ -351,6 +362,11 @@ export class Viewer {
       if (e.pointerType === "pen") this.lastPen = performance.now();
       const fired = !!(lp && lp.id === e.pointerId && lp.fired);
       if (lp && lp.id === e.pointerId) clearLp();
+      if (e.pointerType === "touch" && live.delete(e.pointerId) && !live.size) {
+        const g = gesture;
+        gesture = null;
+        if (!cancel && g && g.max >= 2 && !g.moved && performance.now() - g.t < 400 && prefs.fingerUndo) setTimeout(() => this.onFingerTap?.(g.max), 0);
+      }
       if (e.pointerType === "touch") {
         if (blocked.delete(e.pointerId)) return void e.stopPropagation();
         if (drawTouch && drawTouch.id === e.pointerId) {
@@ -376,9 +392,6 @@ export class Viewer {
         if (!cancel && !fired && t && !t.moved && !multi && performance.now() - t.t < 450) this.handler?.tap?.(e);
         if (touches.size === 0) {
           multi = false;
-          const g = gesture;
-          gesture = null;
-          if (!cancel && g && g.max >= 2 && !g.moved && performance.now() - g.t < 400 && prefs.fingerUndo) this.onFingerTap?.(g.max);
         }
         return;
       }

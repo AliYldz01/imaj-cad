@@ -20,6 +20,8 @@ export class NavControls extends EventTarget {
   oneFingerRotate = true;
   private pointers = new Map<number, { x: number; y: number; type: string; button: number }>();
   private pinch: { d: number; mx: number; my: number; a: number } | null = null;
+  /** A-2: çevirme (yuvarlama) başvurusu — yalnız çevirme uygulanınca güncellenir; parmak aralığı hareketin başında */
+  private roll0: { a: number; d0: number } | null = null;
 
   constructor(private camera: THREE.OrthographicCamera, private el: HTMLElement) {
     super();
@@ -54,7 +56,7 @@ export class NavControls extends EventTarget {
     try {
       this.el.setPointerCapture(e.pointerId);
     } catch {}
-    if (this.touchCount() === 2) this.pinch = this.pinchState();
+    if (this.touchCount() === 2) (this.pinch = this.pinchState()), (this.roll0 = { a: this.pinch.a, d0: this.pinch.d });
   }
 
   private down(e: PointerEvent) {
@@ -71,7 +73,7 @@ export class NavControls extends EventTarget {
     }
     try { this.el.setPointerCapture(e.pointerId); } catch {}
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
-    if (this.touchCount() === 2) this.pinch = this.pinchState();
+    if (this.touchCount() === 2) (this.pinch = this.pinchState()), (this.roll0 = { a: this.pinch.a, d0: this.pinch.d });
   }
 
   private touchCount() {
@@ -99,11 +101,15 @@ export class NavControls extends EventTarget {
         const s = this.pinchState();
         this.pan(s.mx - this.pinch.mx, s.my - this.pinch.my);
         if (this.pinch.d > 0 && s.d > 0) this.zoomAt(s.d / this.pinch.d, s.mx, s.my);
-        if (this.oneFingerRotate && prefs.twistRoll && s.d > 80) {
-          let da = s.a - this.pinch.a;
+        if (this.oneFingerRotate && prefs.twistRoll && this.roll0 && this.roll0.d0 > 80) {
+          // sırayla gelen parmak olaylarının açı titremesi birikmesin: ölü bölge (≈ 3°), başvuru yalnız çevirince ilerler
+          let da = s.a - this.roll0.a;
           if (da > Math.PI) da -= 2 * Math.PI;
           if (da < -Math.PI) da += 2 * Math.PI;
-          if (Math.abs(da) < 0.3) this.roll((-da * 180) / Math.PI);
+          if (Math.abs(da) > 0.05 && Math.abs(da) < 0.6) {
+            this.roll((-da * 180) / Math.PI);
+            this.roll0.a = s.a;
+          } else if (Math.abs(da) >= 0.6) this.roll0.a = s.a;
         }
         this.pinch = s;
       }

@@ -774,7 +774,7 @@ En önemli bulgular:
 - Kod: `src/main.ts:7001` `btn("iso", "Görüntü stili …")`. `btn()` "iso" simgesine `orient` sınıfı veriyor. `src/style.css:300` `body.has-cube #viewbar button.orient {display:none}` bu düğmeyi de gizliyor.
 - Öneri: Stil düğmesine başka simge/sınıf ver (ör. `style`). Görünüm menüsüne "Saydam" ekle.
 
-**A-2 · İki parmakla kaydırmada istenmeyen yuvarlanma (roll)**
+**✅ A-2 · İki parmakla kaydırmada istenmeyen yuvarlanma (roll)**
 - Önem: **Orta** · Tür: Hata
 - SolidWorks / beklenen: İki parmak aynı yöne kayınca yalnız kaydırma olur.
 - Bizde (390×844, CDP, iki parmak 80 px aralıkla 50,30 px kaydırıldı):
@@ -787,7 +787,7 @@ En önemli bulgular:
   - Ya da eşik sağlanmadığında `pinch.a`'yı güncelleme.
   - Küçük açılarda ölü bölge ve birikimli eşik kullan.
 
-**A-3 · Telefonda/tablette eskiz modunda ekran çubuğu şeridi ve görünüm çubuğunu örtüyor**
+**✅ A-3 · Telefonda/tablette eskiz modunda ekran çubuğu şeridi ve görünüm çubuğunu örtüyor**
 - Önem: **Orta** · Tür: Hata
 - Bizde (ölçüldü):
   - 390×844: "Eskizden çık" düğmesinin üstü 56 px, şeridin altı 138 px; ✓ ✕ A düğmeleri şerit komutlarının ("Dikdörtgen…") üstünde. "Çizgi ↔ teğet yay" ve "Sayıyla gir", görünüm çubuğundaki "Ekrana sığdır" ve "Düzlemleri göster/gizle" düğmelerini örtüyor.

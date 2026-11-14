@@ -3,7 +3,7 @@ import { Viewer, type InputHandler, type PickHit } from "./viewer";
 import { Kernel } from "./kernel";
 import type { RefHeals } from "./doc/types";
 import { initSolver } from "./sketch/solver";
-import { SketchEditor, TOOL_NAMES, type SkTool } from "./sketch/editor";
+import { SketchEditor, TOOL_NAMES, PICK_TOOLS, type SkTool } from "./sketch/editor";
 import { newSketch, nid, addPt, addLine } from "./sketch/model";
 import { mesh3mf, jpegPdf, sketchDxf, loopsDxf, faceLoops2D } from "./io/export";
 import { pointPos } from "./sketch/profile";
@@ -249,6 +249,7 @@ function renderDocTabs() {
   add.addEventListener("click", () => openInNewTab());
   bar.appendChild(add);
   bar.style.display = docTabs.length > 1 ? "" : "none";
+  document.body.classList.toggle("has-doctabs", docTabs.length > 1); // D10-9
 }
 function afterDocChange() {
   applyDocProps();
@@ -1792,7 +1793,7 @@ function offerCandidates(x: number, y: number, hit: PickHit) {
     bar.appendChild(b);
   }
   const r = $("#view").getBoundingClientRect();
-  bar.style.left = Math.min(r.width - 260, Math.max(4, x - r.left - 60)) + "px";
+  bar.style.left = Math.min(r.width - 260 - (innerWidth <= 820 ? 56 : 0), Math.max(4, x - r.left - 60)) + "px";
   bar.style.top = Math.max(4, y - r.top + 26) + "px";
   $("#view").appendChild(bar);
   setTimeout(() => bar.remove(), 5000);
@@ -1817,15 +1818,28 @@ function showMiniBar(x: number, y: number) {
     b.addEventListener("click", () => (bar.remove(), fn()));
     bar.appendChild(b);
   }
-  bar.style.left = Math.min(innerWidth - 40 * items.length - 10, x + 14) + "px";
+  // D10-10: telefonda sağdaki ekran çubuğunu örtmesin
+  const rightGap = innerWidth <= 820 ? 62 : 10;
+  bar.style.left = Math.max(4, Math.min(innerWidth - 40 * items.length - rightGap, x + 14)) + "px";
   bar.style.top = Math.max(4, y - 52) + "px";
   bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
   document.body.appendChild(bar);
-  // imleç uzaklaşınca kaybolur (SolidWorks gibi)
-  const away = (ev: PointerEvent) => {
-    if (Math.hypot(ev.clientX - x, ev.clientY - y) > 160) (bar.remove(), removeEventListener("pointermove", away));
+  // imleç uzaklaşınca (SolidWorks gibi), başka yere dokununca ya da 5 sn sonra kaybolur (dokunmatikte imleç hareketi yok)
+  const close = () => {
+    bar.remove();
+    removeEventListener("pointermove", away);
+    removeEventListener("pointerdown", tapAway, true);
+    clearTimeout(tm);
   };
+  const away = (ev: PointerEvent) => {
+    if (ev.pointerType === "mouse" && Math.hypot(ev.clientX - x, ev.clientY - y) > 160) close();
+  };
+  const tapAway = (ev: PointerEvent) => {
+    if (!bar.contains(ev.target as Node)) close();
+  };
+  const tm = window.setTimeout(close, 5000);
   addEventListener("pointermove", away);
+  setTimeout(() => addEventListener("pointerdown", tapAway, true), 0);
 }
 function toggle<T>(s: Set<T>, v: T) {
   if (s.has(v)) s.delete(v);
@@ -6983,7 +6997,7 @@ function placeRibbon() {
       $("#main").after(tray);
       // yüzen ekran çubuğu alt panelin üstünde kalsın: tepsi yüksekliği CSS değişkeninde
       const t = tray;
-      new ResizeObserver(() => document.documentElement.style.setProperty("--tray-h", (t.isConnected ? t.offsetHeight : 0) + "px")).observe(t);
+      new ResizeObserver(() => (document.documentElement.style.setProperty("--tray-h", (t.isConnected ? t.offsetHeight : 0) + "px"), fitActBar())).observe(t);
     }
     if (cmds.parentElement !== tray) {
       if (gb) tray.appendChild(gb);
@@ -8058,7 +8072,8 @@ viewer.controls.addEventListener("fit", () => fitAll());
 // =====================================================================
 const sketchDrawing = () => mode.k === "sketch" && mode.editor.tool !== "select";
 viewer.touchDrawOk = () => sketchDrawing();
-viewer.touchGrab = (x, y) => !!asmUI?.on && mode.k === "part" && asmUI.grabOk(x, y);
+viewer.touchGrab = (x, y) => (!!asmUI?.on && mode.k === "part" && asmUI.grabOk(x, y)) || (mode.k === "sketch" && mode.editor.grabAt(x, y));
+viewer.touchNoOffset = () => mode.k === "sketch" && PICK_TOOLS.includes(mode.editor.tool);
 // çizim aracı açıkken kalem/parmak sabit tutulabilir (büyüteçle bakmak için): uzun basma menüsü yalnız seçimde
 viewer.longPressOk = () => !sketchDrawing();
 viewer.onLongPress = (x, y) => openContextMenu(x, y);
@@ -8204,7 +8219,33 @@ function renderActBar() {
   });
   b("⤢", "Ekrana sığdır", () => fitAll());
   if (voiceSupported()) b("🎤", "Sesle ölçü gir", () => void voiceInput(), "small");
+  fitActBar();
 }
+/** A-3: telefonda ekran çubuğu sütun sayısı — yükseklik yetmezse düğmeler ikinci sütuna geçer */
+function fitActBar() {
+  if (innerWidth > 820 || actbar.hidden) return actbar.style.removeProperty("--ab-rows");
+  actbar.style.setProperty("--ab-rows", "99");
+  requestAnimationFrame(() => {
+    const cs = getComputedStyle(actbar);
+    const bt = actbar.querySelector("button") as HTMLElement | null;
+    if (!bt) return;
+    // kullanılabilir yükseklik: üstten bağlıysa tepsiye kadar, alttan bağlıysa (alt panel açık) görünüm çubuğunun altına kadar
+    const trayH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tray-h")) || 0;
+    const anchoredBottom = (document.body.classList.contains("sheet") || document.body.classList.contains("asm-pm")) && !$("#side").classList.contains("min");
+    // alttan bağlıyken ikinci sütun görünüm çubuğunun altında kalsın
+    const minTop = (document.body.classList.contains("has-doctabs") ? 30 : 0) + 96;
+    const bottomPx = parseFloat(cs.bottom);
+    const mh = !anchoredBottom ? innerHeight - trayH - 12 - parseFloat(cs.top) - ($("#side").classList.contains("min") ? 60 : 0) : innerHeight - (isNaN(bottomPx) ? 0 : bottomPx) - minTop;
+    const gap = parseFloat(cs.rowGap) || 6;
+    const rows = Math.max(1, Math.floor((mh + gap) / (bt.offsetHeight + gap)));
+    actbar.style.setProperty("--ab-rows", String(Math.min(99, rows)));
+    // görünüm çubuğu ekran çubuğunun solunda kalsın
+    requestAnimationFrame(() => document.documentElement.style.setProperty("--ab-w", actbar.offsetWidth + "px"));
+  });
+}
+addEventListener("resize", fitActBar);
+new MutationObserver(() => fitActBar()).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+new MutationObserver(() => fitActBar()).observe($("#side"), { attributes: true, attributeFilter: ["class"] });
 // ---------- sesle ölçü girişi ----------
 let lastNumInput: HTMLInputElement | null = null;
 document.addEventListener("focusin", (e) => {
@@ -9293,5 +9334,6 @@ function showCmd(title: string) {
   setDoc(d: PartDoc) { treeSel = null; commitDoc(() => (doc = d)); },
   __kf: () => compile(viewFeatures().feats, doc.profiles ?? {}).kfeats,
   pmPick: (hit: any) => pmPick(hit),
+  editFeature: (id: string) => editFeature(id),
   kernel,
 };

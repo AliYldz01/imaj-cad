@@ -37,6 +37,21 @@ const skipList = (t: string) => t.split(/[;\s]+/).map((x) => x.trim()).filter(Bo
 
 /** Seçim üzerinde çalışan işlem araçları */
 export const OP_TOOLS: SkTool[] = ["offset", "mirror", "spat", "scpat", "move"];
+/** D1-3: dokunmadan hemen sonra açılan kutu parmağın altına düşmesin ve dokunmanın ardından gelen tıklama kutudaki düğmeye gitmesin */
+function ghostSafe(box: HTMLElement, x: number, y: number) {
+  const t0 = performance.now();
+  box.addEventListener("click", (ev) => {
+    if (performance.now() - t0 < 300) (ev.stopPropagation(), ev.preventDefault());
+  }, true);
+  const r = box.getBoundingClientRect();
+  if (x >= r.left - 20 && x <= r.right + 20 && y >= r.top - 20 && y <= r.bottom + 20) {
+    let top = y - r.height - 36;
+    if (top < 8) top = Math.min(window.innerHeight - r.height - 8, y + 44);
+    box.style.top = top + "px";
+  }
+}
+/** D2-5: dokunulan öğeyi işleyen (yeni nokta koymayan) araçlar — telefonda imleç kayması ve kaldırınca yerleştir yok */
+export const PICK_TOOLS: SkTool[] = ["select", "trim", "extend", "fillet", "schamfer", "split", "convert", "pierce", "isect", "dim", "eqcurve", "ordinate", "jog", "block", ...OP_TOOLS];
 
 export const TOOL_NAMES: Record<SkTool, string> = {
   select: "Seç",
@@ -671,6 +686,8 @@ export class SketchEditor implements InputHandler {
 
   /** Zinciri / yarım kalan çizimi bitir */
   finishChain() {
+    // D1-5: yarım spline "Bitir" / Esc ile atılmaz, girilen noktalarla tamamlanır
+    if (this.tool === "spline" && ((this.st as any).infs?.length ?? 0) >= 2) return this.finishSpline(false);
     const had = Object.keys(this.st).length > 0;
     this.st = {};
     if (had) {
@@ -686,8 +703,8 @@ export class SketchEditor implements InputHandler {
     const tol = tolPx * this.wpp();
     const sk = this.data;
     const ex = opts.exclude ?? new Set();
+    let ptBest: Hit | null = null, ptD = Infinity;
     if (opts.pts !== false) {
-      let best: Hit | null = null;
       let bd = tol;
       for (const id of [ORIGIN, ...Object.keys(sk.pts)]) {
         if (ex.has(id)) continue;
@@ -695,10 +712,11 @@ export class SketchEditor implements InputHandler {
         const d = d2(p, q);
         if (d < bd) {
           bd = d;
-          best = { kind: "pt", id, q };
+          ptBest = { kind: "pt", id, q };
         }
       }
-      if (best) return best;
+      ptD = bd;
+      if (ptBest && opts.ents === false) return ptBest;
     }
     if (opts.ents !== false) {
       let best: Hit | null = null;
@@ -711,9 +729,11 @@ export class SketchEditor implements InputHandler {
           best = { kind: "ent", id: e.id, q: r.q };
         }
       }
-      return best;
+      // D2-6: nokta yalnız öğeden gerçekten yakınsa (küçük öncelik payıyla) seçilir; dairenin çevresine dokunmak daireyi seçer
+      if (ptBest && (!best || ptD <= bd + tol * 0.35)) return ptBest;
+      return best ?? ptBest;
     }
-    return null;
+    return ptBest;
   }
 
   private nearestOnEnt(e: SEnt, p: Vec2): { q: Vec2; d: number } | null {
@@ -1186,7 +1206,15 @@ export class SketchEditor implements InputHandler {
   private lift = false;
   private trimmedIds = new Set<string>();
   private liftMode(e: { pointerType: string }) {
-    return e.pointerType !== "mouse" && prefs.placeOnLift && this.tool !== "select" && this.tool !== "dim" && this.tool !== "free";
+    return e.pointerType !== "mouse" && prefs.placeOnLift && !PICK_TOOLS.includes(this.tool) && this.tool !== "free";
+  }
+  /** D3-5: parmağın altında sürüklenebilir nokta / öğe / ölçü etiketi var mı (Seç aracında) */
+  grabAt(clientX: number, clientY: number): boolean {
+    if (this.tool !== "select") return false;
+    if (document.elementsFromPoint(clientX, clientY).some((el) => (el as HTMLElement).classList?.contains("dim") && this.labelBox.contains(el))) return true;
+    const p = this.local({ clientX, clientY } as any);
+    if (!p) return false;
+    return !!this.hitTest(p, 20 * prefs.snapSize);
   }
   /** basış iptal (ikinci parmak / uzun basma) */
   cancel = () => {
@@ -1715,6 +1743,7 @@ export class SketchEditor implements InputHandler {
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(8, Math.min(window.innerWidth - r.width - 8, e.clientX + 18)) + "px";
     box.style.top = Math.max(8, Math.min(window.innerHeight - r.height - 8, e.clientY + 18)) + "px";
+    ghostSafe(box, e.clientX, e.clientY);
     if (e.pointerType === "mouse") inputs[0].focus();
   }
 
@@ -2709,7 +2738,8 @@ export class SketchEditor implements InputHandler {
   }
 
   private selectClick(p: Vec2) {
-    let h = this.hitTest(p, this.tolPx, { ents: false }) ?? (this.tool === "select" && this.mods.add ? (() => {
+    // D2-6: Seç'te nokta / öğe gerçek uzaklığa göre (dairenin çevresine dokunmak daireyi seçer)
+    let h = ((this.tool === "select" || this.tool === "dim") && !this.mods.add ? this.hitTest(p) : this.hitTest(p, this.tolPx, { ents: false })) ?? (this.tool === "select" && this.mods.add ? (() => {
       // Ctrl ile: orta nokta / çeyrek / merkez gibi noktalar da seçilebilir (ilişki vermek için)
       const v = this.virtualPt(p);
       const id = v && this.realizeVirtual(v);
@@ -3758,6 +3788,11 @@ export class SketchEditor implements InputHandler {
     const st = this.st;
     st.refs = st.refs ?? [];
     let h = this.hitTest(p, this.tolPx, { ents: false });
+    // D2-6: öğe noktadan belirgin biçimde yakınsa nokta değil öğe ölçülür (telefonda geniş dokunma toleransı)
+    if (h) {
+      const he = this.hitTest(p, this.tolPx, { pts: false });
+      if (he && d2(p, he.q) + 0.35 * this.tolPx * this.wpp() < d2(p, h.q)) h = null;
+    }
     if (!h) {
       const v = this.virtualPt(p);
       const id = v && this.realizeVirtual(v);
@@ -3992,6 +4027,7 @@ export class SketchEditor implements InputHandler {
     const r = box.getBoundingClientRect();
     box.style.left = Math.max(8, Math.min(window.innerWidth - r.width - 8, x - r.width / 2)) + "px";
     box.style.top = Math.max(8, Math.min(window.innerHeight - r.height - 8, y - r.height - 24)) + "px";
+    ghostSafe(box, x, y);
     inp.focus();
     inp.select();
     const close = () => {
@@ -4681,6 +4717,8 @@ export class SketchEditor implements InputHandler {
       el.className = "rel" + (this.sel.has(r.id) ? " sel" : "") + (bad.has(r.id) ? " err" : "");
       el.textContent = REL_GLYPH[r.t];
       el.title = REL_NAMES[r.t];
+      // başka bir araç etkinken ilişki simgesi dokunuşu / tıklamayı yutmasın (telefonda kırp sırasında araç Seç'e dönüyordu)
+      if (this.tool !== "select") el.style.pointerEvents = "none";
       el.addEventListener("pointerdown", (e) => e.stopPropagation());
       el.addEventListener("click", (e) => {
         e.stopPropagation();

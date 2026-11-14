@@ -32,7 +32,7 @@ with sync_playwright() as p:
     s = t.st()
     t.chk("telefon çizgi: kapalı 4 çizgi, Y/D, orijin, 2 serbestlik", s["ents"] == ["line"] * 4 and s["dof"] == 2 and s["npts"] == 3, s)
     t.cmd("Akıllı Ölçü")
-    t.smart_dim([(25, 0)], 60, (25, -15)); t.smart_dim([(60, 15)], 40, (75, 15))
+    t.smart_dim([(25, 0)], 60, (25, -15)); t.smart_dim([(0, 8)], 40, (15, 15))  # sol kenar: sağ kenar dar ekranda ekran çubuğunun altında kalıyor; kenarın ortası değil (orta nokta seçilir) (v0.89)
     t.chk("telefon çizgi: 2 ölçü → tam tanımlı", t.st()["dof"] == 0, t.st())
     life(t, "telefon çizgi", 60 * 40 * 10, 60, 70, 70 * 40 * 10)
 
@@ -51,7 +51,7 @@ with sync_playwright() as p:
     a = t.sc(30, 60); b = t.sc(50, 60)
     t.touch("touchStart", [a, b]); time.sleep(0.05); t.touch("touchEnd", []); time.sleep(0.4)
     t.chk("telefon: iki parmak dokunuşu geri alır", len(t.data()["ents"]) == n0 - 1, (n0, len(t.data()["ents"])))
-    t.touch("touchStart", [a, b, t.sc(70, 60)]); time.sleep(0.05); t.touch("touchEnd", []); time.sleep(0.4)
+    t.touch("touchStart", [a, b, t.sc(40, 75)]); time.sleep(0.05); t.touch("touchEnd", []); time.sleep(0.4)  # üçüncü parmak ekran çubuğuna değil tuvale (v0.89)
     t.chk("telefon: üç parmak dokunuşu ileri alır", len(t.data()["ents"]) == n0, len(t.data()["ents"]))
 
     # ---------- 2) Dikdörtgen + hızlı kutu

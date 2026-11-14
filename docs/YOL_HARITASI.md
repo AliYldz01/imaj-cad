@@ -680,3 +680,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.87 | Denetim 2 Paket 2: geometri doğrulama (boş / hacimsiz gövde → özellik hatası, önceki model korunur), kabuk hatası, ince kapak başlangıç yüzü, ince kalınlık sınırı, kaburga dik, sarma yüz aralığı, sac geçiş cidarı, Saca Dönüştür kalınlık / büküm, çok yüzlü kalınlaştır, SEA sonucu geçersizleşir | ✅ |
 
 | v0.88 | Denetim 2 Paket 3: yüze bağlı düzlemler, teğet düzlem, referans eksen, köşe referansları (imza), mandal, SEA yüzleri, dönüştürülmüş eskiz öğeleri, montaj eşleşmeleri (delik / kalınlık), teknik resim açıklamaları model değişince izler | ✅ |
+
+| v0.89 | Denetim 2 Paket 4: telefonda seçim araçları dokunulan öğeyi işler, nokta / öğe uzaklık önceliği, eskizde parmakla sürükleme, ölçü kutusu hayalet tıklaması, 3 parmak ileri al, spline Bitir, bildirim / menü / sekme / mini çubuk / ekran çubuğu yerleşimi, iki parmak kaydırmada yuvarlanma yok | ✅ |

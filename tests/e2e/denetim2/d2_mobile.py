@@ -21,7 +21,8 @@ def tap_tool(A, x, y, direct_first=False, probe=None):
         A.tap(sx, sy)
         after = probe()
         return before != after
-    A.tap(sx, sy + OFF)
+    # v0.89 (D2-5): seçerek çalışan araçlarda (kırp, radyüs, pah, ayır…) imleç kayması yok — dokunulan öğe işlenir
+    A.tap(sx, sy)
 
 
 with sync_playwright() as p:
@@ -37,7 +38,7 @@ with sync_playwright() as p:
     if not hit:
         tap_tool(A, 20, 40)
     tap_tool(A, 20, -40)
-    chk("Kırp (imleç kaymasıyla) taşan uçlar kırpıldı", sorted(q[1] for q in A.lineyx("l11")) == [-30, 30], A.lineyx("l11"))
+    chk("Kırp (doğrudan dokunarak) taşan uçlar kırpıldı", sorted(q[1] for q in A.lineyx("l11")) == [-30, 30], A.lineyx("l11"))
     # ↶ düğmesi
     A.btn("#undo")
     chk("↶ (ekran) eskizde geri alır", max(q[1] for q in A.lineyx("l11")) == 45 or min(q[1] for q in A.lineyx("l11")) == -45, A.lineyx("l11"))
@@ -48,7 +49,7 @@ with sync_playwright() as p:
     chk("Radyüs: köşeye doğrudan dokunmak radyüs yapar", hit)
     if not hit:
         tap_tool(A, -40, 30)
-    chk("Radyüs (kaymayla) yay eklendi", "arc" in A.skinfo()["types"], A.skinfo()["types"])
+    chk("Radyüs yay eklendi", "arc" in A.skinfo()["types"], A.skinfo()["types"])
     # ---- Eskiz Pahı ----
     A.cmd("Eskiz Pahı"); A.pmfield("Mesafe", 4)
     tap_tool(A, -40, -30)

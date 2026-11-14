@@ -187,7 +187,7 @@ with sync_playwright() as p:
         for j in range(1, 13):
             u = j / 12; q = t.sc(A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u); t.touch("touchMove", [(q[0], q[1] + O)]); time.sleep(0.01)
     time.sleep(0.8); t.touch("touchEnd", []); time.sleep(0.5); t.close_quick()
-    t.cmd("Akıllı Ölçü"); t.smart_dim([(25, 0)], 60, (25, -15)); t.smart_dim([(60, 15)], 40, (75, 15))
+    t.cmd("Akıllı Ölçü"); t.smart_dim([(25, 0)], 60, (25, -15)); t.smart_dim([(0, 8)], 40, (15, 15))  # v0.89: sol kenar (sağ kenar ekran çubuğunun altında), ortası değil
     s = t.st()
     t.chk("M2: serbest dikdörtgen + 2 ölçü → tam tanımlı", s["dof"] == 0, s)
     t.ok_pm(); t.extrude(10)

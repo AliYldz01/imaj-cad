@@ -79,9 +79,10 @@ with sync_playwright() as p:
     dtap(-95, 40, off=False)
     t.cmd("Akıllı Ölçü")
     a, b = P(t.sk(), L1["p1"]), P(t.sk(), L1["p2"])
-    dtap(a[0] + (b[0] - a[0]) * 0.3, a[1], off=True)
+    # v0.89 (D2-5): Akıllı Ölçü dokunulan öğeyi işler (imleç kayması yok)
+    dtap(a[0] + (b[0] - a[0]) * 0.3, a[1], off=False)
     t.note("ölçü refs 1", t.ev(f"{ED}.st.refs"), t.ev(f"{ED}.tool"))
-    dtap(a[0] + (b[0] - a[0]) * 0.5, a[1] - 12, off=True)
+    dtap(a[0] + (b[0] - a[0]) * 0.5, a[1] - 12, off=False)
     t.note("ölçü refs 2", t.ev(f"{ED}.st.refs"), t.pg.locator(".dim-prompt").count())
     has = t.pg.locator(".dim-prompt").count() > 0
     t.chk("telefon: Akıllı Ölçü dokunarak → değer kutusu", has)
@@ -102,20 +103,29 @@ with sync_playwright() as p:
     s = t.sk(); a, b = P(s, L1["p1"]), P(s, L1["p2"])
     t.chk("telefon: + + → 52", abs(math.hypot(b[0] - a[0], b[1] - a[1]) - 52) < 1e-6, math.hypot(b[0] - a[0], b[1] - a[1]))
     # 7) tanımsız noktayı parmakla sürükle (L2 ucu)
-    q0 = P(t.sk(), L2["p2"]); x0, y0 = t.sc(*q0)
+    # v0.89: araç çubukları altında kalmayan uç seçilir (tuvalin üstü görünüm / ekran çubuğuyla dolu)
+    PK = "p2"
+    for k in ("p2", "p1"):
+        qq = P(t.sk(), L2[k]); xx, yy = t.sc(*qq)
+        if t.ev(f"document.elementFromPoint({xx},{yy})?.tagName") == "CANVAS":
+            PK = k; break
+    q0 = P(t.sk(), L2[PK]); x0, y0 = t.sc(*q0)
     t.drag(x0, y0, x0 + 40, y0 + 30, 10)
-    q1 = P(t.sk(), L2["p2"])
+    q1 = P(t.sk(), L2[PK])
     cam0 = t.ev("window.__app.viewer.camera.position.toArray()")
     t.chk("telefon: Seç aracında noktayı parmakla sürükleme (parmak noktanın üstünde)", math.hypot(q1[0] - q0[0], q1[1] - q0[1]) > 5, (q0, q1))
     if math.hypot(q1[0] - q0[0], q1[1] - q0[1]) < 5:
         t.drag(x0, y0 + OFF, x0 + 40, y0 + 30 + OFF, 10)
-        q1 = P(t.sk(), L2["p2"])
+        q1 = P(t.sk(), L2[PK])
         t.note("parmak noktanın 70 px altından sürüklenince", q0, "→", q1, "kamera", cam0, "→", t.ev("window.__app.viewer.camera.position.toArray()"))
     # 8) iki parmak dokunuşu = geri al
-    x, y = t.sc(-60, 160)
+    x, y = 120, 330  # v0.89: tuvalin ortası (önceki nokta görünüm küpünün üstüne denk geliyordu)
     t.touch("touchStart", [(x, y), (x + 80, y)]); time.sleep(0.05); t.touch("touchEnd", []); time.sleep(0.4)
-    q2 = P(t.sk(), L2["p2"])
-    t.chk("telefon: iki parmak dokunuşu son işlemi (ölçü 52) geri alır", abs(t.sk()["dims"][0]["v"] - 50) < 1e-6, t.sk()["dims"][0]["v"])
+    q2 = P(t.sk(), L2[PK])
+    # v0.89: sürükleme artık çalıştığı için son işlem sürüklemedir (D3-5); iki parmak onu geri alır, değilse (sürükleme olmadıysa) ölçü 52
+    moved = math.hypot(q1[0] - q0[0], q1[1] - q0[1]) > 5
+    t.chk("telefon: iki parmak dokunuşu son işlemi geri alır (sürükleme → nokta eski yerinde / yoksa ölçü 52 → 50)",
+          (math.hypot(q2[0] - q0[0], q2[1] - q0[1]) < 1e-6) if moved else abs(t.sk()["dims"][0]["v"] - 50) < 1e-6, (q0, q2, t.sk()["dims"][0]["v"]))
     # 9) ✓ (ekran çubuğu ya da panel) → kayıt
     fid = t.ev("window.__app.mode.featId"); ed_before = t.sk()
     okbtn = t.pg.locator(".actbar button:has-text('✓')")
