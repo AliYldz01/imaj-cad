@@ -72,6 +72,7 @@ with sync_playwright() as p:
         a.wait(0.8)
         dl = a.dialogs_open()
         note("PM açıkken sekme 2'ye tık → açık pencereler:", dl, "mod:", a.mode())
+        if "exit-dialog" in dl: a.pg.click("dialog.exit-dialog button:has-text('Kaydetmeden')"); a.wait(0.8)  # D10-5 sorusu
         a.btn("#doctabs .dtab:nth-child(1) span")
         a.wait(1)
         d1 = a.featv("Ekstrüzyon1", "d1")
@@ -100,12 +101,16 @@ with sync_playwright() as p:
         # sekme kapat (kaydedilmemiş) → onay
         a.dq[:] = [False]
         a.btn("#doctabs .dtab:nth-child(1) .dtab-x"); time.sleep(0.5)
-        last = a.dlog[-1] if a.dlog else None
-        chk("sekme kapat: onay soruldu, Vazgeç → kalır", last and last[0] == "confirm" and len(a.tabs()) == 2, last)
+        q = a.pg.locator("dialog.input-dialog[open]:has-text('kapatılsın')")  # D10-19: 3 seçenekli pencere
+        asked = q.count() > 0
+        if asked: q.locator("button:text-is('Vazgeç')").click(); time.sleep(0.3)
+        chk("sekme kapat: onay soruldu, Vazgeç → kalır", asked and len(a.tabs()) == 2, (asked, a.tabs()))
         # değişmemiş boş sekmeyi kapat: yine soruyor mu
         n0 = len(a.dlog)
         a.dq[:] = [True]
         a.btn("#doctabs .dtab:nth-child(2) .dtab-x"); time.sleep(0.5)
+        q = a.pg.locator("dialog.input-dialog[open]:has-text('kapatılsın')")
+        if q.count(): note("boş sekme kapatılırken soruldu"); q.locator("button:has-text('Kaydetmeden')").click(); time.sleep(0.4)
         note("boş, değişmemiş sekmeyi kapatma: soru sayısı", len(a.dlog) - n0, a.dlog[-1] if len(a.dlog) > n0 else "")
         chk("boş sekme kapandı", a.tabs() == [] or len(a.tabs()) <= 1, a.tabs())
 

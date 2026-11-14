@@ -125,6 +125,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 #view canvas { display: block; }
 .labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .labels .dim, .labels .rel { position: absolute; left: 0; top: 0; pointer-events: auto; white-space: nowrap; }
+.labels .dim { z-index: 2; } /* ölçü etiketi ilişki simgesinin üstünde (çift tıkla düzenlenebilir) */
 .labels .dim { font: 600 13px system-ui, sans-serif; color: #111; background: rgba(255,255,255,0.85); padding: 1px 5px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; touch-action: none; }
 .labels .dim.err { color: var(--danger); border-color: #f1a5a5; }
 .labels .dim.sel { color: #0b7bc4; border-color: #0ca5e9; }
@@ -620,3 +621,13 @@ dialog.cal-dlg .cal-last { font-size: 28px; font-weight: 700; text-align: center
   #tray .cmd.active svg { color: var(--accent); }
   #tray .cmd-sep { background: #e3e8ef; margin: 8px 2px; }
 }
+/* D8-12: SEA paneli küçültülebilir; telefonda alt sayfa */
+.fea-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.fea-min { padding: 2px 10px; min-height: 0; }
+.fea-panel.min > :not(.fea-head) { display: none; }
+@media (max-width: 820px) {
+  body .fea-panel { left: 6px !important; right: 6px !important; top: auto !important; bottom: calc(var(--tray-h, 0px) + 6px) !important; width: auto !important; max-height: 42vh; }
+}
+.sw-ctx .sw-mh { font-size: 11px; color: #667; padding: 4px 10px 2px; border-top: 1px solid #e3e6ec; }
+.dim-prompt.quick.passive { pointer-events: none; opacity: .8; } /* D1-2 */
+.dim-prompt.quick.passive .no { pointer-events: auto; }

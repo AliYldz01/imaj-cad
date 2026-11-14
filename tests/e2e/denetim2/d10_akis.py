@@ -185,7 +185,7 @@ with sync_playwright() as p:
         fc = a.ev("(()=>{const m=window.__app.viewer.mesh;return m.faces.find(f=>f.n&&f.n[1]>0.99).c})()")
         x, y = a.wsc(fc)
         a.longpress(x, y)
-        bb = a.pg.locator(".sw-ctx .sw-mi:has-text('Eskiz')").bounding_box()
+        bb = a.pg.locator(".sw-ctx .sw-mi:has-text('Eskiz')").first.bounding_box()
         a.tap(bb["x"] + 20, bb["y"] + bb["height"] / 2); a.wait(0.6)
         flow("W8 uzun basma › Eskiz (üst yüz)", a.mode() == "sketch", a.mode())
         t = "#tray button[title='Daire']"

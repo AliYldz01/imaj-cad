@@ -9,10 +9,11 @@ const add2 = (a: number[], b: number[]): [number, number] => [a[0] + b[0], a[1] 
 export function autoDefine(sk: SketchData): number {
   let added = 0;
   const tryDim = (d: SDim) => {
-    const before = solve(sk, undefined, false).dof;
+    const b0 = solve(sk, undefined, false), before = b0.dof;
     sk.dims.push(d);
     const r = solve(sk, undefined, false);
-    if (!r.ok || r.conflicts.length || r.dof >= before) {
+    // gereksiz kısıt oluşturan ölçü eklenmez (eskiz "aşırı tanımlı (gereksiz)" olmasın)
+    if (!r.ok || r.conflicts.length || r.dof >= before || r.redundant.length > b0.redundant.length) {
       sk.dims.pop();
       return false;
     }
@@ -50,10 +51,10 @@ export function autoDefine(sk: SketchData): number {
     if (res.dof === 0) break;
     if (def.pts.has(id)) continue;
     const q = P(sk, id);
-    const before = solve(sk, undefined, false).dof;
+    const b0 = solve(sk, undefined, false), before = b0.dof;
     sk.rels.push({ id: nid(sk, "r"), t: "fix", refs: [id], fx: q[0], fy: q[1] });
     const r = solve(sk, undefined, false);
-    if (!r.ok || r.conflicts.length || r.dof >= before) sk.rels.pop();
+    if (!r.ok || r.conflicts.length || r.dof >= before || r.redundant.length > b0.redundant.length) sk.rels.pop();
     else added++;
     res = solve(sk);
     def = analyze(sk, res.dof);

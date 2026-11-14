@@ -125,7 +125,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Kod:** `src/sketch/editor.ts:2706-2712` `selectClick` → `this.mods.add` iken `virtualPt` + `realizeVirtual`.
 - **Öneri:** Ctrl ile önce öğeyi seç. Sanal noktayı yalnız gerçekten ilişki uygulanırken (düğmeye basılınca) gerçekleştir, kullanılmazsa sil. Ya da sanal noktayı yalnız Alt/Shift ile ya da çok küçük toleransla seçtir.
 
-#### E-2 — Yatay çizgiye "Dikey" ilişkisi sunuluyor; eklenince ilişki sağlanmadan kalıyor (ya da çizgi sıfır boya çöküyor)
+#### ✅ E-2 — Yatay çizgiye "Dikey" ilişkisi sunuluyor; eklenince ilişki sağlanmadan kalıyor (ya da çizgi sıfır boya çöküyor)
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Yatay ilişkisi olan çizgiye İlişki Ekle'de Dikey sunulmaz. Zorlanırsa eskiz aşırı tanımlı (kırmızı) olur.
 - **Bizde (t06b/t06c):** Yatay çizgi seçilince panelde `⟷ Yatay, ↕ Dikey, ⚓ Sabitle` çıkıyor. Dikey'e basınca `rels=['horizontal','vertical']` oluyor, noktalar `(10,0)-(30,0)` olarak kalıyor (dikey sağlanmıyor), durum "Tanımlanmamış · 3 serbestlik", uyarı yok. Aynı veri baştan çözülünce de (setsk) çizgi `(0,0)-(0,0)` olarak sıfır boya çöküyor ve `ok:true` dönüyor.
@@ -216,7 +216,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Kod:** `src/sketch/editor.ts:1825-1945` (blok öğeleri yalnız `blk` etiketi taşıyor, aralarında kısıt yok). `beginDrag :2815`.
 - **Öneri:** Sürüklemede `blk` etiketi aynı olan tüm öğeleri birlikte taşı. Örnek içi geometriyi rijit kısıtla (göreli sabit) çözücüye ver.
 
-#### E-15 — Düzlem seçme modunda (Eskiz / Eskiz düzlemini değiştir / Türetilmiş) ağaçtaki düzleme tıklama çalışmıyor
+#### ✅ E-15 — Düzlem seçme modunda (Eskiz / Eskiz düzlemini değiştir / Türetilmiş) ağaçtaki düzleme tıklama çalışmıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Düzlem seçimi grafik alandan ya da FeatureManager ağacından yapılabilir.
 - **Bizde (t02):** "Eskiz düzlemini değiştir" sonrası ağaçta "Üst Düzlem"e tıklandı → mod `pickSketchPlane` olarak kaldı, düzlem değişmedi. Grafik alanda düzleme tıklayınca çalışıyor. Türetilmiş eskiz için de aynı.
@@ -256,7 +256,7 @@ Başarısız test yok. Not: ft1 "çizgi–yay (90°)" durumunda radyüs yapılm�
 - **Bizde (t09):** (0..50,0) ve (60,0..40) çizgileri sırayla tıklandı → değişiklik yok. Yalnız köşe noktasına tıklama çalışıyor.
 - **Kod:** `src/sketch/editor.ts:2935` `filletAt` (`{ents:false}` vuruşu).
 
-#### E-21 — Eskiz pahında ölçü eklenmiyor, açı-mesafe / iki mesafe seçeneği yok
+#### ✅ E-21 — Eskiz pahında ölçü eklenmiyor, açı-mesafe / iki mesafe seçeneği yok
 - **Önem:** Düşük · **Tür:** Eksik
 - **Bizde (t09):** Pah 5 → 3 çizgi oluştu, `dims=[]`. PM'de yalnız "Mesafe".
 - **SolidWorks:** Açı-mesafe, mesafe-mesafe, eşit mesafe seçenekleri vardır ve pah ölçülendirilmiş gelir.
@@ -455,14 +455,14 @@ En önemli beş bulgu:
 - **Kod:** `src/main.ts:2508` (radyüs/pah numField: `(v) => (isF ? (d.r = v) : (d.d = v))` — `schedulePreview()` yok); kabuk `main.ts:2627` (`(v) => (d.t = v)`, "Dışa kabuk" onay kutusu da); bitiş yarıçapı, rho, mesafe 2/3, açı alanları aynı. `ghostPreview` `main.ts:1007`.
 - **Öneri:** Bu alanların onChange'ine `upd()` ekle.
 
-#### P-4 · Bazı özelliklerin eskizleri ağaçta görünmüyor, düzenlenemiyor
+#### ✅ P-4 · Bazı özelliklerin eskizleri ağaçta görünmüyor, düzenlenemiyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Taban flanş, yapı elemanı, çizgiden büküm vb. eskizi özelliğin altında (çocuk) görünür; sağ tık → Eskizi düzenle.
 - **Bizde:** Taban flanş (`Taban-Flanş1`) ve yapı elemanı (`Yapı-Elemanı1`) oluşturulunca ağaç: `Ön/Üst/Sağ Düzlem, Orijin, Taban-Flanş1` — `Eskiz1` hiçbir yerde yok; ağaç eylemleri `Düzenle, Adlandır, Buraya geri sar, Bastır, ▲ Yukarı, Ebeveyn / çocuk, Klasöre ekle…, Sil` (Eskizi düzenle yok); sağ tık menüsünde de yok; grafik alanda eskize çift tıklama işleyicisi yok (`t1.py`). Sonuç: levha / çerçeve ölçüsü değiştirilemiyor.
 - **Kod:** `src/main.ts:6228` `kids` yalnız extrude/revolve/rib/wrap/sweep/loft/edgeflange.prof; `src/doc/compile.ts:963` `sketchUsers` ise sheetbase, sketchbend, flatcut, member, spattern, cvpattern, sheetjog, miterflange, vent eskizlerini de "tüketilmiş" sayıyor → `renderTree` (main.ts ~6213) bunları gizliyor. `main.ts:6360` "Eskizi düzenle" yalnız extrude/revolve/sweep.
 - **Öneri:** `kids` listesini `sketchUsers` ile aynı kümeye genişlet; "Eskizi düzenle"yi eskiz kullanan tüm özelliklere ekle.
 
-#### P-5 · Dairesel çoğaltma ekseni yalnız orijinden X/Y/Z
+#### ✅ P-5 · Dairesel çoğaltma ekseni yalnız orijinden X/Y/Z
 - **Önem:** Yüksek · **Tür:** Eksik
 - **SolidWorks:** Eksen olarak referans eksen, geçici eksen (silindir / delik yüzü), doğrusal kenar, açısal ölçü seçilir (ör. flanşta cıvata dairesi).
 - **Bizde:** PM yalnız "Eksen (orijinden geçen): X/Y/Z" seçimi sunuyor; modelde yüz/kenar/eksen tıklaması çoğaltma eksenini değiştirmiyor (`pmPick`'te cpattern dalı yok). Derleyicide `refAxis` desteği var ama arayüzde hiçbir yerde atanmıyor (`grep refAxis src/main.ts` → yok).

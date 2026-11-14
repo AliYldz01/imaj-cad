@@ -111,7 +111,7 @@ export interface SketchData {
   dims: SDim[];
   seq: number;
   /** E-5: modele bağlı (dönüştürülmüş) öğeler — model kenarı değişince sabit noktalar güncellenir */
-  links?: { e: EdgeRef; a?: string; b?: string; c?: string; ent?: string; dim?: string }[];
+  links?: { e: EdgeRef; a?: string; b?: string; c?: string; ent?: string; dim?: string; /** D3-6: model köşesi / kenar ortası / merkez / delme noktası */ p?: string; k?: "v" | "m" | "c" | "pierce" }[];
 }
 
 /** Orijin noktası her eskizde sabit (0,0) olarak bulunur */

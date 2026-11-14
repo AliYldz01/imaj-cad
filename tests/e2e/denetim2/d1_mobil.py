@@ -48,7 +48,7 @@ with sync_playwright() as p:
     t.chk("telefon: ekran çubuğu ✓ (çizerken) zinciri bitirir, eskizde kalır", not t.st()["drawing"] and t.mode() == "sketch", (t.st()["drawing"], t.mode()))
     # iki parmak dokunuşu = geri al
     n0 = len(t.data()["ents"])
-    a = t.sc(30, 60); b = t.sc(50, 60)
+    a = t.sc(30, -20); b = t.sc(50, -20)  # v0.90: yeni eskiz orijini görünür bandın ortasında
     t.touch("touchStart", [a, b]); time.sleep(0.05); t.touch("touchEnd", []); time.sleep(0.4)
     t.chk("telefon: iki parmak dokunuşu geri alır", len(t.data()["ents"]) == n0 - 1, (n0, len(t.data()["ents"])))
     t.touch("touchStart", [a, b, t.sc(40, 75)]); time.sleep(0.05); t.touch("touchEnd", []); time.sleep(0.4)  # üçüncü parmak ekran çubuğuna değil tuvale (v0.89)

@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import type { Viewer, InputHandler } from "../viewer";
 import type { Sketch3DFeature, Vec3, Dim3Type } from "../doc/types";
+import { evalNum } from "../doc/math";
 import { solve3d, dimValue, dofOf, REL3_TAG, arcPts, circum, splinePts3, helixPts3, curves3, type Solve3Result } from "./solver3d";
 
 export type Axis3 = "x" | "y" | "z";
@@ -573,12 +574,17 @@ export class Sketch3DTool {
       if (!this.resolve() || dofOf(d) >= dof0) {
         d.dims3 = d.dims3.filter((q) => q !== dm);
         this.resolve();
-        // SolidWorks: aşırı tanımlıyorsa sürülen (referans) ölçü yap
-        if (confirm("Bu ölçü eskizi aşırı tanımlıyor. Sürülen (referans) ölçü olarak eklensin mi?")) {
-          dm.ref = true;
+        // D3-20: 2B ile aynı 3 seçenekli pencere (Sürülen yap / Sürücü olarak bırak / Vazgeç)
+        void askRedundant3().then((a) => {
+          if (!a) return;
+          dm.ref = a === "ref" || undefined;
           dm.v = Math.round(cur * 1000) / 1000;
-          d.dims3 = [...d.dims3, dm];
-        }
+          d.dims3 = [...(d.dims3 ?? []), dm];
+          this.resolve();
+          if (a === "keep") this.ctx.toast?.("Eskiz aşırı tanımlı: gereksiz ölçü sürücü olarak bırakıldı", true);
+          this.ctx.changed();
+        });
+        return;
       }
       this.ctx.changed();
     });
@@ -602,6 +608,7 @@ export class Sketch3DTool {
     const S = this.sel;
     const ids = S.map((q) => q.id);
     const bakL = d.lines.map((l) => ({ ...l })), bakC = [...(d.cons3 ?? [])];
+    const dof0 = dofOf(d);
     if (t === "x" || t === "y" || t === "z") {
       for (const q of S) if (q.k === "l") (d.lines.find((l) => l.id === q.id) as any).ax = t;
     } else if (t === "cons") {
@@ -634,6 +641,12 @@ export class Sketch3DTool {
       d.cons3 = bakC;
       this.resolve();
       this.ctx.toast?.("Bu ilişki diğer ilişki/ölçülerle çelişiyor; eklenmedi", true);
+    } else if (dofOf(d) >= dof0 && !["fillet", "mirXY", "mirYZ", "mirZX"].includes(t)) {
+      // D3-8: serbestliği azaltmayan ilişki gereksizdir (zaten sağlanıyor)
+      d.lines = bakL;
+      d.cons3 = bakC;
+      this.resolve();
+      this.ctx.toast?.("Gereksiz ilişki: bu ilişki zaten sağlanıyor; eklenmedi", true);
     }
     this.ctx.changed();
   }
@@ -680,7 +693,8 @@ export class Sketch3DTool {
     if (S.length === 1 && S[0].k === "l") add(dim.row, "Boy ölçüsü", () => this.addDim("len", [S[0].id], { clientX: x, clientY: y }));
     if (S.length === 1 && S[0].k === "a") add(dim.row, "Yarıçap ölçüsü", () => this.addDim("rad", [S[0].id], { clientX: x, clientY: y }));
     if (S.length === 2 && S.every((q) => q.k === "p")) add(dim.row, "Mesafe ölçüsü", () => this.addDim("dist", [S[0].id, S[1].id], { clientX: x, clientY: y }));
-    if (S.length === 2 && S.every((q) => q.k === "l")) add(dim.row, "Açı ölçüsü", () => this.addDim("ang", [S[0].id, S[1].id], { clientX: x, clientY: y }));
+    const dd3 = this.ctx.draft(), ax2 = S.map((q) => (dd3?.lines.find((l) => l.id === q.id) as any)?.ax ?? null);
+    if (S.length === 2 && S.every((q) => q.k === "l") && !(ax2[0] && ax2[0] === ax2[1])) add(dim.row, "Açı ölçüsü", () => this.addDim("ang", [S[0].id, S[1].id], { clientX: x, clientY: y }));
     add(dim.row, "Sil", () => this.deleteSel(), "del");
     for (const sct of [rel, mir, dim]) if (sct.row.childElementCount) bar.appendChild(sct.g);
     bar.addEventListener("pointerdown", (ev) => ev.stopPropagation());
@@ -691,6 +705,22 @@ export class Sketch3DTool {
   }
   /** seçime uygun ilişkiler (SolidWorks "İlişki Ekle") */
   relOptions(): string[] {
+    const o0 = this.relOptions0();
+    // D3-21: zaten sağlanan seçenekler sunulmaz (aynı eksen, paralel eksenli çizgiler, sabit nokta)
+    const d = this.ctx.draft();
+    if (!d) return o0;
+    const L = this.sel.filter((q) => q.k === "l").map((q) => d.lines.find((l) => l.id === q.id) as any).filter(Boolean);
+    const axes = L.map((l) => l.ax ?? null);
+    const sameAx = axes.length > 1 && axes[0] && axes.every((a) => a === axes[0]);
+    const fixed = (id: string) => (d.cons3 ?? []).some((c: any) => c.t === "fix" && c.e[0] === id);
+    return o0.filter((t) => {
+      if ((t === "x" || t === "y" || t === "z") && L.length && L.every((l) => l.ax === t)) return false;
+      if ((t === "par" || t === "collin") && sameAx && t === "par") return false;
+      if (t === "fix" && this.sel.filter((q) => q.k === "p").every((q) => fixed(q.id))) return false;
+      return true;
+    });
+  }
+  private relOptions0(): string[] {
     const np = this.sel.filter((q) => q.k === "p").length, nl = this.sel.filter((q) => q.k === "l").length, na = this.sel.filter((q) => q.k === "a").length;
     const o: string[] = [];
     if (na >= 1 && nl + na === 2 && !np) o.push("tan");
@@ -927,19 +957,25 @@ export class Sketch3DTool {
     box.value = String(init);
     box.style.cssText = `position:fixed;z-index:41;width:100px;font:15px system-ui;padding:4px;left:${Math.min(innerWidth - 120, x + 12)}px;top:${y + 12}px`;
     let done = false;
-    const fin = () => {
+    const fin = (blur = false) => {
       if (done) return;
+      // D3-12: ifade / değişken kabul edilir ("100*3+20"); geçersizse uygulanmaz
+      const v = evalNum(box.value.trim().replace(/^=/, ""));
+      if (v === null || !Number.isFinite(v)) {
+        if (blur) return void ((done = true), box.remove());
+        box.style.outline = "2px solid #e03131";
+        return;
+      }
       done = true;
-      const v = parseFloat(box.value.replace(",", "."));
       box.remove();
-      if (Number.isFinite(v)) cb(v);
+      cb(v); // kutudan çıkmak da değeri kabul eder (SolidWorks)
     };
     box.addEventListener("keydown", (ev) => {
       ev.stopPropagation();
       if (ev.key === "Enter") fin();
       else if (ev.key === "Escape") ((done = true), box.remove());
     });
-    box.addEventListener("blur", () => setTimeout(fin, 50));
+    box.addEventListener("blur", () => setTimeout(() => fin(true), 50));
     document.body.appendChild(box);
     box.focus();
     box.select();
@@ -1460,10 +1496,11 @@ export class Sketch3DTool {
     box.addEventListener("keydown", (ev) => {
       ev.stopPropagation();
       if (ev.key === "Enter") {
-        const v = parseFloat(box.value.replace(",", "."));
+        const v = evalNum(box.value.trim().replace(/^=/, ""));
+        if (v === null || !(v > 0)) return void (box.style.outline = "2px solid #e03131");
         box.remove();
         this.last = keep;
-        if (v > 0) this.commitLength(v);
+        this.commitLength(v);
       } else if (ev.key === "Escape") box.remove();
     });
     box.addEventListener("blur", () => setTimeout(() => box.remove(), 50));
@@ -1545,3 +1582,28 @@ export function enforceAlong(f: Sketch3DFeature, i: number) {
 }
 
 export { curves3 } from "./solver3d";
+
+/** D3-20: gereksiz 3B ölçü penceresi (2B `askRedundant` ile aynı seçenekler) */
+function askRedundant3(): Promise<"ref" | "keep" | null> {
+  return new Promise((res) => {
+    const d = document.createElement("dialog");
+    d.className = "redund-dlg";
+    d.innerHTML = `<h3>Gereksiz ölçü</h3><p>Bu ölçü eskizi aşırı tanımlıyor (değer zaten diğer ölçü / ilişkilerle belirli).</p>`;
+    const row = document.createElement("div");
+    row.className = "pm-row";
+    const b = (t: string, v: "ref" | "keep" | null, cls = "btn") => {
+      const x = document.createElement("button");
+      x.className = cls;
+      x.textContent = t;
+      x.addEventListener("click", () => (d.close(), d.remove(), res(v)));
+      row.appendChild(x);
+    };
+    b("Sürülen (referans) yap", "ref", "btn primary");
+    b("Sürücü olarak bırak (aşırı tanımlı)", "keep");
+    b("Vazgeç", null);
+    d.appendChild(row);
+    d.addEventListener("cancel", () => (d.remove(), res(null)));
+    document.body.appendChild(d);
+    d.showModal();
+  });
+}

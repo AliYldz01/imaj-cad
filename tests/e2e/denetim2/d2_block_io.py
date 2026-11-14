@@ -76,7 +76,7 @@ with sync_playwright() as p:
     A.cmd("Daire")
     loc = A.pg.locator("#pm-body label:has-text('Çizdikten sonra ölçü gir') input")
     if loc.count() and loc.first.is_checked(): loc.first.click(); time.sleep(0.2)
-    A.clk(-5, 0); A.clk(-2, 0)     # yeni daire (-5,0) r3
+    A.clk(-5, 0); A.clk(-5, 3)     # yeni daire (-5,0) r3 (kenar noktası orijine yakalanmasın)
     A.cmd("Seç") if A.pg.locator("#cmds button[title='Seç']").count() else None
     A.pmbtn("Bloğu güncelle")
     cs = circles(A); print("blok güncellendi", cs)

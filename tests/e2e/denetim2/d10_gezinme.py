@@ -130,7 +130,13 @@ with sync_playwright() as p:
         lab = a.pg.locator(".vcube .cell.c:text-is('Üst')").bounding_box()
         seam = a.ev("""(()=>{let n=0,m=0;const out=[];for(let y=172;y<=215;y+=2)for(let x=300;x<=398;x+=2){const e=document.elementFromPoint(x,y);if(e.classList.contains('cube')){n++;out.push([x,y])}if(e.classList.contains('cell'))m++}return [n,m,out.slice(0,8)]})()""")
         note("küp üst bölgesinde boşluğa (kap öğesine) düşen örnek nokta:", seam[0], "/", seam[0] + seam[1], seam[2])
-        chk("küpte yüzler arasında tıklanmayan çizgi yok", seam[0] == 0, seam[2])
+        # Chrome 3B dönüşümlü öğelerde dikiş çizgisi isabet testinde boş kalır; tık en yakın hücreye yönlendirilir (D10-16)
+        ok_seam = seam[0] == 0
+        if not ok_seam:
+            d0 = a.cam()["dir"]; a.pg.mouse.click(*seam[2][0]); time.sleep(0.6)
+            ok_seam = [round(v, 2) for v in a.cam()["dir"]] != [round(v, 2) for v in d0]
+            a.btn(".vcube .iso")
+        chk("küpte yüzler arasında tıklanmayan çizgi yok (dikişe tık bir hücreye gider)", ok_seam, seam[2])
         a.btn(".vcube .iso")
         chk("küp › İzo", a.cam()["dir"][0] > 0.5, a.cam()["dir"])
         # kenar / köşe bölgeleri: yüzün kenarına yakın tık

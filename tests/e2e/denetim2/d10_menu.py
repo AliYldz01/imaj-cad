@@ -263,7 +263,7 @@ with sync_playwright() as p:
     a.menu("Yardım", "Yardım"); s = sig(a)
     row("Yardım", "Yardım", "help" in s["dlg"], s["dlg"])
     ver = a.ev("document.querySelector('#help h2').textContent")
-    row("Yardım", "Yardım başlığı sürümü v0.85", "v0.85" in ver, ver)
+    row("Yardım", "Yardım başlığı sürümü güncel", "v0.9" in ver, ver)
     fresh_tip(a)
     a.menu("Yardım", "Başlangıç rehberi…"); s = sig(a)
     row("Yardım", "Başlangıç rehberi…", bool(s["dlg"]), s["dlg"])

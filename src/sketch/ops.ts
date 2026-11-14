@@ -154,10 +154,19 @@ export function moveEnts(sk: SketchData, ents: SEnt[], o: { dx: number; dy: numb
       if (e.t === "ellipse") e.rb *= k;
       if (e.t === "text") e.size *= k;
     }
-    // ölçek değişince uzunluk ölçüleri geçersiz olur
+    // D2-14: ölçeklenen öğelerin uzunluk ölçüleri de ölçeklenir (SolidWorks); dışarıya bağlanan ölçüler kalkar
     const pts = new Set<string>();
     ents.forEach((e) => entPoints(e).forEach((p) => pts.add(p)));
-    sk.dims = sk.dims.filter((d) => !d.refs.some((r) => pts.has(r) || ents.some((e) => e.id === r)));
+    const inSel = (r: string) => pts.has(r) || ents.some((e) => e.id === r);
+    sk.dims = sk.dims.filter((d) => {
+      if (!d.refs.some(inSel)) return true;
+      if (!d.refs.every(inSel)) return false;
+      if (d.t !== "angle") {
+        d.v *= k;
+        delete d.expr;
+      }
+      return true;
+    });
   }
   for (const e of ents)
     if (e.t === "spline" && e.h)
@@ -174,7 +183,31 @@ export function moveEnts(sk: SketchData, ents: SEnt[], o: { dx: number; dy: numb
   }
   // sabit noktalar taşınınca sabit değerleri de güncellenir
   for (const r of sk.rels) if (r.t === "fix" && pts.has(r.refs[0])) [r.fx, r.fy] = P(sk, r.refs[0]);
-  if (Math.abs(o.ang) > 1e-9) sk.rels = sk.rels.filter((r) => !((r.t === "horizontal" || r.t === "vertical") && r.refs.some((x) => ents.some((e) => e.id === x))));
+  if (Math.abs(o.ang) > 1e-9) {
+    // D2-4: dönen öğelerin yatay / dikey ilişkileri ve ölçüleri döndürmeyle tutarlı hâle getirilir
+    const q = ((Math.round(o.ang / 90) % 4) + 4) % 4, right = Math.abs(o.ang / 90 - Math.round(o.ang / 90)) < 1e-9;
+    const eid = new Set(ents.map((e) => e.id));
+    const moved = (r: { refs: string[] }) => r.refs.some((x) => eid.has(x)) || (r.refs.length > 1 && r.refs.every((x) => pts.has(x)));
+    const swap = (t: string) => (t === "horizontal" ? "vertical" : t === "vertical" ? "horizontal" : t);
+    sk.rels = sk.rels.filter((r) => {
+      if ((r.t !== "horizontal" && r.t !== "vertical") || !moved(r)) return true;
+      if (!right) return false;
+      if (q % 2) r.t = swap(r.t) as any;
+      return true;
+    });
+    for (const d of sk.dims) {
+      if ((d.sub !== "h" && d.sub !== "v") || !moved(d)) continue;
+      if (right) {
+        if (q % 2) d.sub = d.sub === "h" ? "v" : "h";
+        continue;
+      }
+      const ln = d.refs.length === 1 ? (sk.ents.find((e) => e.id === d.refs[0]) as any) : null;
+      const [a, b] = ln?.t === "line" ? [ln.p1, ln.p2] : d.refs;
+      if (!sk.pts[a] || !sk.pts[b]) continue;
+      d.sub = "a";
+      if (!d.expr) d.v = Math.hypot(sk.pts[a].x - sk.pts[b].x, sk.pts[a].y - sk.pts[b].y);
+    }
+  }
   return null;
 }
 

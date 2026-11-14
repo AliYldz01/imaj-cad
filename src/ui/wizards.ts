@@ -85,13 +85,31 @@ export const WIZARDS: Wizard[] = [
     build: (p, uid) => {
       const c = sk();
       c.rect(-p.w / 2, -p.h / 2, p.w / 2, p.h / 2);
+      // D1-17: köşe deliklerinin konumu kenarlardan "Kenar mesafesi" ile ölçülür (genişlik değişince kenara bağlı kalır)
+      const [lb, lr, lt, ll] = c.d.ents.slice(-4).map((e) => e.id);
+      const H: { i: number; j: number; c: string; cp: string }[] = [];
       if (p.dh > 0)
         for (let i = 0; i < p.nx; i++)
           for (let j = 0; j < p.ny; j++) {
             const x = p.nx > 1 ? -p.w / 2 + p.e + (i * (p.w - 2 * p.e)) / (p.nx - 1) : 0;
             const y = p.ny > 1 ? -p.h / 2 + p.e + (j * (p.h - 2 * p.e)) / (p.ny - 1) : 0;
-            c.circle(x, y, p.dh / 2);
+            H.push({ i, j, ...c.circle(x, y, p.dh / 2, !H.length) });
           }
+      if (H.length > 1 && p.nx > 1 && p.ny > 1) {
+        const at = (i: number, j: number) => H.find((q) => q.i === i && q.j === j)!;
+        const pd = (pt: string, ln: string, lp: [number, number]) => c.d.dims.push({ id: c.id("d"), t: "pldist", refs: [pt, ln], v: p.e, lp });
+        const a = at(0, 0), b = at(p.nx - 1, 0), t = at(0, p.ny - 1);
+        pd(a.cp, ll, [-p.w / 2 + p.e / 2, -p.h / 2 - 8]);
+        pd(a.cp, lb, [-p.w / 2 - 8, -p.h / 2 + p.e / 2]);
+        pd(b.cp, lr, [p.w / 2 - p.e / 2, -p.h / 2 - 8]);
+        pd(t.cp, lt, [-p.w / 2 - 8, p.h / 2 - p.e / 2]);
+        for (const q of H) {
+          if (q !== a) c.rel("equal", [q.c, a.c]);
+          if (q.j === 0 && q !== a) c.rel("horizontal", [q.cp, a.cp]);
+          if (q.i === 0 && q !== a) c.rel("vertical", [q.cp, a.cp]);
+          if (q.j > 0 && q.i > 0) (c.rel("vertical", [q.cp, at(q.i, 0).cp]), c.rel("horizontal", [q.cp, at(0, q.j).cp]));
+        }
+      }
       return feats(uid, "Plaka", "top", c.d, p.t);
     },
   },

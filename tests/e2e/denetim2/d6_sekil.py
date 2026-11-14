@@ -218,6 +218,7 @@ with sync_playwright() as p:
         a.edit_feat(nm); a.pmfield("Adet", 12); a.ok()
         print("   12 tırnak:", a.errs_map(), a.mode())
         chk("T1 sığmayan adet → hata", a.errs_map() or a.mode() == "pm", a.errs_map())
+        if a.mode() == "pm": a.cancel("discard")  # v0.90: hata veren özellikte ✓ engellenir, panel kapatılır
     case("T1", t1)
 
     # ---------- AK1 Aç / Katla Kes ----------

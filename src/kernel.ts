@@ -109,9 +109,9 @@ export class Kernel {
     return this.request({ type: "exportBody", body } as any);
   }
 
-  async flat(body: number, t: number, k: number, table?: { angle: number; ba: number }[], r?: number): Promise<FlatResult> {
+  async flat(body: number, t: number, k: number, table?: { angle: number; ba: number }[], r?: number, fix?: { o: Vec3; n: Vec3 }): Promise<FlatResult> {
     await this.ready;
-    return this.request<FlatResult>({ type: "flat", body, t, k, table, r } as any);
+    return this.request<FlatResult>({ type: "flat", body, t, k, table, r, fix } as any);
   }
 
   async measure(items: MeasureItem[]): Promise<string[]> {

@@ -20,7 +20,7 @@ with sync_playwright() as p:
     hint = t.ev("document.querySelector('#hint').textContent")
     t.chk("ipucu: düzlem seçin", "düzlem" in hint.lower() or "Düzlem" in hint, hint)
     # Üst düzlem (XZ): dünya (60,0,-60) noktası
-    x, y = wscr(t, [60, 0, 60])
+    x, y = wscr(t, [30, 0, 30])  # düzlem 100×100 (±50)
     t.pg.mouse.click(x, y); time.sleep(1.2)
     ok = t.mode() == "sketch"
     t.chk("grafik alanda düzleme tıklayınca eskiz açılır", ok, t.mode())

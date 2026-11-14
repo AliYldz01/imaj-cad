@@ -77,6 +77,7 @@ with sync_playwright() as p:
         nm = a.names()[-1]
         a.edit_feat(nm); a.pmcheck("Kapalı loft"); a.wait(1.5); st = a.status(); a.ok()
         print("   L3 kapalı loft (düz dizili 3 profil):", a.vol(), st, a.errs_map())
+        if a.mode() == "pm": a.cancel("discard")  # v0.90: düz dizili kapalı loft hata verir, ✓ engellenir (D4-11)
     case("L2", l2)
 
     def l3():

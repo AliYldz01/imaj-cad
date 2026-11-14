@@ -15,6 +15,7 @@ def vedge(sx, sz):
 
 def save_download(a):
     a.ev("delete window.showSaveFilePicker")
+    a.pg.once("dialog", lambda d: d.accept())  # v0.90 (D10-20): ad sorusu İptal edilirse kaydedilmez
     with a.pg.expect_download(timeout=20000) as dl:
         a.pg.click("#menubar >> text=Dosya"); time.sleep(0.3)
         loc = a.pg.locator("text=KaydetCtrl+S")

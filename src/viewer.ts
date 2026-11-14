@@ -622,7 +622,7 @@ export class Viewer {
       bottom: [V(0, -1, 0), V(0, 0, 1)],
       right: [V(1, 0, 0), V(0, 1, 0)],
       left: [V(-1, 0, 0), V(0, 1, 0)],
-      iso: [V(1, 0.82, 1), V(0, 1, 0)],
+      iso: [V(1, 1, 1), V(0, 1, 0)] /* D10-15: gerçek izometrik */,
     } as const;
     const [d, u] = map[name];
     this.setView(d.clone(), u.clone());
@@ -634,6 +634,23 @@ export class Viewer {
     this.setView(new THREE.Vector3(...f.n), new THREE.Vector3(...y));
   }
 
+  /** D3-25: dünya noktasını görünür bandın (paneller hariç) ortasına getir — yakınlaştırma değişmez */
+  centerOn(w: [number, number, number], ins: { t: number; b: number }) {
+    const h = this.container.clientHeight || 1, W = this.container.clientWidth || 1;
+    const s = this.toScreen(w);
+    const want = [W / 2, ins.t + (h - ins.t - ins.b) / 2];
+    const px2w = this.viewHeight / this.camera.zoom / h;
+    const up = this.camera.up.clone().normalize();
+    const fwd = this.controls.target.clone().sub(this.camera.position).normalize();
+    const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
+    const d = right.multiplyScalar((s[0] - want[0]) * px2w).add(up.multiplyScalar(-(s[1] - want[1]) * px2w));
+    this.controls.target.add(d);
+    this.camera.position.add(d);
+    this.camera.updateMatrixWorld();
+    this.requestRender();
+  }
+  /** D4-7: sığdırırken grafik alanı örten paneller (px, üst / alt) */
+  fitInsets: { t: number; b: number } | null = null;
   fit() {
     this.pushView();
     const box = this.bbox && !this.bbox.isEmpty() ? this.bbox.clone() : new THREE.Box3(new THREE.Vector3(-60, -60, -60), new THREE.Vector3(60, 60, 60));
@@ -642,8 +659,15 @@ export class Viewer {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     const fitSize = size * 1.25;
-    this.camera.zoom = Math.min(this.viewHeight / fitSize, (this.viewHeight * (w / h)) / fitSize);
+    const ins = this.fitInsets, hv = ins ? Math.max(h * 0.35, h - ins.t - ins.b) : h;
+    this.camera.zoom = Math.min((this.viewHeight * (hv / h)) / fitSize, (this.viewHeight * (w / h)) / fitSize);
     this.camera.updateProjectionMatrix();
+    if (ins && hv < h) {
+      // görünür bandın ortasına: hedef ekran yukarısı yönünde kaydırılır
+      const px2w = this.viewHeight / this.camera.zoom / h;
+      const up = this.camera.up.clone().normalize();
+      center.add(up.multiplyScalar(((ins.t - ins.b) / 2) * px2w * (hv === h - ins.t - ins.b ? 1 : 0)));
+    }
     const dir = this.camera.position.clone().sub(this.controls.target);
     this.controls.target.copy(center);
     this.camera.position.copy(center).add(dir);
@@ -968,6 +992,9 @@ export class Viewer {
   setStyle(st: Viewer["displayStyle"]) {
     this.displayStyle = st;
     this.applyStyle();
+    try {
+      localStorage.setItem("imajcad.style", st); // D10-17
+    } catch {}
   }
   applyStyle() {
     if (!this.modelMesh || !this.edgeObj) return;

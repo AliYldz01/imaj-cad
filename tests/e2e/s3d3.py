@@ -24,7 +24,8 @@ with sync_playwright() as p:
     print("status:", pg.inner_text("#pm-body .pm-group >> nth=0").split("\n")[-1])
     # orijin noktasını sabitle
     x,y = S(0,0,0); pg.mouse.click(x,y); time.sleep(0.2)
-    pg.click("#pm-body button:has-text('Sabitle')"); time.sleep(0.2)
+    # v0.90 D3-21: orijinden başlayan köşe zaten sabit → "Sabitle" sunulmaz
+    if pg.locator("#pm-body button:has-text('Sabitle')").count(): pg.click("#pm-body button:has-text('Sabitle')"); time.sleep(0.2)
     # Akıllı Ölçü: alt çizgi boyu 250, sol çizgi 120
     tool("Akıllı Ölçü"); time.sleep(0.2)
     def dim_line(pt, val):

@@ -100,8 +100,17 @@ export function extractLoops(sk: SketchData): { loops: Loop[]; texts: TextItem[]
   const { edges, closedLoops, texts } = collect(sk);
   const loops: Loop[] = [...closedLoops];
   const adj = adjacency(edges);
-  for (const [, list] of adj) {
-    if (list.length === 1) return { loops: [], texts, error: "Eskiz açık kontur içeriyor. Uç noktaları birleştirin (veya ince özellik kullanın)." };
+  for (const [k0, list] of adj) {
+    if (list.length === 1) {
+      // D2-18: uç başka bir çizginin ortasında duruyorsa (bölmeden) farklı ileti
+      const e = list[0], p = k0 === e.a ? e.seg.a : e.seg.b;
+      const onOther = edges.some((o) => o !== e && o.seg.t === "l" && (() => {
+        const A = o.seg.a, B = o.seg.b, dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1;
+        const t = ((p[0] - A[0]) * dx + (p[1] - A[1]) * dy) / L2;
+        return t > 1e-6 && t < 1 - 1e-6 && Math.abs((p[0] - A[0]) * dy - (p[1] - A[1]) * dx) / Math.sqrt(L2) < 1e-4;
+      })());
+      return { loops: [], texts, error: onOther ? "Bir çizginin ucu başka bir çizginin üzerinde duruyor ama onu bölmüyor (bölgeler ayrılmamış). O çizgiyi Ayır ya da Kırp ile bölün; sonra Seçili konturlar ile bölge seçin." : "Eskiz açık kontur içeriyor. Uç noktaları birleştirin (veya ince özellik kullanın)." };
+    }
     if (list.length > 2) return { loops: [], texts, error: "Eskizde bir noktada ikiden fazla çizgi birleşiyor. Konturlar kendini kesmemeli." };
   }
   for (const start of edges) if (!start.used) loops.push({ segs: trace(adj, start, start.a), depth: 0 });

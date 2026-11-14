@@ -682,3 +682,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.88 | Denetim 2 Paket 3: yüze bağlı düzlemler, teğet düzlem, referans eksen, köşe referansları (imza), mandal, SEA yüzleri, dönüştürülmüş eskiz öğeleri, montaj eşleşmeleri (delik / kalınlık), teknik resim açıklamaları model değişince izler | ✅ |
 
 | v0.89 | Denetim 2 Paket 4: telefonda seçim araçları dokunulan öğeyi işler, nokta / öğe uzaklık önceliği, eskizde parmakla sürükleme, ölçü kutusu hayalet tıklaması, 3 parmak ileri al, spline Bitir, bildirim / menü / sekme / mini çubuk / ekran çubuğu yerleşimi, iki parmak kaydırmada yuvarlanma yok | ✅ |
+
+| v0.90 | Denetim 2 Paket 5 + 6: kalan Yüksek / Orta / Düşük bulgular (150 ✅) | ✅ |

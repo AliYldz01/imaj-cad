@@ -67,7 +67,12 @@ function loadDoc(): PartDoc {
       if (d?.version === 2) return d;
     }
   } catch {
-    /* yok */
+    // D10-22: bozuk kayıt üzerine yazılmadan önce yedeklenir, kullanıcı uyarılır
+    try {
+      const raw = localStorage.getItem(STORE);
+      if (raw) localStorage.setItem("imajcad.doc.bozuk", raw);
+    } catch {}
+    setTimeout(() => toast("Kayıtlı belge okunamadı (bozuk). Ham veri 'imajcad.doc.bozuk' olarak yedeklendi; boş belge açıldı.", true), 1500);
   }
   return emptyDoc();
 }
@@ -87,7 +92,21 @@ function storeWarn(on: boolean) {
   }
 }
 function saveDoc() {
-  const json = JSON.stringify(doc);
+  // D10-13: açık (onaylanmamış) eskiz düzenlemesi kayda girmez — sayfa kapanırsa ✕ ile aynı sonuç
+  let json = JSON.stringify(doc);
+  try {
+    const m: any = typeof mode !== "undefined" ? mode : null;
+    if (m?.k === "sketch") {
+      const d = JSON.parse(json);
+      const i = d.features.findIndex((x: any) => x.id === m.featId);
+      if (i >= 0) {
+        if (m.isNew) d.features.splice(i, 1);
+        else d.features[i].data = JSON.parse(m.orig);
+        json = JSON.stringify(d);
+      }
+    }
+  } catch {}
+  lastSaved = json;
   try {
     localStorage.setItem(STORE, json);
     if (storeFailed) storeWarn(false);
@@ -106,6 +125,40 @@ function saveDoc() {
     }
   }
 }
+/** D10-6: bu pencerenin son yazdığı belge (başka pencerenin yazdığını ayırt etmek için) */
+let lastSaved = "";
+addEventListener("storage", (e: StorageEvent) => {
+  if (e.key !== STORE || !e.newValue || e.newValue === lastSaved) return;
+  document.querySelector(".multiwin-bar")?.remove();
+  // bu pencerede kaydedilmemiş değişiklik yoksa (açık eskiz / panel de yok) diğer pencerenin sürümü sessizce alınır
+  if (mode.k === "part" && (!lastSaved || JSON.stringify(doc) === lastSaved)) {
+    try {
+      const nd = JSON.parse(e.newValue);
+      if (nd && Array.isArray(nd.features)) {
+        doc = nd;
+        lastSaved = e.newValue;
+        afterDocChange();
+        return void toast("Belge başka bir pencerede değişti; güncellendi");
+      }
+    } catch {}
+  }
+  const bar = h("div", "ctx-edit-bar multiwin-bar");
+  bar.append(
+    h("span", "", "Bu belge başka bir pencerede değişti."),
+    button("Yeniden yükle", () => {
+      bar.remove();
+      try {
+        if (mode.k === "sketch") exitSketch(false);
+        if (mode.k === "pm") cancelFeature();
+        doc = JSON.parse(localStorage.getItem(STORE) || "null") ?? doc;
+        lastSaved = JSON.stringify(doc);
+        afterDocChange();
+      } catch {}
+    }, "btn primary"),
+    button("Bu pencerenin sürümünü koru", () => (bar.remove(), saveDoc()), "btn"),
+  );
+  document.body.appendChild(bar);
+});
 const undoStack: string[] = [];
 const redoStack: string[] = [];
 function commitDoc(mutate: () => void) {
@@ -201,10 +254,56 @@ async function openInNewTab(d?: PartDoc, handle: any = null) {
   afterDocChange();
   renderDocTabs();
 }
-function closeTab(i: number) {
+/** D10-19: dosyaya son kaydedilen / dosyadan açılan hâl (belge kimliği → özellik özeti); sekme kapatırken "kaydedilmemiş" ölçütü */
+function featHash(d: any): string {
+  const t = JSON.stringify(d?.features ?? []);
+  let x = 5381;
+  for (let i = 0; i < t.length; i++) x = ((x * 33) ^ t.charCodeAt(i)) >>> 0;
+  return t.length + ":" + x;
+}
+function markFileSaved(d: any = doc) {
+  const m = readLS<Record<string, string>>("imajcad.filesaved", {});
+  const u = (d as any)?.uid;
+  if (!u) return;
+  m[u] = featHash(d);
+  const keys = Object.keys(m);
+  if (keys.length > 60) delete m[keys[0]];
+  try {
+    localStorage.setItem("imajcad.filesaved", JSON.stringify(m));
+  } catch {}
+}
+function unsavedDoc(d: any): boolean {
+  if (!d?.features?.length) return false;
+  return readLS<Record<string, string>>("imajcad.filesaved", {})[d.uid] !== featHash(d);
+}
+async function closeTab(i: number) {
   if (docTabs.length <= 1) return toast("Son belge kapatılamaz", true);
   const nm = i === activeTab ? doc.name : (JSON.parse(docTabs[i].json ?? "{}").name ?? "");
-  if (!confirm(`"${nm}" sekmesi kapatılsın mı? (Kaydedilmemiş değişiklikler kaybolur)`)) return;
+  // D10-19: yalnız değişmiş belgede sorulur; Kaydet seçeneği; kapanan belge son belgelere eklenir
+  let other: any = null;
+  try {
+    other = i === activeTab ? doc : JSON.parse(docTabs[i].json ?? "null");
+  } catch {}
+  const dirty = (i === activeTab ? undoStack.length > 0 : (docTabs[i].undo?.length ?? 0) > 0) || unsavedDoc(other);
+  if (dirty) {
+    const a = await new Promise<"save" | "drop" | null>((res) => {
+      const d = h("dialog", "input-dialog") as HTMLDialogElement;
+      d.appendChild(h("h3", "", `"${nm}" kapatılsın mı?`));
+      d.appendChild(h("p", "small", "Belgede kaydedilmemiş değişiklikler var."));
+      const row = h("div", "pm-row");
+      row.append(button("Kaydet ve kapat", () => (d.close(), d.remove(), res("save")), "btn primary"), button("Kaydetmeden kapat", () => (d.close(), d.remove(), res("drop")), "btn danger"), button("Vazgeç", () => (d.close(), d.remove(), res(null)), "btn"));
+      d.appendChild(row);
+      d.addEventListener("cancel", () => (d.remove(), res(null)));
+      document.body.appendChild(d);
+      d.showModal();
+    });
+    if (!a) return;
+    if (a === "save") {
+      if (i !== activeTab) return toast("Önce sekmeye geçip kaydedin", true);
+      await saveFile(false);
+    }
+  }
+  if (i === activeTab) pushRecent();
   if (i === activeTab) {
     docTabs.splice(i, 1);
     activeTab = -1;
@@ -251,7 +350,10 @@ function renderDocTabs() {
   bar.style.display = docTabs.length > 1 ? "" : "none";
   document.body.classList.toggle("has-doctabs", docTabs.length > 1); // D10-9
 }
+/** D6-17 / D8-17: geri al / ileri al / belge değişiminden sonraki ilk kurulumda "Eksik referans" penceresi açılmaz */
+let noReselect = false;
 function afterDocChange() {
+  document.querySelector("dialog.reselect-dialog")?.remove();
   applyDocProps();
   const eqErr = applyEquations();
   if (eqErr.length) toast(eqErr[0], true);
@@ -333,9 +435,15 @@ const FEAT_NAMES: Record<string, string> = {
   csys: "KoordinatSistemi",
 };
 function nextName(key: string) {
-  doc.seq[key] = (doc.seq[key] ?? 0) + 1;
-  return `${FEAT_NAMES[key] ?? key}${doc.seq[key]}`;
+  // D6-8: var olan adlarla çakışmasın (sayaç eski belgelerde geride kalabilir)
+  for (;;) {
+    doc.seq[key] = (doc.seq[key] ?? 0) + 1;
+    const nm = `${FEAT_NAMES[key] ?? key}${doc.seq[key]}`;
+    if (!doc.features.some((f) => f.name === nm || f.name.startsWith(nm + " "))) return nm;
+  }
 }
+/** D6-8: özellik paneli açıkken eklenen yardımcı özellikler (ör. flanş profil eskizi) — ✕'te silinir */
+let pmAdded: string[] = [];
 // ---------- Denklemler ----------
 function activeConfig() {
   return doc.configs?.find((c) => c.name === doc.config);
@@ -496,8 +604,8 @@ function viewFeatures(): { feats: Feature[]; draftId?: string } {
 // ---------- Teknik resim (SolidWorks Drawing) ----------
 /** parça (ya da montaj: asm verilirse) için teknik resim penceresi: görünüş seçimi, ölçek, kağıt, antet; PDF / SVG / DXF */
 async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: string; qty: number }[]; balloonOf: number[]; name: string; exploded?: any }) {
-  const st = JSON.parse(localStorage.getItem("imajcad.techdraw") ?? "{}");
-  const o = { cutTable: st.cutTable ?? true, iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: (doc as any).material ?? st.material ?? "", drawnBy: st.drawnBy ?? "", no: "" };
+  const st = readLS<any>("imajcad.techdraw", {});
+  const o = { cutTable: st.cutTable ?? true, iso: st.iso ?? true, section: st.section ?? false, dims: st.dims ?? true, paper: (st.paper ?? "A4") as "A4" | "A3", scale: 0, material: ((doc as any).material ? MATERIALS[(doc as any).material]?.name ?? (doc as any).material : undefined) ?? st.material ?? "" /* D9-20 */, drawnBy: st.drawnBy ?? "", no: "" };
   let data: any = asmIn?.data ?? null;
   let weldInfo: Pick<TechInfo, "cut" | "cutCenters" | "welds"> | null = null;
   const load = async () => {
@@ -782,7 +890,7 @@ async function openTechDrawing(asmIn?: { data: any; bom: { no: number; name: str
     } else {
       // otomatik ölçü
       const o = (dr.ovr[k] = dr.ovr[k] ?? {});
-      row.append(h("b", "", "Ölçü"), inp("Metin", o.text ?? "", (x) => (o.text = x || undefined), 10), ...tolUi(() => o.tol, (t) => (o.tol = t)), button("Gizle", () => ((o.hide = true), (selKey = null), keepDr(), renderEdit(), draw()), "btn danger"));
+      row.append(h("b", "", "Ölçü"), inp("Metin", o.text ?? "", (x) => (o.text = x || undefined), 10), ...tolUi(() => o.tol, (t) => (o.tol = t)), button("Gizle", () => ((o.hide = true), (selKey = null), keepDr(), renderEdit(), renderTools(), draw()), "btn danger"));
     }
     row.append(button("✕", () => ((selKey = null), renderEdit(), draw()), "btn"));
     edit.appendChild(row);
@@ -972,8 +1080,9 @@ function offerReselect(fid: string, msg: string) {
       editFeature(fid);
       if (mode.k === "pm") {
         const d = mode.draft as any;
-        for (const k of ["edges", "faces"]) if (Array.isArray(d[k])) d[k] = [];
+        for (const k of ["edges", "faces", "verts", "faces2", "edges2"]) if (Array.isArray(d[k])) d[k] = []; // D5-6
         if (d.face) d.face = undefined;
+        if (d.type === "vchamfer" && d.v) d.v = undefined;
         renderFeaturePM(kindOf(mode.draft));
         hint("Yeni kenar / yüz seçin, sonra ✓");
       }
@@ -1056,6 +1165,11 @@ async function rebuild() {
       doc.fea.loads.forEach((l, i) => l.ref.forEach((r, j) => refs.push({ key: `fea|ld|${i}|${j}`, face: r, frame: null })));
       if (refs.length) kfeats.push({ id: "__fea~probe", type: "probe", refs } as any);
     }
+    if ((doc as any).photos?.length && !draftId) {
+      const refs: any[] = [];
+      ((doc as any).photos as any[]).forEach((p, i) => p.f && p.p && refs.push({ key: `photo|${i}`, face: p.f, frame: null }));
+      if (refs.length) kfeats.push({ id: "__photo~probe", type: "probe", refs } as any);
+    }
     const res = await kernel.build(kfeats);
     (window as any).__lastBuild = { frames: res.frames, heals: res.heals, ids: kfeats.map((k) => k.id) };
     // P-9 / D5-4: yüze bağlı düzlem referansları (ayna, düzlem tabanı, bölme…) yüz taşındıysa güncellenir → bir kez daha kurulur
@@ -1079,7 +1193,23 @@ async function rebuild() {
           return true;
         };
         let ch = false;
-        if (ln.c && g.cc) {
+        if (ln.k && ln.p) {
+          // D3-6: model köşesi / kenar ortası / merkez / delme noktası
+          let w: Vec3 | undefined;
+          if (ln.k === "c") w = g.cc;
+          else if (ln.k === "m") w = g.m;
+          else if (ln.k === "v" && g.a && g.b && sk.pts[ln.p]) {
+            const q = sk.pts[ln.p], la = toLocal(fr0, g.a), lb = toLocal(fr0, g.b);
+            w = Math.hypot(la[0] - q.x, la[1] - q.y) <= Math.hypot(lb[0] - q.x, lb[1] - q.y) ? g.a : g.b;
+          } else if (ln.k === "pierce" && g.a && g.b) {
+            const d: Vec3 = [g.b[0] - g.a[0], g.b[1] - g.a[1], g.b[2] - g.a[2]], dn = d[0] * fr0.n[0] + d[1] * fr0.n[1] + d[2] * fr0.n[2];
+            if (Math.abs(dn) > 1e-9) {
+              const t = ((fr0.o[0] - g.a[0]) * fr0.n[0] + (fr0.o[1] - g.a[1]) * fr0.n[1] + (fr0.o[2] - g.a[2]) * fr0.n[2]) / dn;
+              w = [g.a[0] + d[0] * t, g.a[1] + d[1] * t, g.a[2] + d[2] * t];
+            }
+          }
+          if (w) ch = setPt(ln.p, w);
+        } else if (ln.c && g.cc) {
           ch = setPt(ln.c, g.cc) || ch;
           const ce = sk.ents.find((e: any) => e.id === ln.ent) as any, dm = sk.dims.find((d) => d.id === ln.dim);
           if (ce && g.r && Math.abs(ce.r - g.r) > 1e-6) (ce.r = g.r), (ch = true);
@@ -1098,6 +1228,15 @@ async function rebuild() {
         if (ch) {
           solveSketch(sk);
           refMoved = true;
+        }
+        continue;
+      }
+      if (key.startsWith("photo|")) {
+        const ph = ((doc as any).photos ?? [])[+key.split("|")[1]], c = (fr as any).c as Vec3;
+        if (ph?.f && ph.p && c) {
+          if (!ph.f.s && (fr as any).s) ph.f.s = (fr as any).s;
+          const d: Vec3 = [c[0] - ph.f.c[0], c[1] - ph.f.c[1], c[2] - ph.f.c[2]];
+          if (Math.hypot(...d) > 1e-6) (ph.p = ph.p.map((v: number, k: number) => +(v + d[k]).toFixed(3))), (ph.f.c = c), saveDoc(), photos?.place();
         }
         continue;
       }
@@ -1182,19 +1321,22 @@ async function rebuild() {
       if (fea.res && fea.sig !== feaSig()) {
         fea.res = undefined;
         fea.field = fea.disp = undefined;
-        renderFea();
         toast("Model değişti: analiz sonucu geçersiz, yeniden çözün", true);
       }
+      // D8-2 / D8-4: malzeme, geri al / ileri al sonrası panel her zaman belgeden yeniden çizilir
+      if (!fea.el.contains(document.activeElement)) renderFea();
       fea.vf = undefined;
       feaPaint();
     }
+    if (draftAna) applyDraftAnalysis(); // D5-9
     memberBodies = res.members;
     const errs = new Map(errors);
     for (const [k, m] of eqSketchErr) if (!errs.has(k)) errs.set(k, m);
     res.errors.forEach((e) => errs.set(e.featureId.split("~")[0], e.message));
     if (mode.k === "part") {
       // SolidWorks "eksik referans": yeni ortaya çıkan referans hatası için yeniden seç penceresi
-      for (const [fid, msg] of errs) if (builtOk.has(fid) && /bulunamad|seçin/i.test(msg) && !firstBuild) offerReselect(fid, msg);
+      for (const [fid, msg] of errs) if (builtOk.has(fid) && (/bulunamad/i.test(msg) || /(kenar|yüz|köşe|eksen|nokta)[^.]*seçin/i.test(msg)) && !/özellik|eskiz|bastırıl/i.test(msg) && !firstBuild && !noReselect) offerReselect(fid, msg);
+      noReselect = false;
       for (const f of doc.features) if (!errs.has(f.id)) builtOk.add(f.id);
       for (const id of errs.keys()) builtOk.delete(id);
       featureErrors = errs;
@@ -1246,8 +1388,19 @@ async function ghostPreview(base: Feature[]) {
 let ghostOff = false;
 function schedulePreview() {
   clearTimeout(previewTimer);
-  previewTimer = window.setTimeout(() => rebuild(), 220);
+  previewTimer = window.setTimeout(() => ((previewTimer = 0), rebuild()), 220);
 }
+/** D5-10: bekleyen / süren önizleme bitene kadar bekle (✓ bayat önizleme hatasıyla reddedilmesin) */
+async function previewSettled(maxMs = 60000) {
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = 0;
+    void rebuild();
+  }
+  const t0 = performance.now();
+  while ((building || pending || previewTimer) && performance.now() - t0 < maxMs) await new Promise((r) => setTimeout(r, 40));
+}
+let commitWaiting = false;
 
 // =====================================================================
 // Düzlemler ve eskiz görüntüsü
@@ -1261,8 +1414,17 @@ function updatePlanes() {
   }
   viewer.setPlanes(list);
   viewer.setPlanesVisible(planesOn && mode.k !== "sketch");
+  try {
+    localStorage.setItem("imajcad.planes", planesOn ? "1" : "0");
+  } catch {}
 }
-let planesOn = true;
+let planesOn = (() => {
+  try {
+    return localStorage.getItem("imajcad.planes") !== "0"; // D10-17
+  } catch {
+    return true;
+  }
+})();
 
 let sketchGroup: any[] = [];
 function drawSketches() {
@@ -1499,6 +1661,26 @@ function nearestFace(r: FaceRef) {
 }
 
 /** Seçilen düzlem/yüzü PlaneRef'e çevirir */
+/** Eskiz düzlemi seçildi (grafik alan ya da ağaç; E-15) */
+function sketchPlanePicked(ref: PlaneRef, pt?: Vec3) {
+  const rp = (mode as any).replanFor as string | undefined, dv = (mode as any).deriveFrom as string | undefined;
+  if (rp) {
+    // D2-3: eskiz kendisinden sonra gelen (ona bağımlı olabilecek) bir özelliğin yüzüne / düzlemine taşınamaz
+    const at = doc.features.findIndex((x) => x.id === rp);
+    const later = (id: string | null | undefined) => !!id && doc.features.findIndex((x) => x.id === id) >= at;
+    if (ref.k === "ref" && later(ref.id)) return toast("Döngüsel referans: eskiz kendisinden sonra oluşturulan bir düzleme taşınamaz", true);
+    const go = () => (cancelPick(), commitDoc(() => ((getFeat(rp) as SketchFeature).plane = ref)), toast("Eskiz düzlemi değiştirildi"));
+    if (ref.k !== "face" || !pt) return go();
+    return void kernel.faceOwner(pt).then((o) => (later(o) ? toast("Döngüsel referans: bu yüz eskizden türeyen bir özelliğe ait — başka bir yüz ya da düzlem seçin", true) : go())).catch(go);
+  }
+  if (dv) {
+    cancelPick();
+    const src = getFeat(dv) as SketchFeature;
+    const nf: SketchFeature = { ...JSON.parse(JSON.stringify(src)), id: uid(), name: nextName("sketch") + " (türetilmiş)", plane: ref } as any;
+    return commitDoc(() => insertFeature(nf)), toast("Türetilmiş eskiz eklendi");
+  }
+  return startSketch(ref, (mode as any).tool);
+}
 function planeRefFromHit(hit: PickHit): PlaneRef | null {
   if (hit.kind === "plane") return ["front", "top", "right"].includes(hit.id) ? { k: "std", n: hit.id as StdPlane } : { k: "ref", id: hit.id };
   if (hit.kind === "face") {
@@ -1661,12 +1843,14 @@ function pickWant() {
     if (t === "edgeflange" || t === "hem" || t === "miterflange") return (mode.draft as any)._preview ? {} : { edge: true };
     if (t === "tosheet") return { edge: true };
     if (t === "closecorner") return { face: true };
+    if (t === "draft" && (mode.draft as any)._pick === "neutral") return { face: true, plane: true };
     if (t === "draft" && (mode.draft as any).mode === "parting") return { edge: true };
     if (t === "lpattern" && (mode.draft as any)._pick === "upTo") return { edge: true, face: true };
     if (t === "sform" || t === "crossbreak" || t === "sgusset") return { face: true };
     if (t === "member" && String((mode.draft as any)._pick ?? "").startsWith("ptl:")) return { face: true, edge: true };
-    if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap" || t === "tabslot" || t === "lip" || t === "snaphook") return { face: true };
-    if (t === "axis") return { edge: true };
+    if (t === "tabslot") return { face: true, edge: true }; // D6-5: çakışık dar uç yüzü kenarından seçilir
+    if (t === "shell" || t === "dface" || t === "draft" || t === "hole" || t === "dome" || t === "wrap" || t === "lip" || t === "snaphook") return { face: true };
+    if (t === "axis") return { edge: true, face: true }; // D5-7: iki düzlem / silindir yüzü de seçilir
     if (t === "surface" && (mode.draft as any).mode === "fill") return { edge: true };
     if (t === "point" || t === "csys") return { edge: true, face: true };
     if (t === "extrude") {
@@ -1686,7 +1870,13 @@ function pickWant() {
 
 function partClick(e: PointerEvent) {
   let hit = viewer.pick(e.clientX, e.clientY, pickWant());
-  if (photos?.pending && mode.k === "part") return void photos.place3d(hit?.point ?? null);
+  if (photos?.pending && mode.k === "part") {
+    // D8-16: fotoğraf işareti dokunulan yüze bağlanır (model değişince yüzle gider)
+    const ph = photos.pending as any, fi = hit?.kind === "face" ? viewer.mesh?.faces[hit.index] : undefined;
+    if (ph && fi && hit?.point) ph.f = { c: fi.c, n: fi.n };
+    else if (ph) delete ph.f;
+    return void photos.place3d(hit?.point ?? null);
+  }
   // aynı yere tekrar tıklama (Alt ile veya seçili yüze): arkadaki yüze geç
   if (mode.k === "part" && hit?.kind === "face" && (e.altKey || (lastPick && Math.hypot(e.clientX - lastPick.x, e.clientY - lastPick.y) < (e.pointerType === "mouse" ? 4 : 14) && psel.faces.has(hit.index) && psel.faces.size === 1))) {
     return selectOtherAt(e.clientX, e.clientY);
@@ -1696,24 +1886,15 @@ function partClick(e: PointerEvent) {
     if (!hit) return;
     const ref = planeRefFromHit(hit);
     if (!ref) return toast("Eskiz yalnızca düzlemsel bir yüze veya düzleme çizilebilir", true);
-    const rp = (mode as any).replanFor as string | undefined, dv = (mode as any).deriveFrom as string | undefined;
-    if (rp) {
-      cancelPick();
-      return commitDoc(() => ((getFeat(rp) as SketchFeature).plane = ref)), toast("Eskiz düzlemi değiştirildi");
-    }
-    if (dv) {
-      cancelPick();
-      const src = getFeat(dv) as SketchFeature;
-      const nf: SketchFeature = { ...JSON.parse(JSON.stringify(src)), id: uid(), name: nextName("sketch") + " (türetilmiş)", plane: ref } as any;
-      return commitDoc(() => insertFeature(nf)), toast("Türetilmiş eskiz eklendi");
-    }
-    return startSketch(ref, mode.tool);
+    return sketchPlanePicked(ref, hit.point);
   }
   if (mode.k === "pm" && mode.draft.type === "member" && (mode.draft as any)._pick === "align") return memberAlignPick(e.clientX, e.clientY);
   if (mode.k === "pm" && mode.draft.type === "member" && String((mode.draft as any)._pick ?? "").startsWith("ptl:")) {
     const dd = mode.draft as any, i = +dd._pick.slice(4);
-    if (!hit?.point || !dd.ptl?.[i]) return;
-    dd.ptl[i].p = snapPoint(hit.point);
+    if (!dd.ptl?.[i]) return;
+    const sp = snapPoint(hit?.point ?? [NaN, NaN, NaN], { x: e.clientX, y: e.clientY });
+    if (!Number.isFinite(sp[0])) return toast("Bir iskelet / model noktasına dokunun", true);
+    dd.ptl[i].p = sp;
     dd._pick = undefined;
     renderFeaturePM(kindOf(mode.draft));
     return schedulePreview();
@@ -1889,6 +2070,8 @@ function startSketch(plane: PlaneRef, tool?: SkTool) {
 }
 
 function openSketch(f: SketchFeature, isNew: boolean, tool?: SkTool) {
+  document.querySelector(".suggest")?.remove(); // D1-18
+  document.querySelector(".cand-bar")?.remove(); // D10-25
   const frame = resolveFrame(f.plane, doc.features);
   if (!frame) return toast("Eskiz düzlemi bulunamadı", true);
   clearPartSel();
@@ -1901,6 +2084,14 @@ function openSketch(f: SketchFeature, isNew: boolean, tool?: SkTool) {
       panel: $("#pm-body"),
       toast,
       status: (text, kind) => setStatus(kind === "ok" ? "ok" : kind, `${f.name}: ${text}`),
+      cfgVar: (name, v) => {
+        const cfg = activeConfig();
+        if (!cfg || (doc.configs?.length ?? 0) < 2) return false;
+        if (!confirm(`"${name}" yalnız etkin yapılandırmada (${cfg.name}) ${fmtNum(v, 4)} olsun mu?\n\nTamam: yalnız bu yapılandırma (ölçü "${name}" değişkenine bağlı kalır)\nİptal: tüm yapılandırmalar (ölçü sabit sayı olur)`)) return false;
+        cfg.vars[name] = String(+v.toFixed(6));
+        saveDocSoon();
+        return true;
+      },
       changed: () => {
         saveDocSoon();
         updateUndo();
@@ -1925,6 +2116,8 @@ function openSketch(f: SketchFeature, isNew: boolean, tool?: SkTool) {
   rebuild();
   // mevcut eskizi açarken eskizi ve modeli ekrana sığdır
   if (!isNew && f.data.ents.length) setTimeout(fitAll, 50);
+  // D3-25 / D5-15: telefonda yeni eskizde orijin alt panelin arkasında kalmasın
+  else if (innerWidth <= 820) setTimeout(() => viewer.centerOn(frame.o as any, viewInsets()), 60);
 }
 
 let saveTimer = 0;
@@ -1993,6 +2186,7 @@ function suggest(items: [string, () => void][]) {
 let pmOk: () => void = () => {};
 let pmCancel: () => void = () => {};
 function showPM(title: string, ok: () => void, cancel: () => void) {
+  document.querySelector(".cand-bar")?.remove(); // D10-25
   $("#pm-title").textContent = title;
   $("#pm").hidden = false;
   $("#side").classList.add("pm-open");
@@ -2198,19 +2392,25 @@ function newFeature(kind: string) {
     case "plane":
       draft = { id, type: "plane", name: "", base: planeRefFromSelection() ?? { k: "std", n: "front" }, offset: 20, flip: false };
       break;
+    case "cutSweep":
     case "sweep": {
       const free = doc.features.filter((f) => f.type === "sketch" && !consumerOf(f.id)) as SketchFeature[];
-      if (!free.length) return toast("Süpürme için bir yol eskizi gerekir", true);
-      const pathSk = free.find((f) => !extractClosed(f)) ?? free[free.length - 1];
-      const prof = free.find((f) => f !== pathSk && extractClosed(f)) ?? free.find((f) => f !== pathSk);
+      // D3-13 / D4-5: 3B eskiz de yol olabilir (seçiliyse ya da açık 2B eskiz yoksa)
+      const s3 = doc.features.filter((f) => f.type === "sketch3d");
+      if (!free.length && !s3.length) return toast("Süpürme için bir yol eskizi gerekir", true);
+      const picked = treeSel ? getFeat(treeSel) : undefined;
+      const open2 = free.filter((f) => !extractClosed(f));
+      const pathSk: any = picked && (picked.type === "sketch3d" || (picked.type === "sketch" && !extractClosed(picked as SketchFeature))) ? picked : open2[0] ?? s3[s3.length - 1] ?? free[free.length - 1];
+      const prof = free.find((f) => f !== pathSk && extractClosed(f)) ?? (pathSk.type === "sketch3d" ? undefined : free.find((f) => f !== pathSk));
       // tek eskiz (yalnız yol) varsa SolidWorks gibi dairesel profil ile başla
-      draft = { id, type: "sweep", name: "", sketch: prof?.id ?? "", path: pathSk.id, cut: false, ...(prof ? {} : { circ: 20 }) };
+      draft = { id, type: "sweep", name: "", sketch: prof?.id ?? "", path: pathSk.id, cut: kind === "cutSweep", ...(prof ? {} : { circ: 20 }) };
       break;
     }
+    case "cutLoft":
     case "loft": {
       const free = doc.features.filter((f) => f.type === "sketch" && !consumerOf(f.id) && extractClosed(f)) as SketchFeature[];
       if (free.length < 2) return toast("Loft için en az iki kapalı profil eskizi gerekir", true);
-      draft = { id, type: "loft", name: "", sketches: free.slice(-2).map((f) => f.id), cut: false, ruled: false };
+      draft = { id, type: "loft", name: "", sketches: free.slice(-2).map((f) => f.id), cut: kind === "cutLoft", ruled: false };
       break;
     }
     case "hole": {
@@ -2434,6 +2634,7 @@ function openFeaturePM(draft: Feature, editingId: string | undefined, kind: stri
   mode = { k: "pm", draft, editingId };
   pmStartSnap = JSON.stringify(draft);
   pmEqSnap = JSON.stringify(doc.eqs ?? {});
+  pmAdded = [];
   armBack();
   clearPartSel();
   hoverHit = null;
@@ -2449,6 +2650,11 @@ function openFeaturePM(draft: Feature, editingId: string | undefined, kind: stri
 
 function cancelFeature() {
   if (mode.k === "pm") doc.eqs = JSON.parse(pmEqSnap);
+  if (pmAdded.length) {
+    doc.features = doc.features.filter((f) => !pmAdded.includes(f.id));
+    pmAdded = [];
+    saveDoc();
+  }
   mode = { k: "part" };
   hidePM();
   renderCommands();
@@ -2457,6 +2663,17 @@ function cancelFeature() {
 
 function commitFeature(kind: string) {
   if (mode.k !== "pm") return;
+  if (previewTimer || building || pending) {
+    if (!commitWaiting) {
+      commitWaiting = true;
+      setStatus("busy", "Önizleme bekleniyor…");
+      void previewSettled().then(() => {
+        commitWaiting = false;
+        if (mode.k === "pm") commitFeature(kind);
+      });
+    }
+    return;
+  }
   const { draft, editingId } = mode;
   if (draft.type === "fillet" || draft.type === "chamfer") {
     const dd = draft as any;
@@ -2486,22 +2703,27 @@ function commitFeature(kind: string) {
   if (draft.type === "closecorner" && !draft.faces.length) return toast("Uç yüz seçin", true);
   if ((draft.type === "edgeflange" || draft.type === "hem") && !draft.edges.length) return toast("Flanş eklenecek kenarı seçin", true);
   delete (draft as any)._origin;
-  ["_pm", "_picks", "_edge", "_dist", "_pct", "_count", "_fg"].forEach((k) => delete (draft as any)[k]);
+  ["_pm", "_picks", "_edge", "_dist", "_pct", "_count", "_fg", "_yPick"].forEach((k) => delete (draft as any)[k]);
   if ((draft.type === "edgeflange" || draft.type === "hem" || draft.type === "miterflange") && (draft as any)._preview) {
     delete (draft as any)._preview;
     if (draftError) return toast(draftError, true);
   } else delete (draft as any)._preview;
   if (draft.type === "extrude" && (draft.end === "surface" || draft.end === "offset") && !draft.face) return toast("Hedef yüzü seçin", true);
+  if (draft.type === "surface" && (draft as any).mode === "fill" && !(draft as any).edges?.length) return toast("Doldurulacak sınırın kenarlarını seçin", true);
   if (draftError && !["fillet", "chamfer", "shell", "draft", "edgeflange", "hem", "miterflange", "combine", "delbody", "indent", "thread", "tosheet"].includes(draft.type)) return toast(draftError, true);
   mode = { k: "part" };
   hidePM();
   const newEqs = doc.eqs;
+  pmAdded = [];
   doc.eqs = JSON.parse(pmEqSnap);
   commitDoc(() => {
     doc.eqs = newEqs;
     if (editingId) doc.features = doc.features.map((f) => (f.id === editingId ? draft : f));
     else {
-      nextName(kind);
+      // D4-8: kesme süpürme / loft ağaçta "Kesme-…" adını alır (ad kullanıcı tarafından değiştirilmediyse)
+      const nk = kindOf(draft);
+      if (nk !== kind && draft.name === nextNamePeek(kind)) draft.name = nextName(nk);
+      else nextName(kind);
       insertFeature(draft);
     }
   });
@@ -2538,7 +2760,13 @@ function renderFeaturePM(kind: string) {
   const sketches = doc.features.slice(0, idx).filter((f) => f.type === "sketch") as SketchFeature[];
   const sketchSel = () =>
     selectField("Eskiz", sketches.map((s) => ({ v: s.id, t: s.name })), d.sketch, (v) => {
+      const chg = d.sketch !== v;
       d.sketch = v;
+      // D4-4: kaynak eskiz değişince eski bölge seçimi geçersiz
+      if (chg && (d as any).contours) {
+        (d as any).contours = undefined;
+        if (d.type !== "revolve") renderFeaturePM(kind);
+      }
       if (d.type === "revolve") {
         const sk = getFeat(v) as SketchFeature;
         const ax = sk.data.ents.filter((e) => e.t === "line");
@@ -2557,6 +2785,11 @@ function renderFeaturePM(kind: string) {
     const g = group("Seçili konturlar");
     if (regs.length < 2) {
       g.appendChild(h("p", "pm-hint", regs.length ? "Eskizde tek bölge var." : "Kapalı kontur yok."));
+      if (f.contours?.length) {
+        const b = h("button", "btn", "Seçimi temizle");
+        b.addEventListener("click", () => ((f.contours = undefined), renderFeaturePM(kind), upd()));
+        g.appendChild(b);
+      }
       return g;
     }
     g.appendChild(h("p", "pm-hint", "Boş bırakılırsa tüm bölgeler kullanılır. Bir eskizden farklı bölgelerle birden çok özellik yapılabilir (paylaşılan eskiz)."));
@@ -2735,6 +2968,8 @@ function renderFeaturePM(kind: string) {
     case "fillet":
     case "chamfer": {
       const isF = d.type === "fillet";
+      // D5-16: geometri çekirdeği (OCC) radyüsü teğet zincir boyunca her zaman yayar — kapatma seçeneği yok
+      if (isF) body.appendChild(h("p", "pm-hint", "Teğet yayılımı: seçilen kenara teğet bağlanan kenarlar da radyüslenir (çekirdekte kapatılamaz)."));
       if (isF)
         body.appendChild(
           selectField(
@@ -2776,7 +3011,7 @@ function renderFeaturePM(kind: string) {
           numField(isF ? (d.kind === "var" ? "Başlangıç yarıçapı" : "Yarıçap") : "Mesafe", isF ? d.r : d.d, (v) => (isF ? (d.r = v) : (d.d = v)), { min: 0.001, unit: "mm", key: `${d.id}.${isF ? "r" : "d"}` }),
         ),
       );
-      if (isF && d.kind === "conic") body.appendChild(numField("Rho (0,05–0,95; 0,5 parabol)", d.rho ?? 0.5, (v) => ((d.rho = Math.min(0.95, Math.max(0.05, v))), schedulePreview()), { min: 0.05 } as any));
+      if (isF && d.kind === "conic") body.appendChild(numField("Rho (0,05–0,95; 0,5 parabol)", d.rho ?? 0.5, (v) => ((d.rho = Math.min(0.95, Math.max(0.05, v))), schedulePreview()), { min: 0.05, key: `${d.id}.rho` }));
       if (isF && d.kind === "var") body.appendChild(numField("Bitiş yarıçapı", d.r2 ?? d.r, (v) => (d.r2 = v), { min: 0.001, unit: "mm", key: `${d.id}.r2` }));
       if (isF && (d.kind ?? "const") === "const" && d.edges.length > 1) {
         const multi = !!d.radii;
@@ -2826,24 +3061,31 @@ function renderFeaturePM(kind: string) {
       }
       if (d.mode === "fill") {
         const g = group("Sınır doldur", h("div", "pm-picks", d.edges?.length ? `${d.edges.length} kenar seçili` : "Kapalı sınırı oluşturan kenarlara dokunun"), h("p", "pm-hint", "Kenarlar (model ya da yüzey kenarları) kapalı bir döngü oluşturmalı; içinden geçen eğri yüzey kurulur."));
-        if (d.edges?.length) g.appendChild(button("Seçimi temizle", () => ((d.edges = []), renderFeaturePM(kind), refreshHighlight())));
+        if (d.edges?.length) g.appendChild(button("Seçimi temizle", () => ((d.edges = []), renderFeaturePM(kind), refreshHighlight(), upd())));
         body.appendChild(g);
         hint("Doldurulacak sınırın kenarlarına dokunun");
         break;
       }
       const sks = doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }));
-      body.appendChild(group(d.mode === "planar" ? "Düzlemsel yüzey" : "Yüzey ekstrüzyon", selectField("Eskiz (açık veya kapalı)", sks, d.sketch, (v) => ((d.sketch = v), upd())), ...(d.mode === "extrude" ? [numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { min: 0.001, unit: "mm" }), checkField("Orta düzlem", !!d.mid, (v) => ((d.mid = v || undefined), upd()))] : []), h("p", "pm-hint", "Yüzey kalınlıksızdır; Kalınlaştır ile katı yapılır ya da Yüzeyle Kes ile katı kesilir.")));
+      body.appendChild(group(d.mode === "planar" ? "Düzlemsel yüzey" : "Yüzey ekstrüzyon", selectField("Eskiz (açık veya kapalı)", sks, d.sketch, (v) => ((d.sketch = v), upd())), ...(d.mode === "extrude" ? [numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { min: 0.001, unit: "mm", key: `${d.id}.d` }), checkField("Orta düzlem", !!d.mid, (v) => ((d.mid = v || undefined), upd()))] : []), h("p", "pm-hint", "Yüzey kalınlıksızdır; Kalınlaştır ile katı yapılır ya da Yüzeyle Kes ile katı kesilir.")));
       break;
     }
     case "thicken":
     case "surfcut": {
       const sfs = surfaceFeats().map((x) => ({ v: x.id, t: x.name }));
-      body.appendChild(group(d.type === "thicken" ? "Kalınlaştır" : "Yüzeyle kes", selectField("Yüzey", sfs, d.surf, (v) => ((d.surf = v), upd())), ...(d.type === "thicken" ? [numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm" })] : []), segField(d.type === "thicken" ? [{ v: "1", t: "Taraf 1" }, { v: "-1", t: "Taraf 2" }, { v: "0", t: "İki taraf" }] : [{ v: "1", t: "Taraf 1'i kaldır" }, { v: "-1", t: "Taraf 2'yi kaldır" }], String(d.side), (v) => ((d.side = +v), upd()))));
+      body.appendChild(group(d.type === "thicken" ? "Kalınlaştır" : "Yüzeyle kes", selectField("Yüzey", sfs, d.surf, (v) => ((d.surf = v), upd())), ...(d.type === "thicken" ? [numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.t` })] : []), segField(d.type === "thicken" ? [{ v: "1", t: "Taraf 1" }, { v: "-1", t: "Taraf 2" }, { v: "0", t: "İki taraf" }] : [{ v: "1", t: "Taraf 1'i kaldır" }, { v: "-1", t: "Taraf 2'yi kaldır" }], String(d.side), (v) => ((d.side = +v), upd()))));
       break;
     }
     case "surftrim": {
       const sfs = surfaceFeats().filter((x) => x.id !== d.id).map((x) => ({ v: x.id, t: x.name }));
-      body.appendChild(group("Yüzey kırp", selectField("Kırpılacak yüzey", sfs, d.surf, (v) => ((d.surf = v), upd())), selectField("Kırpma aracı", [{ v: "std:front", t: "Ön Düzlem" }, { v: "std:top", t: "Üst Düzlem" }, { v: "std:right", t: "Sağ Düzlem" }, ...sfs.filter((x) => x.v !== d.surf)], d.tool ?? "std:right", (v) => ((d.tool = v), upd())), segField([{ v: "1", t: "Taraf 1 kalsın" }, { v: "-1", t: "Taraf 2 kalsın" }], String(d.side), (v) => ((d.side = +v), upd()))));
+      // D7-6: kırpılacak yüzey değişince araç listesi yenilenir, araç = yüzey olamaz; D7-16: referans düzlemler de araç
+      const refPl = doc.features.filter((x) => x.type === "plane" && !x.off && featIndex(x.id) < idx).map((x) => ({ v: "ref:" + x.id, t: x.name }));
+      body.appendChild(group("Yüzey kırp", selectField("Kırpılacak yüzey", sfs, d.surf, (v) => {
+        d.surf = v;
+        if (d.tool === v) d.tool = sfs.find((x) => x.v !== v)?.v ?? "std:right";
+        renderFeaturePM(kind);
+        upd();
+      }), selectField("Kırpma aracı", [{ v: "std:front", t: "Ön Düzlem" }, { v: "std:top", t: "Üst Düzlem" }, { v: "std:right", t: "Sağ Düzlem" }, ...refPl, ...sfs.filter((x) => x.v !== d.surf)], d.tool ?? "std:right", (v) => ((d.tool = v), upd())), segField([{ v: "1", t: "Taraf 1 kalsın" }, { v: "-1", t: "Taraf 2 kalsın" }], String(d.side), (v) => ((d.side = +v), upd()))));
       break;
     }
     case "knit": {
@@ -2856,10 +3098,10 @@ function renderFeaturePM(kind: string) {
     case "sform": {
       const K = d.kind;
       body.appendChild(group("Şekillendirme aracı", segField([{ v: "dimple", t: "Yuvarlak kabartma" }, { v: "emboss", t: "Dikdörtgen kabartma" }, { v: "louver", t: "Panjur" }], K, (v) => ((d.kind = v), renderFeaturePM(kind), upd())),
-        numField(K === "dimple" ? "Çap" : "Genişlik", d.D, (v) => ((d.D = v), upd()), { min: 0.1, unit: "mm" }),
-        ...(K !== "dimple" ? [numField("Uzunluk", d.L, (v) => ((d.L = v), upd()), { min: 0.1, unit: "mm" }), numField("Açı (yüzde)", d.ang ?? 0, (v) => ((d.ang = v || undefined), upd()), { unit: "°" })] : []),
-        numField("Yükseklik", d.H, (v) => ((d.H = v), upd()), { min: 0.1, unit: "mm" }),
-        ...(K !== "louver" ? [numField("Koniklik", d.draft, (v) => ((d.draft = Math.max(0, v)), upd()), { min: 0, unit: "°" })] : []),
+        numField(K === "dimple" ? "Çap" : "Genişlik", d.D, (v) => ((d.D = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.D` }),
+        ...(K !== "dimple" ? [numField("Uzunluk", d.L, (v) => ((d.L = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.L` }), numField("Açı (yüzde)", d.ang ?? 0, (v) => ((d.ang = v || undefined), upd()), { unit: "°", key: `${d.id}.ang` })] : []),
+        numField("Yükseklik", d.H, (v) => ((d.H = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.H` }),
+        ...(K !== "louver" ? [numField("Koniklik", d.draft, (v) => ((d.draft = Math.max(0, v)), upd()), { min: 0, unit: "°", key: `${d.id}.draft` })] : []),
         checkField("Ters yöne (sacın öbür tarafına)", !!d.down, (v) => ((d.down = v || undefined), upd())),
       ));
       const g = group("Konumlar", h("div", "pm-picks", d.plane ? `${d.pts.length} konum` : "Sacın düz yüzüne dokunun (her dokunuş bir konum)"));
@@ -2870,21 +3112,21 @@ function renderFeaturePM(kind: string) {
     }
     case "vent": {
       const sks = doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }));
-      body.appendChild(group("Havalandırma", selectField("Eskiz", sks, d.sketch, (v) => ((d.sketch = v), upd())), numField("Kaburga / kiriş genişliği", d.rw, (v) => ((d.rw = v), upd()), { min: 0.01, unit: "mm" }), h("p", "pm-hint", "Eskizin kapalı konturları açılır (iç konturlar ada kalır); yapı (kesikli) çizgileri kaburga ve kiriş olarak verilen genişlikte dolu bırakılır.")));
+      body.appendChild(group("Havalandırma", selectField("Eskiz", sks, d.sketch, (v) => ((d.sketch = v), upd())), numField("Kaburga / kiriş genişliği", d.rw, (v) => ((d.rw = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.rw` }), h("p", "pm-hint", "Eskizin kapalı konturları açılır (iç konturlar ada kalır); yapı (kesikli) çizgileri kaburga ve kiriş olarak verilen genişlikte dolu bırakılır.")));
       break;
     }
     case "crossbreak": {
-      body.appendChild(group("Çapraz kırma", h("div", "pm-picks", d.face ? "Yüz seçili" : "Düz sac yüzüne dokunun"), numField("Kırma açısı", d.angle, (v) => ((d.angle = v), drawRefGeom()), { min: 0.1, unit: "°" }), numField("Kırma yarıçapı", d.r, (v) => ((d.r = v), drawRefGeom()), { min: 0, unit: "mm" }), checkField("Yönü ters (içe)", !!d.flip, (v) => ((d.flip = v || undefined), drawRefGeom())), h("p", "pm-hint", "Kozmetik: yüzde köşegen kırma çizgileri gösterilir, geometri değişmez; teknik resim / açınım notu içindir.")));
+      body.appendChild(group("Çapraz kırma", h("div", "pm-picks", d.face ? "Yüz seçili" : "Düz sac yüzüne dokunun"), numField("Kırma açısı", d.angle, (v) => ((d.angle = v), drawRefGeom()), { min: 0.1, unit: "°", key: `${d.id}.angle` }), numField("Kırma yarıçapı", d.r, (v) => ((d.r = v), drawRefGeom()), { min: 0, unit: "mm", key: `${d.id}.r` }), checkField("Yönü ters (içe)", !!d.flip, (v) => ((d.flip = v || undefined), drawRefGeom())), h("p", "pm-hint", "Kozmetik: yüzde köşegen kırma çizgileri gösterilir, geometri değişmez; teknik resim / açınım notu içindir.")));
       drawRefGeom();
       break;
     }
     case "sgusset": {
-      body.appendChild(group("Sac köşe takviyesi", h("div", "pm-picks", d.face ? "Büküm yüzü seçili" : "İç büküm (silindirik) yüzüne dokunun"), numField("Bacak uzunluğu (iç köşeden)", d.L, (v) => ((d.L = v), upd()), { min: 0.1, unit: "mm" }), numField("Takviye genişliği", d.w, (v) => ((d.w = v), upd()), { min: 0.1, unit: "mm" }), numField("Büküm boyunca konum (%)", Math.round(d.pos * 100), (v) => ((d.pos = Math.max(0, Math.min(100, v)) / 100), upd()), { min: 0, unit: "%" })));
+      body.appendChild(group("Sac köşe takviyesi", h("div", "pm-picks", d.face ? "Büküm yüzü seçili" : "İç büküm (silindirik) yüzüne dokunun"), numField("Bacak uzunluğu (iç köşeden)", d.L, (v) => ((d.L = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.L` }), numField("Takviye genişliği", d.w, (v) => ((d.w = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.w` }), numField("Büküm boyunca konum (%)", Math.round(d.pos * 100), (v) => ((d.pos = Math.max(0, Math.min(100, v)) / 100), upd()), { min: 0, unit: "%" })));
       hint("İç büküm yüzüne dokunun");
       break;
     }
     case "dface": {
-      body.appendChild(group("Doğrudan düzenleme", segField([{ v: "move", t: "Yüz taşı" }, { v: "fill", t: "Deliği doldur (yüz sil)" }], d.mode, (v) => ((d.mode = v), renderFeaturePM(kind), upd())), ...(d.mode === "move" ? [numField("Mesafe (+ dışa, − içe)", d.d, (v) => ((d.d = v), upd()), { unit: "mm" })] : [])));
+      body.appendChild(group("Doğrudan düzenleme", segField([{ v: "move", t: "Yüz taşı" }, { v: "fill", t: "Deliği doldur (yüz sil)" }], d.mode, (v) => ((d.mode = v), renderFeaturePM(kind), upd())), ...(d.mode === "move" ? [numField("Mesafe (+ dışa, − içe)", d.d, (v) => ((d.d = v), upd()), { unit: "mm", key: `${d.id}.d` })] : [])));
       const g = group("Yüzler", h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : d.mode === "move" ? "Taşınacak düz yüzlere dokunun" : "Doldurulacak delik yüzlerine dokunun"));
       if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
       body.appendChild(g);
@@ -2925,7 +3167,7 @@ function renderFeaturePM(kind: string) {
       if (d.upTo !== undefined || d._pick === "upTo") {
         g1.append(
           h("div", "pm-picks", d.upTo ? `Referans: ${d.upTo.map((x: number) => fmtNum(x, 1)).join(", ")}` : "Referans köşeye / yüze dokunun"),
-          numField("Referanstan öteleme", d.upOff ?? 0, (v) => ((d.upOff = v), upd()), { unit: "mm" }),
+          numField("Referanstan öteleme", d.upOff ?? 0, (v) => ((d.upOff = v), upd()), { unit: "mm", key: `${d.id}.upOff` }),
           segField([{ v: "count", t: "Adet sabit (aralık hesaplanır)" }, { v: "spacing", t: "Aralık sabit (adet hesaplanır)" }], d.upMode ?? "count", (v) => ((d.upMode = v), upd())),
         );
         hint("Çoğaltmanın varacağı köşeye ya da yüze dokunun");
@@ -2936,8 +3178,8 @@ function renderFeaturePM(kind: string) {
         g2.append(
           selectField("Yön", axisOpts, d.axis2, (v) => ((d.axis2 = v), upd())),
           checkField("Ters çevir", d.rev2, (v) => ((d.rev2 = v), upd())),
-          numField("Aralık", d.spacing2, (v) => ((d.spacing2 = v), upd()), { min: 0.001, unit: "mm" }),
-          numField("Adet", d.count2, (v) => ((d.count2 = v), upd()), { min: 1, int: true }),
+          numField("Aralık", d.spacing2, (v) => ((d.spacing2 = v), upd()), { min: 0.001, unit: "mm", key: `${d.id}.spacing2` }),
+          numField("Adet", d.count2, (v) => ((d.count2 = v), upd()), { min: 1, int: true, key: `${d.id}.count2` }),
         );
       body.appendChild(g2);
       body.appendChild(featChecks("Çoğaltılacak özellikler"));
@@ -2959,7 +3201,8 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           "Parametreler",
-          selectField("Eksen (orijinden geçen)", axisOpts, d.axis, (v) => ((d.axis = v), upd())),
+          // P-5: referans eksenler de seçilebilir
+          selectField("Eksen", [...axisOpts.map((o) => ({ v: o.v as string, t: o.t + " (orijinden)" })), ...doc.features.filter((x) => x.type === "axis" && !x.off && featIndex(x.id) < idx).map((x) => ({ v: "ref:" + x.id, t: x.name }))], d.refAxis ? "ref:" + d.refAxis : d.axis, (v) => (v.startsWith("ref:") ? (d.refAxis = v.slice(4)) : ((d.refAxis = undefined), (d.axis = v)), upd())),
           numField(d.equal ? "Toplam açı" : "Aralık açısı", d.angle, (v) => ((d.angle = v), upd()), { min: 0.01, unit: "°", key: `${d.id}.angle` }),
           numField("Adet", d.count, (v) => ((d.count = v), upd()), { min: 2, int: true, key: `${d.id}.count` }),
           checkField("Eşit aralık", d.equal, (v) => ((d.equal = v), renderFeaturePM(kind), upd())),
@@ -3015,7 +3258,7 @@ function renderFeaturePM(kind: string) {
       }
       if (circ) {
         gp.appendChild(numField("Çap", d.circ!, (v) => ((d.circ = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.circ` }));
-        gp.appendChild(numField("İç çap (0 = dolu çubuk)", d.circIn ?? 0, (v) => ((d.circIn = v || undefined), upd()), { min: 0, unit: "mm" }));
+        gp.appendChild(numField("İç çap (0 = dolu çubuk)", d.circIn ?? 0, (v) => ((d.circIn = v || undefined), upd()), { min: 0, unit: "mm", key: `${d.id}.circIn` }));
       } else gp.appendChild(selectField("Profil (kapalı eskiz)", opts, d.sketch, (v) => ((d.sketch = v), upd())));
       gp.appendChild(segField([{ v: "path", t: "Eskiz yolu" }, { v: "helix", t: "Helis / yay" }], d.helix ? "helix" : "path", (v) => {
         d.helix = v === "helix" ? d.helix ?? { pitch: 10, turns: 5 } : undefined;
@@ -3035,13 +3278,15 @@ function renderFeaturePM(kind: string) {
         );
       }
       gp.appendChild(selectField("Profil yönelimi", [{ v: "follow", t: "Yolu izle" }, { v: "normal", t: "Normali sabit tut" }], d.orient ?? "follow", (v) => ((d.orient = v as any), upd())));
-      if (!d.helix) {
-        gp.appendChild(numField("Burulma açısı (yol boyunca)", d.twist ?? 0, (v) => ((d.twist = v || undefined), upd()), { unit: "°" }));
+      if (getFeat(d.path)?.type === "sketch3d") gp.appendChild(h("p", "pm-hint", "3B yolda burulma ve kılavuz eğri kullanılamaz."));
+      else if (!d.helix) {
+        gp.appendChild(numField("Burulma açısı (yol boyunca)", d.twist ?? 0, (v) => ((d.twist = v || undefined), upd()), { unit: "°", key: `${d.id}.twist` }));
         gp.appendChild(selectField("Kılavuz eğri (isteğe bağlı)", [{ v: "", t: "Yok" }, ...opts], d.guide ?? "", (v) => ((d.guide = v || undefined), upd())));
       }
       if (!circ) gp.appendChild(h("p", "pm-hint", "Profil eskizi, yolun başlangıç noktasında yola dik bir düzlemde olmalıdır."));
       body.appendChild(gp);
-      body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), upd())));
+      body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), renderFeaturePM(kind), upd())));
+      if (!d.cut) body.appendChild(checkField("Sonucu birleştir (kapalıysa ayrı gövde)", d.merge !== false, (v) => ((d.merge = v), upd()))); // D4-12
       break;
     }
     case "loft": {
@@ -3079,20 +3324,20 @@ function renderFeaturePM(kind: string) {
           ...(!d.ruled
             ? [
                 selectField("Başlangıç kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }, { v: "2", t: "Komşu yüzlere teğet" }], d.faceStart ? "2" : d.tanStart ? "1" : "0", (v) => ((d.tanStart = v === "1" ? 1 : undefined), (d.faceStart = v === "2" ? 1 : undefined), renderFeaturePM(kind), upd())),
-                ...(d.tanStart ? [numField("Başlangıç teğet uzunluğu", d.tanStart, (v) => ((d.tanStart = v), upd()), { min: 0.1 })] : []),
-                ...(d.faceStart ? [numField("Başlangıç teğet uzunluğu", d.faceStart, (v) => ((d.faceStart = v), upd()), { min: 0.1 })] : []),
+                ...(d.tanStart ? [numField("Başlangıç teğet uzunluğu", d.tanStart, (v) => ((d.tanStart = v), upd()), { min: 0.1, key: `${d.id}.tanStart` })] : []),
+                ...(d.faceStart ? [numField("Başlangıç teğet uzunluğu", d.faceStart, (v) => ((d.faceStart = v), upd()), { min: 0.1, key: `${d.id}.faceStart` })] : []),
                 selectField("Bitiş kısıtı", [{ v: "0", t: "Yok" }, { v: "1", t: "Profile dik" }, { v: "2", t: "Komşu yüzlere teğet" }], d.faceEnd ? "2" : d.tanEnd ? "1" : "0", (v) => ((d.tanEnd = v === "1" ? 1 : undefined), (d.faceEnd = v === "2" ? 1 : undefined), renderFeaturePM(kind), upd())),
-                ...(d.tanEnd ? [numField("Bitiş teğet uzunluğu", d.tanEnd, (v) => ((d.tanEnd = v), upd()), { min: 0.1 })] : []),
-                ...(d.faceEnd ? [numField("Bitiş teğet uzunluğu", d.faceEnd, (v) => ((d.faceEnd = v), upd()), { min: 0.1 })] : []),
+                ...(d.tanEnd ? [numField("Bitiş teğet uzunluğu", d.tanEnd, (v) => ((d.tanEnd = v), upd()), { min: 0.1, key: `${d.id}.tanEnd` })] : []),
+                ...(d.faceEnd ? [numField("Bitiş teğet uzunluğu", d.faceEnd, (v) => ((d.faceEnd = v), upd()), { min: 0.1, key: `${d.id}.faceEnd` })] : []),
               ]
             : []),
           checkField("Kapalı loft (son profil ilkine bağlanır)", !!d.closed, (v) => ((d.closed = v || undefined), upd())),
           checkField("İnce özellik (uçlar açık cidar)", !!d.thinT, (v) => ((d.thinT = v ? 2 : undefined), renderFeaturePM(kind), upd())),
-          ...(d.thinT ? [numField("İnce kalınlık", d.thinT, (v) => ((d.thinT = v > 0 ? v : undefined), upd()), { min: 0.01, unit: "mm" })] : []),
+          ...(d.thinT ? [numField("İnce kalınlık", d.thinT, (v) => ((d.thinT = v > 0 ? v : undefined), upd()), { min: 0.01, unit: "mm", key: `${d.id}.thinT` })] : []),
           checkField("Sac geçiş parçası (loft büküm)", !!d.sheetT, (v) => ((d.sheetT = v ? lastSheetBase(doc.features)?.t ?? 2 : undefined), (d.ruled = v ? true : d.ruled), renderFeaturePM(kind), upd())),
           ...(d.sheetT
             ? [
-                numField("Sac kalınlığı", d.sheetT, (v) => ((d.sheetT = v), upd()), { min: 0.1, unit: "mm" }),
+                numField("Sac kalınlığı", d.sheetT, (v) => ((d.sheetT = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.sheetT` }),
                 button("Açınım (DXF indir)", () => {
                   try {
                     const [sa, sb] = d.sketches.map((id: string) => getFeat(id) as SketchFeature);
@@ -3110,6 +3355,8 @@ function renderFeaturePM(kind: string) {
             : []),
           selectField("Merkez çizgisi", [{ v: "", t: "Yok" }, ...sketches.filter((s) => !d.sketches.includes(s.id)).map((s) => ({ v: s.id, t: s.name }))], d.center ?? "", (v) => {
             d.center = v || undefined;
+            if (d.center) d.conn = undefined; // D4-9
+            renderFeaturePM(kind);
             upd();
           }),
         ),
@@ -3119,11 +3366,14 @@ function renderFeaturePM(kind: string) {
         gbox.appendChild(
           checkField(s.name, !!d.guides?.includes(s.id), (on) => {
             d.guides = on ? [...(d.guides ?? []), s.id] : (d.guides ?? []).filter((x: string) => x !== s.id);
+            if (d.guides?.length) d.conn = undefined; // D4-9
+            renderFeaturePM(kind);
             upd();
           }),
         );
       body.appendChild(group("Kılavuz eğriler", gbox, h("p", "pm-hint", "Kılavuz eğri iki profilin karşılıklı noktalarını birleştiren açık bir eğri olmalı. Ara kesitler kılavuza oturacak şekilde ölçeklenir.")));
-      body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), upd())));
+      body.appendChild(segField([{ v: "boss", t: "Malzeme ekle" }, { v: "cut", t: "Kes" }], d.cut ? "cut" : "boss", (v) => ((d.cut = v === "cut"), renderFeaturePM(kind), upd())));
+      if (!d.cut) body.appendChild(checkField("Sonucu birleştir (kapalıysa ayrı gövde)", d.merge !== false, (v) => ((d.merge = v), upd()))); // D4-12
       break;
     }
     case "hole": {
@@ -3178,6 +3428,7 @@ function renderFeaturePM(kind: string) {
         "Ölçüler",
         numField(hf.htype === "tap" ? "Matkap çapı" : "Delik çapı", hf.d, (v) => ((hf.d = v), (hf.size = "custom"), upd()), { min: 0.01, unit: "mm", key: `${hf.id}.d` }),
         checkField("Tümünden geçen", hf.through, (v) => ((hf.through = v), renderFeaturePM(kind), upd())),
+        checkField("Yalnız seçilen yüzün gövdesi (özellik kapsamı)", !!(hf as any).only, (v) => (((hf as any).only = v || undefined), upd())), // D8-18
       );
       if (!hf.through) g.appendChild(numField("Derinlik", hf.depth, (v) => ((hf.depth = v), upd()), { min: 0.01, unit: "mm", key: `${hf.id}.depth` }));
       if (hf.htype === "cbore") {
@@ -3239,7 +3490,7 @@ function renderFeaturePM(kind: string) {
     case "draft": {
       const pt = d.mode === "parting";
       body.appendChild(segField([{ v: "neutral", t: "Nötr düzlem" }, { v: "parting", t: "Ayırma çizgisi" }], pt ? "parting" : "neutral", (v) => ((d.mode = v === "parting" ? "parting" : undefined), (d.edges = v === "parting" ? d.edges ?? [] : undefined), renderFeaturePM(kind), refreshHighlight(), upd())));
-      body.appendChild(group("Koniklik", numField("Açı", d.angle, (v) => ((d.angle = v), upd()), { min: 0.01, unit: "°" }), checkField("Yönü ters çevir", d.rev, (v) => ((d.rev = v), upd()))));
+      body.appendChild(group("Koniklik", numField("Açı", d.angle, (v) => ((d.angle = v), upd()), { min: 0.01, unit: "°", key: `${d.id}.angle` }), checkField("Yönü ters çevir", d.rev, (v) => ((d.rev = v), upd()))));
       if (pt) {
         body.appendChild(group("Çekme yönü", planeField("Düzlem (normali çekme yönü)", () => d.plane, (r) => (d.plane = r))));
         const g = group("Ayırma çizgisi", h("div", "pm-picks", d.edges?.length ? `${d.edges.length} kenar seçili` : "Ayırma çizgisi kenarlarına dokunun"), checkField("Öbür taraftaki yüzler", !!d.other, (v) => ((d.other = v || undefined), upd())), h("p", "pm-hint", "Kenarlara komşu yüzler kendi kenarları etrafında döner; kenarlar farklı yükseklikteyse basamaklı koniklik olur."));
@@ -3248,7 +3499,14 @@ function renderFeaturePM(kind: string) {
         hint("Ayırma çizgisi kenarlarına dokunun");
         break;
       }
-      body.appendChild(group("Nötr düzlem", planeField("Düzlem", () => d.plane, (r) => (d.plane = r))));
+      // D5-14: nötr düzlem modelde yüze / düzleme dokunarak da seçilir
+      const ng = group("Nötr düzlem", planeField("Düzlem", () => d.plane, (r) => (d.plane = r)));
+      ng.appendChild(button(d._pick === "neutral" ? "Düz yüze / düzleme dokunun…" : "Modelden seç", () => ((d._pick = d._pick === "neutral" ? undefined : "neutral"), renderFeaturePM(kind))));
+      body.appendChild(ng);
+      if (d._pick === "neutral") {
+        hint("Nötr düzlem için bir düz yüze ya da düzleme dokunun");
+        break;
+      }
       const picks = h("div", "pm-picks", d.faces.length ? `${d.faces.length} yüz seçili` : "Koniklik verilecek yüzlere dokunun");
       const g = group("Yüzler", picks);
       if (d.faces.length) g.appendChild(button("Seçimi temizle", () => ((d.faces = []), renderFeaturePM(kind), refreshHighlight())));
@@ -3835,7 +4093,7 @@ function renderFeaturePM(kind: string) {
       dv.append(numField("ΔX", d.d[0], (v) => ((d.d[0] = v), upd()), { unit: "mm" }), numField("ΔY", d.d[1], (v) => ((d.d[1] = v), upd()), { unit: "mm" }), numField("ΔZ", d.d[2], (v) => ((d.d[2] = v), upd()), { unit: "mm" }));
       body.appendChild(group("Gövde", h("div", "pm-picks", d.body ? "Gövde seçili" : "Taşınacak gövdeye dokunun"), checkField("Kopyala (orijinal kalsın)", d.copy, (v) => ((d.copy = v), upd()))));
       body.appendChild(group("Öteleme", dv));
-      body.appendChild(group("Döndürme (ağırlık merkezi etrafında)", selectField("Eksen", axisOpts, d.axis, (v) => ((d.axis = v), upd())), numField("Açı", d.angle, (v) => ((d.angle = v), upd()), { unit: "°" })));
+      body.appendChild(group("Döndürme (ağırlık merkezi etrafında)", selectField("Eksen", axisOpts, d.axis, (v) => ((d.axis = v), upd())), numField("Açı", d.angle, (v) => ((d.angle = v), upd()), { unit: "°", key: `${d.id}.angle` })));
       hint("Taşınacak gövdeye dokunun");
       break;
     }
@@ -3849,7 +4107,7 @@ function renderFeaturePM(kind: string) {
           "Gövdeler",
           segField([{ v: "target", t: "Hedef" }, { v: "tool", t: "Araç" }], d._pick ?? "target", (v) => ((d._pick = v), renderFeaturePM(kind))),
           h("div", "pm-picks", `Hedef: ${d.target ? "seçili" : "—"} · Araç: ${d.tool ? "seçili" : "—"}`),
-          numField("Boşluk", d.clearance, (v) => ((d.clearance = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+          numField("Boşluk", d.clearance, (v) => ((d.clearance = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.clearance` }),
           checkField("Araç gövdeyi koru", d.keepTool, (v) => ((d.keepTool = v), upd())),
           h("p", "pm-hint", "Hedef gövdeden, araç gövdenin boşluk kadar büyütülmüş hali çıkarılır."),
         ),
@@ -3883,9 +4141,9 @@ function renderFeaturePM(kind: string) {
         group(
           "Eğri",
           selectField("Eğri eskizi", sketches.map((x) => ({ v: x.id, t: x.name })), d.sketch, (v) => ((d.sketch = v), upd())),
-          numField("Adet (ilk dahil)", d.count, (v) => ((d.count = Math.max(2, Math.round(v))), upd()), { min: 2, int: true }),
+          numField("Adet (ilk dahil)", d.count, (v) => ((d.count = Math.max(2, Math.round(v))), upd()), { min: 2, int: true, key: `${d.id}.count` }),
           checkField("Eşit aralık (eğri sonuna kadar)", d.equal, (v) => ((d.equal = v), renderFeaturePM(kind), upd())),
-          ...(d.equal ? [] : [numField("Aralık", d.spacing, (v) => ((d.spacing = v), upd()), { min: 0.01, unit: "mm" })]),
+          ...(d.equal ? [] : [numField("Aralık", d.spacing, (v) => ((d.spacing = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.spacing` })]),
           checkField("Eğri yönüne göre döndür", d.align, (v) => ((d.align = v), upd())),
         ),
       );
@@ -3897,9 +4155,9 @@ function renderFeaturePM(kind: string) {
           "Doldurma",
           h("div", "pm-picks", d.face ? "Yüz seçili" : "Doldurulacak düz yüze dokunun"),
           segField([{ v: "square", t: "Kare" }, { v: "stagger", t: "Şaşırtmalı" }], d.layout, (v) => ((d.layout = v), upd())),
-          numField("Aralık", d.spacing, (v) => ((d.spacing = v), upd()), { min: 0.1, unit: "mm" }),
-          numField("Kenar payı", d.margin, (v) => ((d.margin = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
-          numField("Döndürme", d.angle, (v) => ((d.angle = v), upd()), { unit: "°" }),
+          numField("Aralık", d.spacing, (v) => ((d.spacing = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.spacing` }),
+          numField("Kenar payı", d.margin, (v) => ((d.margin = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.margin` }),
+          numField("Döndürme", d.angle, (v) => ((d.angle = v), upd()), { unit: "°", key: `${d.id}.angle` }),
         ),
       );
       hint("Doldurulacak düz yüze dokunun");
@@ -3932,7 +4190,7 @@ function renderFeaturePM(kind: string) {
             upd();
           }),
           selectField("Gövde ekseni", axisOpts, d.axis, (v) => ((d.axis = v), upd())),
-          numField(lab, d.value, (v) => ((d.value = v), upd()), {}),
+          numField(lab, d.value, (v) => ((d.value = v), upd()), { key: `${d.id}.value` }),
           ...(d.mode === "bend" ? [selectField("Büküm yönü", axisOpts, d.dir, (v) => ((d.dir = v), upd()))] : []),
           h("p", "pm-hint", "Gövde, eksen boyunca alınan kesitlerden yeniden oluşturulur; kesiti boyunca sabit gövdelerde (çubuk, profil, mil, lama) çalışır."),
         ),
@@ -3941,7 +4199,7 @@ function renderFeaturePM(kind: string) {
       break;
     }
     case "vchamfer":
-      body.appendChild(group("Köşe pahı", h("div", "pm-picks", d.v ? "Köşe seçili" : "Köşeye yakın bir kenar ucuna dokunun"), numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { min: 0.01, unit: "mm" })));
+      body.appendChild(group("Köşe pahı", h("div", "pm-picks", d.v ? "Köşe seçili" : "Köşeye yakın bir kenar ucuna dokunun"), numField("Mesafe", d.d, (v) => ((d.d = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.d` })));
       hint("Pah kırılacak köşeye (kenar ucuna) dokunun");
       break;
     case "weld": {
@@ -3960,7 +4218,7 @@ function renderFeaturePM(kind: string) {
           h("p", "pm-hint", `Bacak boyu z = a·√2 = ${fmtNum(d.a * Math.SQRT2, 2)} mm`),
           checkField("Kesikli kaynak", d.intermittent, (v) => ((d.intermittent = v), renderFeaturePM(kind), upd())),
           ...(d.intermittent
-            ? [numField("Dikiş boyu", d.len, (v) => ((d.len = v), upd()), { min: 1, unit: "mm" }), numField("Adım (merkezden merkeze)", d.pitch, (v) => ((d.pitch = v), upd()), { min: 1, unit: "mm" })]
+            ? [numField("Dikiş boyu", d.len, (v) => ((d.len = v), upd()), { min: 1, unit: "mm", key: `${d.id}.len` }), numField("Adım (merkezden merkeze)", d.pitch, (v) => ((d.pitch = v), upd()), { min: 1, unit: "mm", key: `${d.id}.pitch` })]
             : []),
         ),
       );
@@ -3990,8 +4248,8 @@ function renderFeaturePM(kind: string) {
           numField("Kenar 1", d.d1, (v) => ((d.d1 = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.d1` }),
           numField("Kenar 2", d.d2, (v) => ((d.d2 = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.d2` }),
           numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.t` }),
-          numField("Köşe pahı", d.chamfer, (v) => ((d.chamfer = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
-          numField("Köşe boyunca kaydır", d.offset, (v) => ((d.offset = v), upd()), { unit: "mm" }),
+          numField("Köşe pahı", d.chamfer, (v) => ((d.chamfer = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.chamfer` }),
+          numField("Köşe boyunca kaydır", d.offset, (v) => ((d.offset = v), upd()), { unit: "mm", key: `${d.id}.offset` }),
         ),
       );
       hint("İç köşenin iki yüzüne dokunun");
@@ -4033,8 +4291,11 @@ function renderFeaturePM(kind: string) {
                 box.appendChild(h("p", "pm-hint", "Açı (°) → büküm payı (mm). Ara açılar doğrusal hesaplanır."));
                 (d.btable as { angle: number; ba: number }[]).forEach((row, i) => {
                   const r = h("div", "pm-row");
-                  r.append(numField("Açı", row.angle, (v) => ((row.angle = v), upd()), { unit: "°" }), numField("BA", row.ba, (v) => ((row.ba = v), upd()), { unit: "mm" }), button("✕", () => (d.btable.splice(i, 1), renderFeaturePM(kind), upd()), "btn danger"));
+                  r.append(numField("Açı", row.angle, (v) => ((row.angle = v), renderFeaturePM(kind), upd()), { unit: "°" }), numField("BA", row.ba, (v) => ((row.ba = v), renderFeaturePM(kind), upd()), { unit: "mm" }), button("✕", () => (d.btable.splice(i, 1), renderFeaturePM(kind), upd()), "btn danger"));
                   box.appendChild(r);
+                  // D6-12: tablodaki BA geçerli K aralığının (0…1) dışındaysa uyar (açınımda sınıra kırpılır)
+                  const kk = row.angle > 0 ? (row.ba / ((row.angle * Math.PI) / 180) - d.r) / d.t : 0.5;
+                  if (kk < 0 || kk > 1) box.appendChild(h("p", "pm-hint warn", `${row.angle}° satırı geçersiz: BA ${kk < 0 ? "iç yay boyundan küçük (K < 0)" : "dış yay boyundan büyük (K > 1)"} — açınımda K ${kk < 0 ? "0" : "1"} kullanılır`));
                 });
                 box.appendChild(button("Satır ekle", () => (d.btable.push({ angle: 90, ba: +bendAllowance(90, d.r, d.t, d.k).toFixed(3) }), renderFeaturePM(kind), upd()), "btn"));
                 return box;
@@ -4042,8 +4303,8 @@ function renderFeaturePM(kind: string) {
             : (d.bendMethod ?? "k") === "k"
             ? numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), info(), upd()), { min: 0, key: `${d.id}.k` })
             : d.bendMethod === "ba"
-              ? numField("Büküm payı (90°)", d.ba ?? bendAllowance(90, d.r, d.t, d.k), (v) => ((d.ba = v), info(), upd()), { min: 0.01, unit: "mm" })
-              : numField("Büküm düşümü (90°)", d.bd ?? 2 * (d.r + d.t) - bendAllowance(90, d.r, d.t, d.k), (v) => ((d.bd = v), info(), upd()), { unit: "mm" }),
+              ? numField("Büküm payı (90°)", d.ba ?? bendAllowance(90, d.r, d.t, d.k), (v) => ((d.ba = v), info(), upd()), { min: 0.01, unit: "mm", key: `${d.id}.ba` })
+              : numField("Büküm düşümü (90°)", d.bd ?? 2 * (d.r + d.t) - bendAllowance(90, d.r, d.t, d.k), (v) => ((d.bd = v), info(), upd()), { unit: "mm", key: `${d.id}.bd` }),
           checkField(open ? "Malzeme tarafını ters çevir" : "Kalınlık yönünü ters çevir", d.rev, (v) => ((d.rev = v), upd())),
           ba,
         ),
@@ -4051,7 +4312,7 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           "Büküm boşaltma",
-          numField("Oran (× kalınlık)", d.relief, (v) => ((d.relief = Math.max(0, v)), upd()), { min: 0 }),
+          numField("Oran (× kalınlık)", d.relief, (v) => ((d.relief = Math.max(0, v)), upd()), { min: 0, key: `${d.id}.relief` }),
           selectField("Büküm boşaltma türü", [{ v: "rect", t: "Dikdörtgen" }, { v: "obround", t: "Oval (yuvarlak uçlu)" }, { v: "tear", t: "Yırtma" }], d.rtype ?? "rect", (v) => ((d.rtype = v === "rect" ? undefined : v), upd())),
           selectField("Köşe boşaltma türü", [{ v: "rect", t: "Dikdörtgen" }, { v: "circ", t: "Dairesel" }], d.ctype ?? "rect", (v) => ((d.ctype = v === "rect" ? undefined : v), upd())),
           h("p", "pm-hint", "Kısaltılmış kenar flanşlarının uçlarına büküm boşaltması; birlikte seçilen flanşların köşesinde (iki / üç büküm) köşe boşaltması açılır."),
@@ -4078,7 +4339,7 @@ function renderFeaturePM(kind: string) {
           group(
             "Kenet",
             segField([{ v: "closed", t: "Kapalı" }, { v: "open", t: "Açık" }], d.kind, (v) => ((d.kind = v), renderFeaturePM(kind), upd())),
-            numField("Uzunluk", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.L` }),
+            numField("Uzunluk (katlanan düz bölüm, büküm teğetinden)", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.L` }), // D6-13: ölçü tanımı açık
             ...(d.kind === "open" ? [numField("Aralık", d.gap, (v) => ((d.gap = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.gap` })] : []),
             segField([{ v: "inside", t: "Malzeme içte" }, { v: "bendout", t: "Bükümün dışı" }], d.pos, (v) => ((d.pos = v), upd())),
             checkField("Yönü ters çevir", d.flip, (v) => ((d.flip = v), upd())),
@@ -4114,8 +4375,8 @@ function renderFeaturePM(kind: string) {
             "Kenar boyunca",
             numField("Baştan kısalt", d.o1, (v) => ((d.o1 = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.o1` }),
             numField("Sondan kısalt", d.o2, (v) => ((d.o2 = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.o2` }),
-            numField("Profil: uçta baştan daralt", d.tp1 ?? 0, (v) => ((d.tp1 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm" }),
-            numField("Profil: uçta sondan daralt", d.tp2 ?? 0, (v) => ((d.tp2 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm" }),
+            numField("Profil: uçta baştan daralt", d.tp1 ?? 0, (v) => ((d.tp1 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm", key: `${d.id}.tp1` }),
+            numField("Profil: uçta sondan daralt", d.tp2 ?? 0, (v) => ((d.tp2 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm", key: `${d.id}.tp2` }),
             selectField("Serbest profil eskizi", [{ v: "", t: "Yok (dikdörtgen)" }, ...doc.features.filter((x) => x.type === "sketch").map((x) => ({ v: x.id, t: x.name }))], d.prof ?? "", (v) => ((d.prof = v || undefined), upd())),
             button("Profil eskizi oluştur (dikdörtgen)", () => {
               const m = viewer.mesh, e = m && d.edges[0] ? m.edges[nearestEdge(d.edges[0])] : null;
@@ -4131,13 +4392,14 @@ function renderFeaturePM(kind: string) {
               const sk: SketchFeature = { id: uid(), type: "sketch", name: nextName("sketch") + " (flanş profili)", plane: { k: "std", n: "front" }, data };
               const at = mode.k === "pm" && mode.editingId ? featIndex(mode.editingId) : doc.features.length;
               doc.features.splice(at, 0, sk);
+              pmAdded.push(sk.id);
               d.prof = sk.id;
               saveDoc();
               renderFeaturePM(kind);
               upd();
               toast("Profil eskizi eklendi: x kenar boyunca, y flanş boyunca. Ağaçtan düzenleyin.");
             }),
-            numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+            numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.gap` }),
             h("p", "pm-hint", "Birlikte seçilen komşu kenarların flanşları köşede gönyelenir."),
           ),
         );
@@ -4164,7 +4426,7 @@ function renderFeaturePM(kind: string) {
       if (d.edges.length) g0.appendChild(button("Seçimi temizle", () => ((d.edges = []), renderFeaturePM(kind), refreshHighlight())));
       g0.appendChild(checkField("Önizlemeyi göster", !!d._preview, (v) => ((d._preview = v), refreshHighlight(), rebuild())));
       body.appendChild(g0);
-      body.appendChild(group("Seçenekler", checkField("Malzeme tarafını ters çevir", d.rev, (v) => ((d.rev = v), upd())), numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" })));
+      body.appendChild(group("Seçenekler", checkField("Malzeme tarafını ters çevir", d.rev, (v) => ((d.rev = v), upd())), numField("Köşe boşluğu", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.gap` }), numField("Baştan kısalt", d.o1 ?? 0, (v) => ((d.o1 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm", key: `${d.id}.o1` }), numField("Sondan kısalt", d.o2 ?? 0, (v) => ((d.o2 = Math.max(0, v) || undefined), upd()), { min: 0, unit: "mm", key: `${d.id}.o2` })));
       hint("Flanş kenarlarına dokunun");
       break;
     }
@@ -4174,7 +4436,7 @@ function renderFeaturePM(kind: string) {
           "Köşe kapatma",
           h("div", "pm-picks", d.faces.length ? `${d.faces.length} uç yüz seçili` : "Uzatılacak flanşın köşedeki uç yüzüne dokunun"),
           segField([{ v: "under", t: "Alın (iç yüze kadar)" }, { v: "over", t: "Bindirme (dış yüze kadar)" }], d.overlap ? "over" : "under", (v) => ((d.overlap = v === "over"), upd())),
-          numField("Boşluk", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+          numField("Boşluk", d.gap, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.gap` }),
           checkField("Kaynaklı köşe (boşluk kaynakla doldurulur; açınımda bastırılır)", !!d.weld, (v) => ((d.weld = v || undefined), upd())),
         ),
       );
@@ -4184,10 +4446,10 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           "Sac parametreleri",
-          numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.1, unit: "mm" }),
-          numField("Büküm yarıçapı (iç)", d.r, (v) => ((d.r = v), upd()), { min: 0, unit: "mm" }),
-          numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), upd()), {}),
-          numField("Yarık boşluğu", d.gap, (v) => ((d.gap = Math.max(0.05, v)), upd()), { min: 0.05, unit: "mm" }),
+          numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.1, unit: "mm", key: `${d.id}.t` }),
+          numField("Büküm yarıçapı (iç)", d.r, (v) => ((d.r = v), upd()), { min: 0, unit: "mm", key: `${d.id}.r` }),
+          numField("K faktörü", d.k, (v) => ((d.k = Math.max(0, Math.min(1, v))), upd()), { key: `${d.id}.k` }),
+          numField("Yarık boşluğu", d.gap, (v) => ((d.gap = Math.max(0.05, v)), upd()), { min: 0.05, unit: "mm", key: `${d.id}.gap` }),
         ),
       );
       body.appendChild(
@@ -4225,13 +4487,13 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           "Tırnak",
-          numField("Adet", d.n, (v) => ((d.n = Math.max(1, Math.round(v))), upd()), { min: 1 }),
-          numField("Tırnak boyu", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Yükseklik (karşı levha kalınlığı)", d.H, (v) => ((d.H = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Yuva boşluğu", d.c, (v) => ((d.c = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Adet", d.n, (v) => ((d.n = Math.max(1, Math.round(v))), upd()), { min: 1, key: `${d.id}.n` }),
+          numField("Tırnak boyu", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.L` }),
+          numField("Yükseklik (karşı levha kalınlığı)", d.H, (v) => ((d.H = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.H` }),
+          numField("Yuva boşluğu", d.c, (v) => ((d.c = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.c` }),
         ),
       );
-      hint("Tırnakların çıkacağı dar uç yüzüne dokunun");
+      hint("Tırnakların çıkacağı dar uç yüzüne ya da (yüz görünmüyorsa) onun kenarına dokunun");
       break;
     }
     case "lip": {
@@ -4241,9 +4503,9 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           "Ölçüler",
-          numField("Genişlik", d.w, (v) => ((d.w = v), upd()), { min: 0.01, unit: "mm" }),
-          numField(d.groove ? "Derinlik" : "Yükseklik", d.h, (v) => ((d.h = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Kenardan boşluk", d.gap ?? 0, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm" }),
+          numField("Genişlik", d.w, (v) => ((d.w = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.w` }),
+          numField(d.groove ? "Derinlik" : "Yükseklik", d.h, (v) => ((d.h = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.h` }),
+          numField("Kenardan boşluk", d.gap ?? 0, (v) => ((d.gap = Math.max(0, v)), upd()), { min: 0, unit: "mm", key: `${d.id}.gap` }),
         ),
       );
       hint("Kabuğun ağız (halka) yüzüne dokunun");
@@ -4254,12 +4516,12 @@ function renderFeaturePM(kind: string) {
       body.appendChild(
         group(
           "Mandal",
-          numField("Yön açısı (yüzde)", d.ang, (v) => ((d.ang = v), upd()), { unit: "°", any: true } as any),
-          numField("Boy", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Genişlik", d.w, (v) => ((d.w = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Kanca çıkıntısı", d.hd, (v) => ((d.hd = v), upd()), { min: 0.01, unit: "mm" }),
-          numField("Kanca yüksekliği", d.hh, (v) => ((d.hh = v), upd()), { min: 0.01, unit: "mm" }),
+          numField("Yön açısı (yüzde)", d.ang, (v) => ((d.ang = v), upd()), { unit: "°", any: true, key: `${d.id}.ang` } as any),
+          numField("Boy", d.L, (v) => ((d.L = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.L` }),
+          numField("Kalınlık", d.t, (v) => ((d.t = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.t` }),
+          numField("Genişlik", d.w, (v) => ((d.w = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.w` }),
+          numField("Kanca çıkıntısı", d.hd, (v) => ((d.hd = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.hd` }),
+          numField("Kanca yüksekliği", d.hh, (v) => ((d.hh = v), upd()), { min: 0.01, unit: "mm", key: `${d.id}.hh` }),
         ),
       );
       hint("Mandalın konacağı yüze dokunun");
@@ -4326,8 +4588,8 @@ function renderFeaturePM(kind: string) {
         if (pmode === "along") {
           g.append(
             segField([{ v: "d", t: "Mesafe" }, { v: "p", t: "Yüzde" }], d._pct ? "p" : "d", (v) => ((d._pct = v === "p" || undefined), alongPoints(d), renderFeaturePM(kind))),
-            numField(d._pct ? "Yüzde" : "Mesafe", d._dist ?? (d._pct ? 50 : 10), (v) => ((d._dist = v), alongPoints(d), drawRefGeom()), { min: 0, unit: d._pct ? "%" : "mm" }),
-            numField("Nokta sayısı", d._count ?? 1, (v) => ((d._count = Math.max(1, Math.round(v))), alongPoints(d), drawRefGeom()), { min: 1, int: true }),
+            numField(d._pct ? "Yüzde" : "Mesafe", d._dist ?? (d._pct ? 50 : 10), (v) => ((d._dist = v), alongPoints(d), drawRefGeom()), { min: 0, unit: d._pct ? "%" : "mm", key: `${d.id}._dist` }),
+            numField("Nokta sayısı", d._count ?? 1, (v) => ((d._count = Math.max(1, Math.round(v))), alongPoints(d), drawRefGeom()), { min: 1, int: true, key: `${d.id}._count` }),
           );
         }
         g.appendChild(v3("", d.p, drawRefGeom));
@@ -4335,6 +4597,15 @@ function renderFeaturePM(kind: string) {
         body.appendChild(g);
       } else {
         body.appendChild(group("Koordinat sistemi", h("p", "pm-hint", "Önce başlangıç için kenar/yüze, sonra X ekseni için doğrusal bir kenara dokunun."), v3("Başlangıç", d.o, drawRefGeom)));
+        // D5-17: X / Y ters çevirme, Y yönünü kenardan seçme
+        const neg = (v: Vec3) => v.map((x) => -x) as Vec3;
+        const bs = h("div", "pm-buttons");
+        bs.append(
+          button("X'i ters çevir", () => ((d.x = neg(d.x)), (d.y = neg(d.y)), drawRefGeom(), renderFeaturePM(kind))),
+          button("Y'yi ters çevir", () => ((d.y = neg(d.y)), drawRefGeom(), renderFeaturePM(kind))),
+          button(d._yPick ? "Y için kenara dokunun…" : "Y yönünü kenardan seç", () => ((d._yPick = !d._yPick), renderFeaturePM(kind))),
+        );
+        body.appendChild(bs);
       }
       drawRefGeom();
       break;
@@ -4362,6 +4633,7 @@ function renderFeaturePM(kind: string) {
               d.mode = v as any;
               d.pts = [];
               d.edge = null;
+              d.offset = v === "offset" ? d.offset || 20 : 0; // D5-12: nokta / teğet türlerinde öteleme 0 başlar
               (d as any)._pick = v === "angle" || v === "normal" ? "edge" : v === "3pt" || v === "parallelPt" || v === "screen" ? "pt" : v === "tangent" ? "cyl" : undefined;
               if (v === "screen") {
                 const c = viewer.camera, t = viewer.controls.target;
@@ -4391,8 +4663,8 @@ function renderFeaturePM(kind: string) {
       if (md === "parallelPt" || md === "screen") pickRow("Nokta (köşe)", "pt", d.pts?.length ? "seçili" : "");
       if (md === "tangent") {
         pickRow("Silindir yüzü (teğet noktasına dokunun)", "cyl", d.cyl ? `R${fmtNum(d.cyl.r, 2)}` : "");
-        g.appendChild(numField("Eksen etrafında açı", d.angle ?? 0, (v) => ((d.angle = v), updatePlanePreview()), { unit: "°", any: true } as any));
-        g.appendChild(numField("Öteleme", d.offset ?? 0, (v) => ((d.offset = v), updatePlanePreview()), { unit: "mm", any: true } as any));
+        g.appendChild(numField("Eksen etrafında açı", d.angle ?? 0, (v) => ((d.angle = v), updatePlanePreview()), { unit: "°", any: true, key: `${d.id}.angle` } as any));
+        g.appendChild(numField("Öteleme", d.offset ?? 0, (v) => ((d.offset = v), updatePlanePreview()), { unit: "mm", any: true, key: `${d.id}.offset` } as any));
       }
       if (md === "normal") g.appendChild(h("p", "pm-hint", "Düzlem, kenarın dokunduğunuz ucuna yakın köşesinde kenara dik oluşur."));
       if (md === "offset" || md === "screen") g.appendChild(numField("Mesafe", d.offset, (v) => ((d.offset = v), updatePlanePreview()), { unit: "mm", key: `${d.id}.offset` }));
@@ -4489,6 +4761,24 @@ function drawRefGeom() {
 
 // ---------- Denklemler penceresi ----------
 /** yapılandırmayı etkinleştir: bastırma durumları uygulanır, değişkenler çözücüden okunur */
+/** D7-20: bastır / etkinleştir — etkin yapılandırmanın bastırma listesi de güncellenir (commitDoc içinde çağrılır) */
+function setOffCfg(ids: string[], off: boolean) {
+  for (const id of ids) {
+    const f = getFeat(id);
+    if (f) f.off = off || undefined;
+  }
+  const cfg = activeConfig();
+  if (cfg) cfg.off = off ? [...new Set([...cfg.off, ...ids])] : cfg.off.filter((x) => !ids.includes(x));
+}
+/** D7-13: tasarım tablosu değişiklikleri tek geri alma adımı (tablo + bastırma birlikte) */
+function cfgEdit(fn: () => void) {
+  commitDoc(() => {
+    fn();
+    const cfg = activeConfig();
+    if (cfg) for (const f of doc.features) f.off = cfg.off.includes(f.id) || undefined;
+    applyEquations();
+  });
+}
 function setConfig(name: string) {
   commitDoc(() => {
     doc.config = name;
@@ -4522,8 +4812,10 @@ function openConfigs() {
       nm.addEventListener("change", () => {
         const v = nm.value.trim();
         if (!v || cfgs.some((x) => x !== c && x.name === v)) return (nm.value = c.name);
-        if (doc.config === c.name) doc.config = v;
-        c.name = v;
+        cfgEdit(() => {
+          if (doc.config === c.name) doc.config = v;
+          c.name = v;
+        });
       });
       const act = h("input") as HTMLInputElement;
       act.type = "radio";
@@ -4533,8 +4825,10 @@ function openConfigs() {
       act.addEventListener("change", () => (setConfig(c.name), render()));
       const del = button("✕", () => {
         if (cfgs.length < 2) return;
-        cfgs.splice(j, 1);
-        if (!cfgs.some((x) => x.name === doc.config)) setConfig(cfgs[0].name);
+        cfgEdit(() => {
+          cfgs.splice(j, 1);
+          if (!cfgs.some((x) => x.name === doc.config)) doc.config = cfgs[0].name;
+        });
         render();
       }, "btn danger");
       th.append(act, nm, del);
@@ -4550,11 +4844,12 @@ function openConfigs() {
         i.value = c.vars[v] ?? "";
         i.size = 7;
         i.placeholder = doc.vars![v];
-        i.addEventListener("change", () => {
-          if (i.value.trim()) c.vars[v] = i.value.trim();
-          else delete c.vars[v];
-          if (doc.config === c.name) setConfig(c.name);
-        });
+        i.addEventListener("change", () =>
+          cfgEdit(() => {
+            if (i.value.trim()) c.vars[v] = i.value.trim();
+            else delete c.vars[v];
+          }),
+        );
         td.appendChild(i);
         tr.appendChild(td);
       }
@@ -4568,10 +4863,7 @@ function openConfigs() {
         const i = h("input") as HTMLInputElement;
         i.type = "checkbox";
         i.checked = c.off.includes(f.id);
-        i.addEventListener("change", () => {
-          c.off = i.checked ? [...c.off, f.id] : c.off.filter((x) => x !== f.id);
-          if (doc.config === c.name) setConfig(c.name);
-        });
+        i.addEventListener("change", () => cfgEdit(() => (c.off = i.checked ? [...c.off, f.id] : c.off.filter((x) => x !== f.id))));
         td.appendChild(i);
         tr.appendChild(td);
       }
@@ -4585,7 +4877,7 @@ function openConfigs() {
         const cur = activeConfig() ?? cfgs[0];
         let n = cfgs.length + 1;
         while (cfgs.some((x) => x.name === `Yapılandırma${n}`)) n++;
-        cfgs.push({ name: `Yapılandırma${n}`, vars: { ...cur.vars }, off: [...cur.off] });
+        cfgEdit(() => cfgs.push({ name: `Yapılandırma${n}`, vars: { ...cur.vars }, off: [...cur.off] }));
         render();
       }, "btn"),
       button("Kapat", () => dlg.close(), "btn primary"),
@@ -4903,10 +5195,21 @@ function s3Add(f: any, p: Vec3) {
   schedulePreview();
 }
 /** Dokunulan noktayı yakın köşe / nokta / daire merkezine yakalar */
-function snapPoint(p: Vec3): Vec3 {
+function snapPoint(p: Vec3, scr?: { x: number; y: number }): Vec3 {
   const tol = viewer.worldPerPixel() * 14;
   const cands = snapCands();
   if (mode.k === "pm" && mode.draft.type === "sketch3d") cands.push(...mode.draft.xyz);
+  if (scr) {
+    // D8-10: ekran (piksel) uzaklığıyla; iskelet / eskiz noktaları model köşelerinden önce
+    const m = viewer.mesh, nModel = m ? m.edges.reduce((a, e) => a + 2 + (e.c ? 1 : 0) + (!e.c && e.m ? 1 : 0), 0) : 0;
+    const r = viewer.renderer.domElement.getBoundingClientRect();
+    let sb: Vec3 | null = null, sd = 14;
+    cands.forEach((c, i) => {
+      const s = viewer.toScreen(c), dd = Math.hypot(r.left + s[0] - scr.x, r.top + s[1] - scr.y) + (i < nModel ? 5 : 0);
+      if (dd < sd) [sd, sb] = [dd, c];
+    });
+    if (sb) return [...(sb as Vec3)] as Vec3;
+  }
   let best: Vec3 | null = null, bd = tol;
   for (const c of cands) {
     const d = dist3(c, p);
@@ -4938,6 +5241,28 @@ function snapCands(): Vec3[] {
 // ---------- Kaynaklı yapı: kesim listesi ----------
 interface CutRow { no: number; qty: number; name: string; length: number; a1: number; a2: number; kg: number; bodies: number[]; kind: string; dims: [number, number, number]; c?: Vec3; key: string; vol: number }
 let lastWelds: import("./doc/types").WeldItem[] = [];
+function cutKey(it: import("./doc/types").CutItem) {
+  const [p, q] = [it.a1, it.a2].map((x) => Math.round(x * 10) / 10).sort((x, y) => x - y);
+  return it.kind === "member" ? `m|${it.name}|${Math.round(it.length * 10)}|${p}|${q}` : `p|${it.name}|${it.dims.map((x) => Math.round(x * 10)).join("x")}`;
+}
+/** D8-7: kesim listesi kalemlerine atanmış malzemelerle kütle ve ağırlık merkezi (yoksa null) */
+async function cutMass(): Promise<{ g: number; com: Vec3; mats: string[] } | null> {
+  if (!doc.cutProps || !Object.values(doc.cutProps).some((x: any) => x?.material)) return null;
+  const { items } = await kernel.cutListFull().catch(() => ({ items: [] as import("./doc/types").CutItem[] }));
+  if (!items.length) return null;
+  const rho0 = MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85;
+  let M = 0;
+  const C: Vec3 = [0, 0, 0], mats = new Set<string>();
+  for (const it of items) {
+    const mk = doc.cutProps?.[cutKey(it)]?.material ?? doc.material ?? "steel";
+    mats.add(MATERIALS[mk]?.name ?? mk);
+    const m = (it.vol / 1000) * (MATERIALS[mk]?.rho ?? rho0);
+    M += m;
+    const c = (it as any).c ?? [0, 0, 0];
+    for (let k = 0; k < 3; k++) C[k] += m * c[k];
+  }
+  return M > 0 ? { g: M, com: C.map((v) => v / M) as Vec3, mats: [...mats] } : null;
+}
 async function cutRows(): Promise<CutRow[]> {
   const { items, welds } = await kernel.cutListFull();
   lastWelds = welds;
@@ -4952,7 +5277,7 @@ async function cutRows(): Promise<CutRow[]> {
       g.bodies.push(it.body);
     } else {
       // kalem imzası: profil / levha adı + boy + açılar (kullanıcı özellikleri bununla saklanır)
-      const ck = it.kind === "member" ? `m|${it.name}|${Math.round(it.length * 10)}|${p}|${q}` : `p|${it.name}|${it.dims.map((x) => Math.round(x * 10)).join("x")}`;
+      const ck = cutKey(it);
       const pm = doc.cutProps?.[ck]?.material;
       const rr = pm ? MATERIALS[pm]?.rho ?? rho : rho;
       groups.set(key, { no: 0, qty: 1, name: it.name, length: it.length, a1: p, a2: q, kg: (it.vol * rr) / 1e6, bodies: [it.body], kind: it.kind, dims: it.dims, c: it.c, key: ck, vol: it.vol });
@@ -4960,6 +5285,31 @@ async function cutRows(): Promise<CutRow[]> {
   }
   const rows = [...groups.values()].sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name, "tr") || b.length - a.length : a.kind === "member" ? -1 : 1));
   rows.forEach((r, i) => (r.no = i + 1));
+  // D8-8: boy değişince sahipsiz kalan kalem özellikleri aynı profil + açılı (en yakın boylu) yeni kaleme taşınır
+  const cp = doc.cutProps;
+  if (cp) {
+    const cur = new Set(rows.map((r) => r.key));
+    const orphans = Object.keys(cp).filter((k) => !cur.has(k));
+    let moved = false;
+    for (const r of rows) {
+      if (cp[r.key] || !orphans.length) continue;
+      const parts = r.key.split("|");
+      const same = orphans.filter((k) => {
+        const q = k.split("|");
+        return q[0] === parts[0] && q[1] === parts[1] && (parts[0] === "p" || (q[3] === parts[3] && q[4] === parts[4]));
+      });
+      if (!same.length) continue;
+      const L = +parts[2] || 0;
+      same.sort((a, b) => Math.abs((+a.split("|")[2] || 0) - L) - Math.abs((+b.split("|")[2] || 0) - L));
+      cp[r.key] = cp[same[0]];
+      delete cp[same[0]];
+      orphans.splice(orphans.indexOf(same[0]), 1);
+      moved = true;
+      const pm = cp[r.key]?.material;
+      if (pm) r.kg = (r.vol * (MATERIALS[pm]?.rho ?? rho)) / 1e6;
+    }
+    if (moved) saveDoc();
+  }
   return rows;
 }
 const rowDesc = (r: CutRow) => doc.cutProps?.[r.key]?.desc || (r.kind === "member" ? r.name : `${r.name} · ${fmtNum(r.dims[0], 1)} × ${fmtNum(r.dims[1], 1)}`);
@@ -5012,9 +5362,12 @@ function openCutProps(r: CutRow, done: () => void) {
       cur.material = mat.value || undefined;
       cur.props = cur.props!.filter((p) => p.k.trim());
       if (!cur.props.length) delete cur.props;
-      if (cur.desc || cur.material || cur.props) cp[r.key] = cur;
-      else delete cp[r.key];
-      saveDoc();
+      // D8-9: geri alınabilir
+      commitDoc(() => {
+        const c2 = (doc.cutProps ??= {});
+        if (cur.desc || cur.material || cur.props) c2[r.key] = cur;
+        else delete c2[r.key];
+      });
       dlg.close();
       done();
     }, "btn primary"),
@@ -5045,7 +5398,7 @@ async function openDrawings(rows: CutRow[]) {
   if (!sheets.length) return;
   const html = sheetsHtml(sheets, `${doc.name} imalat resimleri`);
   const dlg = h("dialog", "cut-dialog draw-dialog");
-  dlg.innerHTML = `<h2>İmalat resmi${rows.length > 1 ? `leri (${sheets.length} sayfa)` : ` — ${rows[0].no}. kalem`}</h2>`;
+  dlg.innerHTML = `<h2>${rows.length > 1 ? `İmalat resimleri (${sheets.length} sayfa)` : `İmalat resmi — ${rows[0].no}. kalem`}</h2>`;
   const fr = h("iframe", "draw-frame") as HTMLIFrameElement;
   fr.srcdoc = html;
   dlg.appendChild(fr);
@@ -5126,7 +5479,7 @@ async function openCutList() {
     wt.appendChild(hd);
     for (const w of lastWelds) {
       const tr = h("tr");
-      tr.append(h("td", "", w.name), h("td", "num", fmtNum(w.a, 1)), h("td", "num", String(w.count)), h("td", "num", fmtNum(w.length, 1)), h("td", "num", fmtNum((w.vol * 7.85) / 1e6, 3)));
+      tr.append(h("td", "", w.name), h("td", "num", fmtNum(w.a, 1)), h("td", "num", String(w.count)), h("td", "num", fmtNum(w.length, 1)), h("td", "num", fmtNum((w.vol * (MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85)) / 1e6, 3)));
       wt.appendChild(tr);
     }
     const ww = h("div", "cut-wrap");
@@ -5147,7 +5500,7 @@ async function openCutList() {
     L.push(`;;;;;;;Toplam;${fmtNum(total, 3)}`);
     if (lastWelds.length) {
       L.push("", ["Kaynak", "a (mm)", "Dikiş adedi", "Toplam boy (mm)", "Kaynak metali kg"].join(";"));
-      for (const w of lastWelds) L.push([w.name, fmtNum(w.a, 1), w.count, fmtNum(w.length, 1), fmtNum((w.vol * 7.85) / 1e6, 3)].join(";"));
+      for (const w of lastWelds) L.push([w.name, fmtNum(w.a, 1), w.count, fmtNum(w.length, 1), fmtNum((w.vol * (MATERIALS[doc.material ?? "steel"]?.rho ?? 7.85)) / 1e6, 3)].join(";"));
     }
     download(new Blob(["\ufeff" + L.join("\r\n")], { type: "text/csv;charset=utf-8" }), `${doc.name}_kesim_listesi.csv`);
   }, "btn");
@@ -5332,6 +5685,7 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const i = d.edges.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
     if (i >= 0) d.edges.splice(i, 1);
     else d.edges.push({ m: e.m, d: e.d });
+    schedulePreview(); // D7-5
   } else if (d.type === "chamfer" && d.kind === "vtx" && m && hit.point) {
     const tol = viewer.worldPerPixel() * 16;
     let best: Vec3 | null = null, bd = tol;
@@ -5561,6 +5915,25 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const lp: Vec2 = w ? toLocal(fr, [w.x, w.y, w.z]) : toLocal(fr, hit.point);
     d.pts.push([Math.round(lp[0] * 10) / 10, Math.round(lp[1] * 10) / 10]);
     schedulePreview();
+  } else if (d.type === "tabslot" && hit.kind === "edge" && m) {
+    // D6-5: kenara dokunulunca o kenarı içeren düz yüzlerden en dar olanı (uç yüzü)
+    const e = m.edges[hit.index];
+    if (!e.d) return toast("Dar uç yüzünün düz bir kenarına dokunun", true);
+    const on = (f: any, q: Vec3) => Math.abs((q[0] - f.c[0]) * f.n[0] + (q[1] - f.c[1]) * f.n[1] + (q[2] - f.c[2]) * f.n[2]) < 1e-3;
+    const dl = (q: Vec3) => {
+      const v: Vec3 = [q[0] - e.s[0], q[1] - e.s[1], q[2] - e.s[2]], t = v[0] * e.d![0] + v[1] * e.d![1] + v[2] * e.d![2];
+      return Math.hypot(v[0] - e.d![0] * t, v[1] - e.d![1] * t, v[2] - e.d![2] * t);
+    };
+    let best: any = null, bd = Infinity;
+    for (const f of m.faces) {
+      if (!f.n || !on(f, e.s) || !on(f, e.e)) continue;
+      const dd = dl(f.c);
+      if (dd > 1e-6 && dd < bd) (bd = dd), (best = f);
+    }
+    if (!best) return toast("Bu kenara bağlı düz yüz bulunamadı", true);
+    d.face = { c: best.c, n: best.n };
+    renderFeaturePM(d.type);
+    schedulePreview();
   } else if ((d.type === "tabslot" || d.type === "lip" || d.type === "snaphook") && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     if (!f.n) return toast("Düz bir yüz seçin", true);
@@ -5630,6 +6003,18 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     let p: Vec3;
     if (hit.kind === "edge") {
       const e = m.edges[hit.index];
+      if (d.type === "csys" && e.d && d._yPick) {
+        // Y: kenar yönünün X'e dik bileşeni
+        const k = e.d[0] * d.x[0] + e.d[1] * d.x[1] + e.d[2] * d.x[2];
+        const y: Vec3 = [e.d[0] - k * d.x[0], e.d[1] - k * d.x[1], e.d[2] - k * d.x[2]];
+        const L = Math.hypot(...y);
+        if (L < 1e-6) return toast("Y kenarı X'e paralel olamaz", true);
+        d.y = y.map((v) => v / L) as Vec3;
+        d._yPick = undefined;
+        drawRefGeom();
+        renderFeaturePM(kind);
+        return;
+      }
       if (d.type === "csys" && e.d && d._origin) {
         d.x = e.d;
         const up: Vec3 = Math.abs(e.d[1]) > 0.9 ? [0, 0, 1] : [0, 1, 0];
@@ -5659,6 +6044,12 @@ function pmPick(hit: PickHit | null, ev?: PointerEvent) {
     const i = d.edges.findIndex((r: EdgeRef) => dist3(r.m, e.m) < 1e-3);
     if (i >= 0) d.edges.splice(i, 1);
     else d.edges.push({ m: e.m, d: e.d });
+  } else if (d.type === "draft" && d._pick === "neutral") {
+    const r = planeRefFromHit(hit);
+    if (!r) return toast("Düz bir yüze ya da düzleme dokunun", true);
+    d.plane = r;
+    d._pick = undefined;
+    renderFeaturePM("draft");
   } else if (d.type === "draft" && hit.kind === "face" && m) {
     const f = m.faces[hit.index];
     const i = d.faces.findIndex((r: FaceRef) => dist3(r.c, f.c) < 1e-3);
@@ -5768,7 +6159,7 @@ async function openWhatsWrong(check = false) {
     const row = h("div", "ww-row");
     row.append(h("b", "", "⛔ " + f.name), h("div", "small", msg));
     const bs = h("div", "pm-buttons");
-    bs.append(button("Düzenle", () => (dlg.close(), editFeature(id)), "btn primary"), button(f.off ? "Etkinleştir" : "Bastır", () => (dlg.close(), commitDoc(() => (f.off = !f.off || undefined))), "btn"));
+    bs.append(button("Düzenle", () => (dlg.close(), editFeature(id)), "btn primary"), button(f.off ? "Etkinleştir" : "Bastır", () => (dlg.close(), commitDoc(() => setOffCfg([f.id], !f.off))), "btn"));
     row.appendChild(bs);
     list.appendChild(row);
   }
@@ -5794,6 +6185,7 @@ async function openWhatsWrong(check = false) {
     chk.innerHTML = "";
     chk.appendChild(h("div", "pm-sub", "Geometri kontrolü"));
     if (!r.bodies.length) chk.appendChild(h("p", "small", "Katı gövde yok." + (r.surfs ? ` ${r.surfs} yüzey gövdesi var.` : "")));
+    else if (r.surfs) chk.appendChild(h("p", "small", `Ayrıca ${r.surfs} yüzey gövdesi var (açık kabuk — hacim yok).`)); // D7-21
     for (const b of r.bodies) {
       const bad = !b.valid || b.free || b.short || b.small || b.volume <= 0;
       chk.appendChild(h("div", "ww-row" + (bad ? " warn" : ""), `${bad ? "⚠" : "✓"} Gövde ${b.i + 1}: ${b.valid ? "geçerli" : "GEÇERSİZ topoloji"} · ${b.faces} yüz, ${b.edges} kenar · hacim ${fmtNum(b.volume, 2)} mm³` + (b.free ? ` · ${b.free} açık (serbest) kenar` : "") + (b.short ? ` · ${b.short} çok kısa kenar` : "") + (b.small ? ` · ${b.small} çok küçük yüz` : "") + (b.volume <= 0 ? " · hacim negatif / sıfır" : "")));
@@ -5821,9 +6213,11 @@ function applyDraftAnalysis() {
   viewer.setAnalysis((n) => [0xf2c12e, 0x2fb344, 0xe03131][(draftClass(n) + 3) % 3]);
   const m = viewer.mesh;
   const cnt = [0, 0, 0];
-  if (m) for (const f of m.faces) cnt[draftClass(f.n as any) + 1]++;
+  let curved = 0;
+  // D5-8: düz olmayan yüzlerin tek normali yok — köşe normalleriyle renklenir, sayımda "eğri" olarak ayrılır
+  if (m) for (const f of m.faces) f.n ? cnt[draftClass(f.n as any) + 1]++ : curved++;
   const st = draftAna.el.querySelector(".da-stat");
-  if (st) st.textContent = `Pozitif ${cnt[2]} · Negatif ${cnt[0]} · Koniklik gerekli ${cnt[1]} yüz`;
+  if (st) st.textContent = `Pozitif ${cnt[2]} · Negatif ${cnt[0]} · Koniklik gerekli ${cnt[1]} yüz${curved ? ` · Eğri ${curved} (renk noktaya göre)` : ""}`;
 }
 function toggleDraftAnalysis() {
   if (draftAna) {
@@ -5922,7 +6316,13 @@ function renderFea() {
   const F = fea, st = feaStudy(), el = F.el;
   el.innerHTML = "";
   const matKey = doc.material ?? "steel", mech = MECH[matKey] ?? MECH.steel, nu = NU[matKey] ?? 0.3;
-  el.append(h("div", "pm-sub", "Statik Analiz (sonlu eleman)"), h("div", "small", `${MATERIALS[matKey]?.name ?? matKey}: E ${mech.E} MPa · ν ${nu} · akma ${mech.Sy} MPa`));
+  // D8-12: panel küçültülebilir (telefonda yüze dokunmak için)
+  const head = h("div", "pm-sub fea-head", "Statik Analiz (sonlu eleman)");
+  const mn = h("button", "btn fea-min", el.classList.contains("min") ? "▴" : "▾");
+  mn.title = "Paneli küçült / büyüt";
+  mn.addEventListener("click", () => (el.classList.toggle("min"), (mn.textContent = el.classList.contains("min") ? "▴" : "▾")));
+  head.appendChild(mn);
+  el.append(head, h("div", "small", `${MATERIALS[matKey]?.name ?? matKey}: E ${mech.E} MPa · ν ${nu} · akma ${mech.Sy} MPa`));
   const sel = () => [...psel.faces];
   const invalid = () => (F.res = undefined, (F.field = F.disp = undefined));
   el.appendChild(h("div", "pm-sub", `Sabitlemeler (${st.fix.length} yüz)`));
@@ -6110,14 +6510,16 @@ async function openAnalysis() {
 async function showMassProps() {
   if (mode.k === "sketch") exitSketch(true);
   const p = await kernel.props();
-  if (!p) return toast("Kütle özellikleri için bir katı gerekir", true);
+  if (!p || !(Math.abs(p.volume) > 1e-9)) return toast(surfaceFeats().length ? "Kütle özellikleri için katı gerekir — modelde yalnız yüzey gövdeleri var (Kalınlaştır ile katı yapın)" : "Kütle özellikleri için bir katı gerekir", true); // D7-18
   const mat = MATERIALS[doc.material ?? "steel"];
-  const mass = (p.volume / 1000) * mat.rho; // g
+  const cm = await cutMass();
+  const mass = cm ? cm.g : (p.volume / 1000) * mat.rho; // g
+  if (cm) p.com = cm.com;
   const f = (v: number, d = 2) => fmtNum(v, d);
   const size = p.bbox.max.map((v, i) => v - p.bbox.min[i]);
   const dlg = h("dialog");
   dlg.innerHTML = `<h2>Kütle Özellikleri</h2>
-    <p class="small">Malzeme: <b>${mat.name}</b> (${f(mat.rho)} g/cm³)</p>
+    <p class="small">Malzeme: <b>${cm ? cm.mats.join(", ") + " (kesim listesi kalemlerinden)" : mat.name}</b>${cm ? "" : ` (${f(mat.rho)} g/cm³)`}</p>
     <div class="pm-result">
       <div>Kütle: <b>${mass >= 1000 ? f(mass / 1000, 3) + " kg" : f(mass, 1) + " g"}</b></div>
       <div>Hacim: ${f(p.volume, 1)} mm³ (${f(p.volume / 1000, 2)} cm³)</div>
@@ -6204,7 +6606,9 @@ async function computeFlat(bodyIdx: number): Promise<FlatResult | null> {
   // şekillendirme araçları ve sac takviyeleri de düz desende bastırılır
   const welded = feats.some((f) => ((f.type === "closecorner" && f.weld) || f.type === "sform" || f.type === "sgusset") && !f.off);
   if (welded) await kernel.build(compile(feats.map((f) => (f.type === "closecorner" && f.weld ? { ...f, weld: false } : f.type === "sform" || f.type === "sgusset" ? { ...f, off: true } : f)), doc.profiles ?? {}).kfeats);
-  const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r);
+  // D6-16: düzleştirmeden önce seçili düz yüz sabit yüz olur (SolidWorks Düz Desen › Sabit yüz)
+  const sf = psel.faces.size === 1 ? viewer.mesh?.faces[[...psel.faces][0]] : undefined;
+  const res = await kernel.flat(bodyIdx, sb.t, sb.k, (sb as any).btable, sb.r, sf?.n ? { o: sf.c, n: sf.n } : undefined);
   if (welded) await kernel.build(compile(feats, doc.profiles ?? {}).kfeats);
   setStatus("ok", "Hazır");
   if (res.error) {
@@ -6424,9 +6828,16 @@ function renderTree() {
     const li = h("li", cls);
     li.innerHTML = ICONS[icon] ?? "";
     li.appendChild(h("span", "", name));
-    li.addEventListener("click", () => {
+    li.addEventListener("click", (ev) => {
+      if (mode.k === "pickSketchPlane") {
+        // E-15: ağaçtaki düzleme tıklayarak eskiz düzlemi seç
+        if (["front", "top", "right"].includes(id)) return sketchPlanePicked({ k: "std", n: id as StdPlane });
+        if (getFeat(id)?.type === "plane") return sketchPlanePicked({ k: "ref", id });
+        return;
+      }
       if (mode.k !== "part") return;
-      treeSel = treeSel === id ? null : id;
+      // D1-14: tık seçer; yalnız Ctrl+tık seçimi kaldırır
+      treeSel = (ev as MouseEvent).ctrlKey && treeSel === id ? null : id;
       clearPartSel();
       renderTree();
       drawSketches();
@@ -6506,16 +6917,8 @@ function renderTree() {
     const label = f.type === "hole" && f.htype === "tap" && f.size !== "custom" ? `${f.name} (${threadLabel(f.std ?? "iso", f.size)})` : f.name;
     const li = row(f.id, label, FEAT_ICON[kindOf(f)] ?? "file", cls + (f.folder ? " infolder" : ""));
     if (err) li.title = err;
-    const kids =
-      f.type === "extrude" || f.type === "revolve" || f.type === "rib" || f.type === "wrap"
-        ? [f.sketch]
-        : f.type === "sweep"
-          ? [f.sketch, f.path]
-          : f.type === "loft"
-            ? [...f.sketches, ...(f.center ? [f.center] : [])]
-            : f.type === "edgeflange" && f.prof
-              ? [f.prof]
-              : [];
+    // P-4 / D7-22: tüketen özelliğin altında tüm eskizleri (çoğaltma, yapı elemanı, yüzey, havalandırma…)
+    const kids = doc.features.filter((x) => x.type === "sketch" && consumerOf(x.id) === f).map((x) => x.id);
     for (const kid of kids) {
       const sk = getFeat(kid);
       if (sk && consumerOf(kid) === f) {
@@ -6528,26 +6931,38 @@ function renderTree() {
 }
 
 /** özelliğin başvurduğu (ebeveyn) özellik kimlikleri */
-function parentsOf(f: Feature): string[] {
+function parentsOf(f: Feature, explicitOnly = false): string[] {
   const out: string[] = [];
   const a = f as any;
   for (const k of ["sketch", "path", "center", "base2"]) if (typeof a[k] === "string") out.push(a[k]);
   if (Array.isArray(a.sketches)) out.push(...a.sketches);
   if (Array.isArray(a.feats)) out.push(...a.feats.filter((x: any) => typeof x === "string"));
   for (const k of ["plane", "base", "base2"]) if (a[k]?.k === "ref") out.push(a[k].id);
-  return out.filter((id) => getFeat(id));
+  // D10-12: diğer kimlik alanları (yüzey, araç, tohum…) ve geometrik (kenar / yüz) referanslar: önceki son katı özellik
+  for (const x of doc.features) if (x.id !== f.id && refsTo(a, x.id)) out.push(x.id);
+  const geo = ["edges", "faces", "faces2", "verts", "face", "edge", "vtx", "fromVtx", "bodyRef"].some((k) => (Array.isArray(a[k]) ? a[k].length : a[k]));
+  if (!explicitOnly && (geo || a.plane?.k === "face" || a.base?.k === "face")) {
+    const i = doc.features.findIndex((x) => x.id === f.id);
+    for (let j = i - 1; j >= 0; j--) {
+      const t = doc.features[j].type;
+      if (t === "sketch" || t === "plane" || t === "point" || t === "axis" || t === "sketch3d" || doc.features[j].off) continue;
+      out.push(doc.features[j].id);
+      break;
+    }
+  }
+  return [...new Set(out)].filter((id) => getFeat(id));
 }
 /** sıra geçerli mi: her özellik ebeveynlerinden sonra gelmeli */
 function orderOk(list: Feature[]) {
   const pos = new Map(list.map((f, i) => [f.id, i]));
-  return list.every((f, i) => parentsOf(f).every((p) => (pos.get(p) ?? -1) < i));
+  return list.every((f, i) => parentsOf(f, true).every((p) => (pos.get(p) ?? -1) < i));
 }
 /** özelliği (ve paylaşılmayan eskizlerini) başka bir özelliğin önüne taşı */
 function moveFeature(id: string, beforeId: string | null) {
   if (id === beforeId) return;
   const f = getFeat(id);
   if (!f) return;
-  const group = [id, ...parentsOf(f).filter((p) => getFeat(p)?.type === "sketch" && sketchUsers(doc.features, p).length === 1 && consumerOf(p) === f)];
+  const group = [id, ...parentsOf(f, true).filter((p) => getFeat(p)?.type === "sketch" && sketchUsers(doc.features, p).length === 1 && consumerOf(p) === f)];
   const rest = doc.features.filter((x) => !group.includes(x.id));
   const moving = doc.features.filter((x) => group.includes(x.id));
   let at = beforeId ? rest.findIndex((x) => x.id === beforeId) : rest.length;
@@ -6602,7 +7017,7 @@ function renderTreeActions() {
     });
     add(items.every((x) => x.off) ? "Klasörü etkinleştir" : "Klasörü bastır", () => {
       const off = !items.every((x) => x.off);
-      commitDoc(() => items.forEach((x) => (x.off = off || undefined)));
+      commitDoc(() => setOffCfg(items.map((x) => x.id), off));
     });
     add("Klasörü kaldır (özellikler kalır)", () => (commitDoc(() => items.forEach((x) => delete x.folder)), (treeSel = null)), "btn danger");
     return;
@@ -6638,7 +7053,7 @@ function renderTreeActions() {
     });
   } else {
     add("Düzenle", () => editFeature(f.id), "btn primary");
-    if (f.type === "extrude" || f.type === "revolve" || f.type === "sweep") add("Eskizi düzenle", () => editFeature(f.sketch));
+    if (typeof (f as any).sketch === "string" && getFeat((f as any).sketch)) add("Eskizi düzenle", () => editFeature((f as any).sketch)); // D7-22
     if (f.type === "plane")
       add("Eskiz", () => startSketch({ k: "ref", id: f.id }));
   }
@@ -6652,9 +7067,15 @@ function renderTreeActions() {
   add(f.off ? "Etkinleştir" : "Bastır", () =>
     commitDoc(() => {
       f.off = !f.off;
+      // D7-17: bastırılan özelliğin (adıyla) bağımlıları da bastırılır; etkinleştirince onunla bastırılanlar geri gelir
+      const set = new Set([f.id]);
+      if (f.off) {
+        for (const x of doc.features as any[]) if (!set.has(x.id) && !x.off && x.type !== "sketch" && [...set].some((p) => refsTo(x, p))) (x.off = true), (x.offBy = f.id), set.add(x.id);
+      } else
+        for (const x of doc.features as any[]) if (x.offBy === f.id) (delete x.off, delete x.offBy, set.add(x.id));
       // etkin yapılandırmanın bastırma listesi de güncellenir (SolidWorks: "Bu yapılandırma")
       const cfg = activeConfig();
-      if (cfg) cfg.off = f.off ? [...new Set([...cfg.off, f.id])] : cfg.off.filter((x) => x !== f.id);
+      if (cfg) cfg.off = f.off ? [...new Set([...cfg.off, ...set])] : cfg.off.filter((x) => !set.has(x));
     }),
   );
   const i0 = doc.features.indexOf(f);
@@ -6674,22 +7095,38 @@ function renderTreeActions() {
   add("Sil", () => deleteFeature(f.id), "btn danger");
 }
 
+/** özellik x, id'li özelliğe alanlarından biriyle (kimlik dizesi) bağlı mı */
+function refsTo(x: any, id: string): boolean {
+  const walk = (o: any, k?: string): boolean => {
+    if (typeof o === "string") return o === id || o === "ref:" + id;
+    if (!o || typeof o !== "object") return false;
+    if (Array.isArray(o)) return o.some((v) => walk(v));
+    return Object.entries(o).some(([kk, v]) => kk !== "id" && kk !== "name" && kk !== "data" && kk !== "folder" && walk(v, kk));
+  };
+  return walk(x);
+}
 function deleteFeature(id: string) {
   const f = getFeat(id);
   if (!f) return;
   const deps = f.type === "sketch" ? sketchUsers(doc.features, id) : [];
   const planeDeps = doc.features.filter((x) => x.type === "sketch" && x.plane.k === "ref" && x.plane.id === id);
+  // D7-17 / D10-12: bu özelliğe adıyla bağlı diğer özellikler (yüzey, araç, çoğaltma tohumu…)
+  const kids = doc.features.filter((x) => x.id !== id && !deps.includes(x) && !planeDeps.includes(x) && parentsOf(x, true).includes(id)); // yalnız adıyla bağlı olanlar (geometrik sıra tahmini silmeye girmez)
   let msg = `"${f.name}" silinsin mi?`;
   if (deps.length) msg = `"${f.name}" ve onu kullanan ${deps.map((d) => d.name).join(", ")} silinsin mi?`;
   if (planeDeps.length) msg += `\nBu düzlemdeki eskizler (${planeDeps.map((d) => d.name).join(", ")}) çalışmayacak.`;
+  if (kids.length) msg += `\nBuna bağlı özellikler (${kids.map((d) => d.name).join(", ")}) hata verecek.`;
   if (!confirm(msg)) return;
   const absorbed = (f.type === "extrude" || f.type === "revolve" ? [f.sketch] : f.type === "sweep" ? [f.sketch, f.path] : f.type === "loft" ? f.sketches : []).filter(
     (sid) => sketchUsers(doc.features, sid).every((u) => u.id === id),
   );
   const delIds = new Set([id, ...deps.map((d) => d.id)]);
   if (absorbed.length && confirm("Kullandığı eskiz(ler) de silinsin mi?")) absorbed.forEach((x) => delIds.add(x));
+  if (kids.length && confirm(`Bağlı özellikler de silinsin mi? (${kids.map((d) => d.name).join(", ")})`)) kids.forEach((x) => delIds.add(x.id));
   treeSel = null;
   commitDoc(() => {
+    // D7-15: geri sarma çubuğu silinen özelliklerle birlikte kayar
+    if (doc.rollback != null) doc.rollback -= doc.features.slice(0, doc.rollback).filter((x) => delIds.has(x.id)).length;
     doc.features = doc.features.filter((x) => !delIds.has(x.id));
     for (const x of doc.features as any[]) if (x.feats) x.feats = x.feats.filter((y: string) => !delIds.has(y));
   });
@@ -6737,8 +7174,11 @@ function commands(): Cmd[] {
       { id: "cutRevolve", label: "Dönd. Kesme", icon: "cutRevolve", run: () => newFeature("cutRevolve") },
       { id: "sweep", label: "Süpürme", icon: "sweep", run: () => newFeature("sweep") },
       { id: "loft", label: "Loft", icon: "loft", run: () => newFeature("loft") },
+      { id: "cutSweep", label: "Süpürmeli Kesme", icon: "sweep", run: () => newFeature("cutSweep") },
+      { id: "cutLoft", label: "Loft Kesme", icon: "loft", run: () => newFeature("cutLoft") },
       "sep",
       { id: "hole", label: "Delik Sihirb.", icon: "hole", run: () => newFeature("hole") },
+      { id: "simpleHole", label: "Basit Delik", icon: "hole", run: () => newFeature("hole") }, // D5-17: düz delik (sihirbazın varsayılan türü)
       { id: "fillet", label: "Radyüs", icon: "fillet", run: () => newFeature("fillet") },
       { id: "chamfer", label: "Pah", icon: "chamfer", run: () => newFeature("chamfer") },
       { id: "shell", label: "Kabuk", icon: "shell", run: () => newFeature("shell") },
@@ -7087,7 +7527,7 @@ function renderTaskPane() {
     sec(`Özel profiller (${Object.keys(prof).length})`);
     for (const nm of Object.keys(prof)) row(nm);
   } else {
-    const list: { name: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+    const list: { name: string; t: number; json: string }[] = readLS("imajcad.recent", []);
     sec(`Son belgeler (${list.length})`);
     for (const it of list) row(it.name, button("Aç", () => openDocText(it.json, null), "btn primary"));
     ensureTabs();
@@ -7239,7 +7679,10 @@ function undo() {
   const s = undoStack.pop();
   if (!s) return;
   redoStack.push(JSON.stringify(doc));
+  const dr = doc.drawing;
   doc = JSON.parse(s);
+  noReselect = true; // D6-17 / D8-17
+  if (dr) doc.drawing = dr; // D9-7: teknik resim açıklamaları ayrı belge gibi — parçada geri alma silmez
   treeSel = null;
   saveDoc();
   afterDocChange();
@@ -7252,7 +7695,10 @@ function redo() {
   const s = redoStack.pop();
   if (!s) return;
   undoStack.push(JSON.stringify(doc));
+  const dr = doc.drawing;
   doc = JSON.parse(s);
+  noReselect = true;
+  if (dr) doc.drawing = dr;
   treeSel = null;
   saveDoc();
   afterDocChange();
@@ -7277,13 +7723,39 @@ $("#help-btn").addEventListener("click", () => ($("#help") as HTMLDialogElement)
 // =====================================================================
 // Görünüm çubuğu
 // =====================================================================
+/** D4-7: grafik alanın üstünü / altını örten paneller (telefonda alt özellik paneli, tepsi; şerit) */
+function viewInsets(): { t: number; b: number } {
+  const c = viewer.renderer.domElement.getBoundingClientRect();
+  let t = 0, b = 0;
+  for (const el of document.querySelectorAll<HTMLElement>("#cmdbar, #side, #tray, #doctabs")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || getComputedStyle(el).visibility === "hidden" || getComputedStyle(el).display === "none") continue;
+    const ox = Math.min(r.right, c.right) - Math.max(r.left, c.left), oy = Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top);
+    if (ox < c.width * 0.6 || oy <= 0) continue;
+    if (r.top <= c.top + 4) t = Math.max(t, r.bottom - c.top);
+    else if (r.bottom >= c.bottom - 4) b = Math.max(b, c.bottom - r.top);
+  }
+  return { t, b };
+}
 function fitAll() {
-  if (mode.k !== "sketch") return viewer.fit();
-  const b = mode.editor.bounds();
-  if (!b) return viewer.fit();
-  const box = new THREE.Box3(new THREE.Vector3(...b[0]), new THREE.Vector3(...b[1]));
-  if (viewer.bbox) box.union(viewer.bbox);
-  viewer.fitBox(box);
+  viewer.fitInsets = viewInsets();
+  try {
+    // D8-13: 3B eskiz düzenlenirken noktaları da kapsa
+    if (mode.k === "pm" && mode.draft.type === "sketch3d" && (mode.draft as any).xyz?.length) {
+      const box = new THREE.Box3();
+      for (const q of (mode.draft as any).xyz as Vec3[]) box.expandByPoint(new THREE.Vector3(...q));
+      if (viewer.bbox && !viewer.bbox.isEmpty()) box.union(viewer.bbox);
+      return viewer.fitBox(box);
+    }
+    if (mode.k !== "sketch") return viewer.fit();
+    const b = mode.editor.bounds();
+    if (!b) return viewer.fit();
+    const box = new THREE.Box3(new THREE.Vector3(...b[0]), new THREE.Vector3(...b[1]));
+    if (viewer.bbox) box.union(viewer.bbox);
+    viewer.fitBox(box);
+  } finally {
+    viewer.fitInsets = null;
+  }
 }
 
 function renderViewbar() {
@@ -7351,6 +7823,11 @@ renderViewbar();
 $("#file-btn").addEventListener("click", (e) => {
   e.stopPropagation();
   $("#file-menu").hidden = !$("#file-menu").hidden;
+  // D10-8: liste ekranın altına taşmasın (üst konumuna göre en büyük yükseklik, kaydırılır)
+  if (!$("#file-menu").hidden) {
+    const fm = $("#file-menu") as HTMLElement;
+    fm.style.maxHeight = Math.max(160, innerHeight - fm.getBoundingClientRect().top - 8) + "px";
+  }
 });
 document.addEventListener("click", (e) => {
   if (!(e.target as HTMLElement).closest("#file-menu")) $("#file-menu").hidden = true;
@@ -7370,6 +7847,7 @@ document.querySelectorAll<HTMLButtonElement>("#file-menu button").forEach((b) =>
     if (act === "persp") return allActs().find((x) => x.id === "v.persp")?.run();
     if (act === "units") {
       setUnits(unitsNow() === "mm" ? "in" : "mm");
+      syncUnitsBadge();
       toast(`Birim: ${unitsNow() === "mm" ? "milimetre (mm)" : "inç (in) — model mm olarak saklanır"}`);
       if (mode.k === "sketch") mode.editor.render();
       if (mode.k === "pm") renderFeaturePM(kindOf(mode.draft));
@@ -7454,11 +7932,12 @@ function openDocText(text: string, handle: any) {
       return void toast(`${d.name} zaten açık`);
     }
     if (exi >= 0) (d as any).uid = Math.random().toString(36).slice(2, 10);
-    if (doc.features.length && !(doc as any).uid?.startsWith?.("__")) return void openInNewTab(d, handle).then(() => (pushRecent(), toast(`${d.name} açıldı`)));
+    if (doc.features.length && !(doc as any).uid?.startsWith?.("__")) return void openInNewTab(d, handle).then(() => (markFileSaved(), pushRecent(), toast(`${d.name} açıldı`)));
     // D10-2: dosya açmak geri alma geçmişine girmez
     doc = d;
     undoStack.length = redoStack.length = 0;
     if (docTabs[activeTab]) docTabs[activeTab].uid = docUid(doc);
+    markFileSaved();
     saveDoc();
     saveTabs();
     afterDocChange();
@@ -7479,7 +7958,7 @@ async function saveFile(asNew: boolean) {
     if (docTabs[activeTab]) docTabs[activeTab].uid = (doc as any).uid;
     saveTabs();
   };
-  const text = () => JSON.stringify(doc, null, 1);
+  const text = () => JSON.stringify(doc, (k, v) => (k === "_named" ? undefined : v), 1); // D10-20: iç alan dosyaya yazılmaz
   if (w.showSaveFilePicker) {
     try {
       if (!fileHandle || asNew) {
@@ -7492,6 +7971,7 @@ async function saveFile(asNew: boolean) {
       await ws.write(text());
       await ws.close();
       saveDoc();
+      markFileSaved();
       renderTree();
       pushRecent();
       return toast(`Kaydedildi: ${fileHandle.name ?? doc.name}`);
@@ -7500,20 +7980,46 @@ async function saveFile(asNew: boolean) {
     }
   }
   if (asNew || !(doc as any)._named) {
+    const n0 = prompt("Dosya adı", doc.name);
+    if (n0 === null) return; // D10-20: İptal hiçbir şey yapmaz
     if (asNew) newIdentity();
-    const name = (prompt("Dosya adı", doc.name) || doc.name).replace(/[\\/:*?"<>|]/g, "_");
+    const name = (n0.trim() || doc.name).replace(/[\\/:*?"<>|]/g, "_");
     doc.name = name;
     (doc as any)._named = true;
   }
   saveDoc();
+  markFileSaved();
   renderTree();
   pushRecent();
   download(new Blob([text()], { type: "application/json" }), `${doc.name}.icad`);
 }
+/** D10-21: durum çubuğu birim sistemi göstergesi */
+function syncUnitsBadge() {
+  const b = document.getElementById("sb-units");
+  if (!b) return;
+  const inch = unitsNow() === "in";
+  b.textContent = inch ? "IPS" : "MMGS";
+  b.title = (inch ? "Birim sistemi: inç, pound, saniye" : "Birim sistemi: milimetre, gram, saniye") + " — değiştirmek için tıklayın";
+  b.style.cursor = "pointer";
+}
+/** D10-22: bozuk localStorage kaydı sessizce hata vermesin — silinir, varsayılan döner */
+function readLS<T>(key: string, def: T): T {
+  try {
+    const s = localStorage.getItem(key);
+    if (s == null) return def;
+    const v = JSON.parse(s);
+    return v ?? def;
+  } catch {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+    return def;
+  }
+}
 /** son belgeler: tarayıcıda en fazla 8 belgenin kopyası (toplam ~2 MB) */
 function pushRecent() {
   try {
-    const list: { name: string; uid?: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+    const list: { name: string; uid?: string; t: number; json: string }[] = readLS("imajcad.recent", []);
     const uid = (doc as any).uid;
     const json = JSON.stringify(doc);
     const rest = list.filter((x) => !(uid ? x.uid === uid : x.name === doc.name));
@@ -7543,7 +8049,7 @@ function openFileManager() {
       row.append(h("span", "", (i === activeTab ? "● " : "") + nm), button("Geç", () => (dlg.close(), switchTab(i)), "btn"), ...(docTabs.length > 1 ? [button("Kapat", () => (closeTab(i), render()), "btn")] : []));
       s1.appendChild(row);
     });
-    const list: { name: string; uid?: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+    const list: { name: string; uid?: string; t: number; json: string }[] = readLS("imajcad.recent", []);
     const s2 = sec(`Son belgeler (${list.length})`);
     const q = h("input") as HTMLInputElement;
     q.placeholder = "Ara…";
@@ -7693,7 +8199,7 @@ function applyDocProps() {
   if (mode.k === "sketch") mode.editor.render();
 }
 function openRecent() {
-  const list: { name: string; t: number; json: string }[] = JSON.parse(localStorage.getItem("imajcad.recent") ?? "[]");
+  const list: { name: string; t: number; json: string }[] = readLS("imajcad.recent", []);
   const dlg = h("dialog", "input-dialog") as HTMLDialogElement;
   dlg.appendChild(h("h2", "", "Son belgeler"));
   if (!list.length) dlg.appendChild(h("p", "", "Henüz kaydedilmiş ya da açılmış belge yok."));
@@ -7857,6 +8363,12 @@ function openContextMenu(x: number, y: number) {
     menuItem(box, "Seç", () => ed.setTool("select"), "select");
     if (ed.isDrawing()) menuItem(box, "Zinciri bitir", () => ed.finishChain());
     if (ed.sel.size) {
+      // D3-17: seçime uygun ilişkiler sağ tık menüsünde de
+      const ro = ed.relationOptions();
+      if (ro.length) {
+        box.appendChild(h("div", "sw-mh", "İlişki ekle"));
+        for (const o of ro.slice(0, 10)) menuItem(box, o.label, () => ed.addRelations(o));
+      }
       menuItem(box, "Yapı geometrisi", () => ed.toggleConstruction(), "centerline");
       menuItem(box, "Sil", () => ed.deleteSelection(), "del");
     }
@@ -7906,8 +8418,30 @@ function openContextMenu(x: number, y: number) {
       menuItem(box, "Dik (Ctrl+8)", () => normalTo(), "normal");
       menuItem(box, "Eskiz", () => beginSketchCommand(), "sketch");
     }
-    if (treeSel && getFeat(treeSel)) {
-      menuItem(box, "Özelliği düzenle", () => editFeature(treeSel!));
+    // D10-11: ağaçta / modelde özellik işlemleri (düzenle, eskizi düzenle, bastır, sil, adlandır)
+    const featMenu = (fid: string, at?: HTMLElement) => {
+      const f = getFeat(fid) as any;
+      if (!f) return;
+      const tmp = h("div");
+      tmp.appendChild(h("div", "sw-mh", f.name));
+      menuItem(tmp, "Özelliği düzenle", () => editFeature(fid));
+      if (typeof f.sketch === "string" && getFeat(f.sketch)) menuItem(tmp, "Eskizi düzenle", () => editFeature(f.sketch));
+      menuItem(tmp, f.off ? "Etkinleştir" : "Bastır", () => ((treeSel = fid), commitDoc(() => setOffCfg([fid], !f.off))));
+      menuItem(tmp, "Adlandır", () => {
+        const n = prompt("Yeni ad", f.name)?.trim();
+        if (n) commitDoc(() => (f.name = n));
+      });
+      menuItem(tmp, "Sil", () => deleteFeature(fid));
+      [...tmp.children].forEach((c) => (at ? box.insertBefore(c, at) : box.appendChild(c)));
+    };
+    if (treeSel && getFeat(treeSel)) featMenu(treeSel);
+    else if (mode.k === "part" && !treeCtx) {
+      const fh0 = viewer.pick(x, y, { face: true });
+      if (fh0?.kind === "face" && fh0.point) {
+        const mark = h("div");
+        box.appendChild(mark);
+        void kernel.faceOwner(fh0.point).then((o) => o && box.isConnected && (featMenu(o, mark), mark.remove())).catch(() => {});
+      }
     }
     menuItem(box, "Ekstrüzyon", () => newFeature("extrude"), "extrude");
     menuItem(box, "Ekstrüzyon kesme", () => newFeature("cutExtrude"), "cutExtrude");
@@ -8435,7 +8969,12 @@ addEventListener("resize", () => renderCommands());
     const c = ids.reduce((a, id) => [a[0] + sk.data.pts[id].x / ids.length, a[1] + sk.data.pts[id].y / ids.length], [0, 0]) as [number, number];
     const sgn = (f.rev ? -1 : 1) * (f.cut ? -1 : 1);
     const dir = fr0.n.map((v) => v * sgn) as Vec3;
-    const base = toWorld(fr0, c).map((v, i) => v + fr0.n[i] * (f.startOff ?? 0)) as Vec3;
+    // D4-10: başlangıç yüz / köşe ise ok o başlangıçtan çizilir
+    const w0 = toWorld(fr0, c);
+    const fe: any = f;
+    const st0 = fe.fromFace?.c ?? fe.fromVtx;
+    const off = st0 ? (st0[0] - fr0.o[0]) * fr0.n[0] + (st0[1] - fr0.o[1]) * fr0.n[1] + (st0[2] - fr0.o[2]) * fr0.n[2] : f.startOff ?? 0;
+    const base = w0.map((v, i) => v + fr0.n[i] * off) as Vec3;
     return { f, base, dir };
   };
   const place = () => {
@@ -8513,7 +9052,9 @@ asmUI = new AsmUI({
     const saved = JSON.stringify(doc);
     localStorage.setItem("imajcad.ctxsaved", saved);
     asmUI!.leave();
-    doc = { ...emptyDoc(), name: part.name, features: JSON.parse(JSON.stringify(part.features)), ...(part.profiles ? { profiles: part.profiles } : {}), ...(part.eqs ? { eqs: part.eqs } : {}) } as any;
+    // D9-10: malzeme, değişkenler ve yapılandırmalar da taşınır (düzenlemeden sonra kaybolmasın)
+    const P: any = part;
+    doc = { ...emptyDoc(), name: part.name, features: JSON.parse(JSON.stringify(part.features)), ...(part.profiles ? { profiles: part.profiles } : {}), ...(part.eqs ? { eqs: part.eqs } : {}), ...(P.material ? { material: P.material } : {}), ...(P.vars ? { vars: JSON.parse(JSON.stringify(P.vars)) } : {}), ...(P.configs ? { configs: JSON.parse(JSON.stringify(P.configs)), config: P.config } : {}) } as any;
     treeSel = null;
     setTab("features");
     renderTree();
@@ -8523,7 +9064,8 @@ asmUI = new AsmUI({
     const back = button("Montaja dön ✓", async () => {
       if (mode.k === "sketch") exitSketch(true);
       if (mode.k === "pm") cancelFeature();
-      const np = { name: doc.name, features: JSON.parse(JSON.stringify(doc.features)), eqs: (doc as any).eqs, profiles: (doc as any).profiles, key: part.key };
+      const D: any = doc;
+      const np = { ...(part as any), name: doc.name, features: JSON.parse(JSON.stringify(doc.features)), eqs: D.eqs, profiles: D.profiles, key: part.key, material: D.material ?? (part as any).material, vars: D.vars ?? (part as any).vars, configs: D.configs ?? (part as any).configs, config: D.config ?? (part as any).config };
       doc = JSON.parse(saved);
       localStorage.removeItem("imajcad.ctxsaved");
       // bileşen ana parçanın kendisiyse parça dosyası da güncellenir (SolidWorks: bağlam içi düzenleme parçayı kaydeder)
@@ -8593,6 +9135,15 @@ const isoB = h("button", "iso", "İzo");
 isoB.addEventListener("click", () => viewer.viewStd("iso"));
 cubeBox.appendChild(isoB);
 {
+  // D10-16: hücreler arası (dönüşüm dikişi) boşluğa düşen tık en yakın hücreye gider
+  cube.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest(".cell")) return;
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 2], [-2, -2], [2, -2], [-2, 2]]) {
+      const c = (document.elementFromPoint(e.clientX + ox, e.clientY + oy) as HTMLElement | null)?.closest(".cell") as HTMLElement | null;
+      if (c && cube.contains(c)) return void c.click();
+    }
+  });
   // küpü sürükleyerek döndür
   let d: { x: number; y: number; moved: boolean } | null = null;
   cube.addEventListener("pointerdown", (e) => {
@@ -8852,9 +9403,16 @@ try {
       toast("Geometri çekirdeği yüklenemedi: " + e.message, true);
     },
   );
+  syncUnitsBadge();
+  $("#sb-units").addEventListener("click", () => fileAct("units"));
+  try {
+    const s0 = localStorage.getItem("imajcad.style");
+    if (s0) viewer.setStyle(s0 as any); // D10-17
+  } catch {}
   applyEquations();
   renderTree();
   renderCommands();
+  renderDocTabs(); // D10-7: yenilemeden sonra da açık belge sekmeleri görünür
   updatePlanes();
   rebuild();
   if (!doc.features.length) hint("Başlamak için bir düzlem seçip Eskiz'e basın");
@@ -8951,9 +9509,11 @@ function fixedActs(): Act[] {
     E("e.rebuild", "Yeniden oluştur", "Ctrl+B", () => rebuild()),
     E("e.rebuild2", "Zorla yeniden oluştur", "Ctrl+Q", () => rebuild()),
     E("e.redraw", "Ekranı yenile", "Ctrl+R", () => viewer.requestRender()),
-    E("e.copy", "Kopyala", "Ctrl+C", () => sk()?.copySel()),
-    E("e.paste", "Yapıştır", "Ctrl+V", () => sk()?.paste()),
-    E("e.selall", "Tümünü seç", "Ctrl+A", () => sk()?.selectAll()),
+    E("e.cut", "Kes", "Ctrl+X", () => (sk() ? sk()!.cutSel() : toast("Kes: eskiz öğeleri için (eskizi düzenlerken)"))),
+    E("e.copy", "Kopyala", "Ctrl+C", () => (sk() ? sk()!.copySel() : toast("Kopyala: eskiz öğeleri için (eskizi düzenlerken)"))),
+    E("e.paste", "Yapıştır", "Ctrl+V", () => (sk() ? sk()!.paste() : toast("Yapıştır: eskizi düzenlerken kullanılır"))),
+    // D10-14: parça modunda Tümünü seç = tüm yüzler
+    E("e.selall", "Tümünü seç", "Ctrl+A", () => (sk() ? sk()!.selectAll() : mode.k === "part" && !asmUI?.on && viewer.mesh ? (clearPartSel(), viewer.mesh.faces.forEach((_, i) => psel.faces.add(i)), refreshHighlight()) : undefined)),
     E("e.delete", "Sil", "Delete", () => (mode.k === "sketch" ? mode.editor.deleteSelection() : mode.k === "part" ? (asmUI?.on ? void asmUI.deleteSel() : deleteSelectedPart()) : undefined), "del"),
     E("e.rename", "Yeniden adlandır", "F2", () => {
       if (mode.k !== "part" || !treeSel || !getFeat(treeSel)) return;
@@ -9031,7 +9591,7 @@ function openCust() {
 // ---------- menü çubuğu ----------
 type MI = string | "-" | { sub: string; items: () => Act[] };
 const MENUS: [string, MI[]][] = [
-  ["Dosya", ["f.new", "f.open", "f.recent", "f.save", "f.saveas", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist", "f.techdraw"]],
+  ["Dosya", ["f.new", "f.open", "f.recent", "f.save", "f.saveas", "-", "f.wizard", "f.import", "-", "f.step", "f.stl", "f.dxf", "f.cutlist", "f.techdraw", "-", "f.docprops"]],
   ["Düzen", ["e.undo", "e.redo", "-", "e.rebuild", "e.redraw", "-", "e.copy", "e.paste", "e.delete", "e.selall", "e.rename", "-", "e.repeat"]],
   ["Görünüm", ["v.front", "v.back", "v.left", "v.right", "v.top", "v.bottom", "v.iso", "v.normal", "-", "v.fit", "v.zin", "v.zout", "v.zarea", "v.prev", "v.mag", "v.persp", "-", { sub: "Görüntü stili", items: () => allActs().filter((a) => a.id.startsWith("v.st")) }, "v.planes", "v.tree", "-", "v.full", "v.lock"]],
   [
@@ -9044,7 +9604,7 @@ const MENUS: [string, MI[]][] = [
       { sub: "Montaj", items: () => catalog().filter((a) => a.cat === "Montaj") },
     ],
   ],
-  ["Araçlar", [{ sub: "Değerlendir", items: () => catalog().filter((a) => a.cat === "Değerlendir") }, "sk.exit", "sk.snaps", "-", "t.sbar", "t.filter", "-", "t.custom", "t.print", "t.input", "t.wheel"]],
+  ["Araçlar", [{ sub: "Değerlendir", items: () => catalog().filter((a) => a.cat === "Değerlendir") }, "sk.exit", "sk.snaps", "-", "t.sbar", "t.filter", "-", "t.custom", "t.ribbon", "t.taskpane", "t.print", "t.input", "t.wheel"]],
   ["Yardım", ["t.help", "t.welcome", "t.print"]],
 ];
 function closeMenus() {
@@ -9143,8 +9703,13 @@ addEventListener("keydown", (e: KeyboardEvent) => {
     document.querySelector(".search-drop")?.remove();
     const q = inp.value.trim().toLocaleLowerCase("tr");
     if (!q) return;
+    // D10-18: Türkçe ses değişimi için kök eşleme ("şerit" → "şeridi")
+    const qs = q.length >= 4 ? q.slice(0, -1) : q;
     hits = allActs()
-      .filter((a) => a.label.toLocaleLowerCase("tr").includes(q) || a.cat.toLocaleLowerCase("tr").includes(q))
+      .filter((a) => {
+        const L = a.label.toLocaleLowerCase("tr");
+        return L.includes(q) || L.includes(qs) || a.cat.toLocaleLowerCase("tr").includes(q);
+      })
       .sort((a, b) => +!a.label.toLocaleLowerCase("tr").startsWith(q) - +!b.label.toLocaleLowerCase("tr").startsWith(q))
       .slice(0, 14);
     sel = Math.min(sel, Math.max(0, hits.length - 1));

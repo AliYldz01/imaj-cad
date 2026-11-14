@@ -93,7 +93,8 @@ with sync_playwright() as p:
             a.btn("dialog.reselect-dialog[open] button:has-text('Daha sonra')")
         e = a.errs_map()
         print("   L2g üst kapak bastırılınca:", a.vol(), e)
-        chk("L2g kapak bastırılınca Dik hatası anlaşılır (kapalı hacim yok / yüzey bulunamadı)", bool(e) and any("yüzey" in x.lower() or "hacim" in x.lower() for x in e.values()), e)
+        offs = a.ev("window.__app.doc.features.filter(f=>f.off).map(f=>f.type)")
+        chk("L2g kapak bastırılınca Dik hatası anlaşılır ya da Dik de bastırılır (v0.90 D7-17)", (bool(e) and any("yüzey" in x.lower() or "hacim" in x.lower() for x in e.values())) or "knit" in offs, (e, offs))
         a.tact(cap, "Etkinleştir"); a.wait(0.6)
         if a.pg.locator("dialog.reselect-dialog[open]").count():
             a.btn("dialog.reselect-dialog[open] button:has-text('Daha sonra')")

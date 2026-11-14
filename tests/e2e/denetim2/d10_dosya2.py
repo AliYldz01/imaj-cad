@@ -140,6 +140,7 @@ with sync_playwright() as p:
         a.menu("Dosya", "Son belgeler…")
         chk("kaydettikten sonra son belgeler listesi onarılır", len(a.dialogs_open()) > 0, a.dialogs_open())
         a.close_dialogs()
+        a.setup(block())  # bozuk kayıttan sonra belge boş açılır: teknik resim için model gerekir
         a.ev("localStorage.setItem('imajcad.techdraw','{bad')")
         a.menu("Dosya", "Teknik resim…"); time.sleep(3)
         chk("bozuk teknik resim ayarı: pencere yine açılır", len(a.dialogs_open()) > 0, a.dialogs_open())

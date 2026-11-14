@@ -5,7 +5,7 @@
 import opencascade from "replicad-opencascadejs";
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import {
-  setOC, getOC, cast, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
+  setOC, getOC, cast, exportSTEP, makeCircle, drawCircle, drawEllipse, drawText, loadFont, draw, Plane, Sketch, genericSweep, makeCompound, makeCylinder,
   importSTEP, makePolygon, makeSolid, basicFaceExtrusion, makeVertex, makeThreePointArc, assembleWire, makeFace, makeLine, ProjectionCamera, makeProjectedEdges, makeBox, makeBSplineApproximation, makeHelix, makeSphere, makeOffset, loft, drawPointsInterpolation, Vector, measureArea, measureLength, measureDistanceBetween, measureShapeVolumeProperties,
 } from "replicad";
 import type {
@@ -342,7 +342,39 @@ function extrudeTool(f: Extract<KFeature, { type: "extrude" }>, flipped = false)
     if (f.loops.length > 1 || f.texts?.length) throw new Error("Koniklik şimdilik tek konturlu profillerde destekleniyor");
     const off = d1 * Math.tan((f.draft * Math.PI) / 180) * (f.draftOut ? 1 : -1);
     const s1 = sk(0);
-    const s2 = profile(f.loops).offset(off, { lineJoinType: "miter" }).sketchOnPlane(makePlane(frame, sign * d1));
+    // D4-2 / P-10: çokgen profilde öteleme köşeleri elle (kenar doğruları ötelenip kesiştirilir; kenar sayısı ve başlangıç köşesi aynı kalır)
+    const L0 = f.loops[0] as any;
+    const poly = L0 && "segs" in L0 && L0.segs.length >= 3 && L0.segs.every((s: Seg) => s.t === "l") ? (L0.segs as Seg[]).map((s) => s.a as [number, number]) : null;
+    let s2: any;
+    if (poly) {
+      let A2 = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        A2 += a[0] * b[1] - b[0] * a[1];
+      }
+      const o = A2 > 0 ? off : -off;
+      const n = poly.length;
+      const ln = poly.map((a, i) => {
+        const b = poly[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+        const nx = dy / L, ny = -dx / L;
+        return { p: [a[0] + nx * o, a[1] + ny * o], d: [dx / L, dy / L] };
+      });
+      const q = poly.map((_, i) => {
+        const A = ln[(i - 1 + n) % n], B = ln[i];
+        const den = A.d[0] * B.d[1] - A.d[1] * B.d[0];
+        if (Math.abs(den) < 1e-12) return B.p as [number, number];
+        const t = ((B.p[0] - A.p[0]) * B.d[1] - (B.p[1] - A.p[1]) * B.d[0]) / den;
+        return [A.p[0] + A.d[0] * t, A.p[1] + A.d[1] * t] as [number, number];
+      });
+      // içe ötelemede kenar yön değiştirdiyse (çok büyük koniklik) hata
+      for (let i = 0; i < n; i++) {
+        const a = q[i], b = q[(i + 1) % n], c = poly[i], e = poly[(i + 1) % n];
+        if ((b[0] - a[0]) * (e[0] - c[0]) + (b[1] - a[1]) * (e[1] - c[1]) <= 1e-9) throw new Error("Koniklik açısı bu derinlik için çok büyük (profil kapanıyor)");
+      }
+      let pen: any = draw(q[0]);
+      for (let i = 1; i < n; i++) pen = pen.lineTo(q[i]);
+      s2 = pen.close().sketchOnPlane(makePlane(frame, sign * d1));
+    } else s2 = profile(f.loops).offset(off, { lineJoinType: "miter" }).sketchOnPlane(makePlane(frame, sign * d1));
     solid = s1.loftWith(s2, { ruled: true });
   } else if (f.end === "mid") solid = sk((-sign * f.d1) / 2).extrude(sign * f.d1, f.twist ? { twistAngle: f.twist } : undefined);
   else if (f.dirVec && (f.end === "blind" || f.end === "through" || f.end === "vertex")) {
@@ -722,6 +754,11 @@ function loftTool(f: Extract<KFeature, { type: "loft" }>) {
   }
   if (f.closed) {
     if (sks.length < 3) throw new Error("Kapalı loft için en az üç profil gerekir");
+    // D4-11: tüm profiller paralel ve merkezleri tek doğru üzerindeyse dönüş parçası gövdenin içinden geçer (kendini keser)
+    const par = frs.every((q) => Math.abs(vdot(q.n, frs[0].n)) > 0.9999);
+    const oo = frs.map((q) => q.o), dl = vsub(oo[oo.length - 1], oo[0]), L = vlen(dl);
+    const col = L > 1e-6 && oo.every((o) => vlen(vcross(vsub(o, oo[0]), vmul(dl, 1 / L))) < 1e-3 * Math.max(1, L));
+    if (par && col) throw new Error("Kapalı loft kendini kesiyor: profiller tek doğrultuda sıralı (halka için profiller bir eğri boyunca dönmeli)");
     // ilk kesit sona tekrar eklenir; olmazsa iki loft birleştirilir
     try {
       const r = sks[0].loftWith([...sks.slice(1), sk(0)], { ruled: f.ruled });
@@ -892,7 +929,16 @@ function ribTool(f: Extract<KFeature, { type: "rib" }>) {
     return keep.reduce((x, y) => x.fuse(y));
   }
   // eskize paralel: çizgi ile gövde arasındaki bölge, eskiz düzlemine göre kalınlıkta
-  const band = thinRegion(chains, big / 4, f.flip ? "rev" : "one");
+  // D5-13: seçilen tarafta kapalı bölge yoksa öbür taraf denenir (SolidWorks oku kapalı bölgeye bakar)
+  const sides = f.flip ? ["rev", "one"] : ["one", "rev"];
+  for (let si = 0; si < 2; si++) {
+    const r = ribParallel(f, frame, a, chains, big, sides[si] as "one" | "rev");
+    if (r) return r;
+  }
+  throw new Error("Kaburga gövdeyle kapalı bir bölge oluşturmuyor; çizgiyi gövdeye değecek şekilde uzatın");
+}
+function ribParallel(f: Extract<KFeature, { type: "rib" }>, frame: Frame, a: Shape, chains: { segs: Seg[]; closed: boolean }[], big: number, side: "one" | "rev"): Shape | null {
+  const band = thinRegion(chains, big / 4, side);
   const shift = f.side === "mid" ? -f.t / 2 : f.side === "one" ? 0 : -f.t;
   const slab = profile(band).sketchOnPlane(makePlane(frame, shift)).extrude(f.t);
   const pieces = solidsOf(slab.cut(a));
@@ -906,7 +952,7 @@ function ribTool(f: Extract<KFeature, { type: "rib" }>) {
     return corners.every((c) => chainPts.some((q) => vlen(vsub(c, q)) < far));
   };
   const keep = touching(pieces, wire).filter((p) => touching([p], a).length && bounded(p));
-  if (!keep.length) throw new Error("Kaburga gövdeyle kapalı bir bölge oluşturmuyor; malzeme tarafını ters çevirin");
+  if (!keep.length) return null;
   keep.sort((x, y) => measureShapeVolumeProperties(x).volume - measureShapeVolumeProperties(y).volume);
   return keep[0];
 }
@@ -988,7 +1034,8 @@ let heals: { e: Record<string, any>; f: Record<string, any>; v?: Record<string, 
 const refKey = (v: Vec3) => v.map((x) => (+x).toFixed(3)).join(",");
 function bbAll(): { lo: Vec3; sz: Vec3 } {
   const lo: Vec3 = [Infinity, Infinity, Infinity], hi: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const b of bodies) {
+  // D7-9: yalnız yüzey gövdeleri varken de göreli konum (imza) anlamlı olsun
+  for (const b of [...bodies, ...(bodies.length ? [] : surfs.map((x) => x.s))]) {
     try {
       const [a, c] = (b as any).boundingBox.bounds;
       for (let i = 0; i < 3; i++) (lo[i] = Math.min(lo[i], a[i])), (hi[i] = Math.max(hi[i], c[i]));
@@ -1355,12 +1402,15 @@ function tabSlot(f: Extract<KFeature, { type: "tabslot" }>) {
     slots.push(boxPrism(vsub(vsub(vsub(s, vmul(fr.d, f.L / 2 + f.c)), vmul(fr.e, fr.T / 2 + f.c)), vmul(pf.n, 0.001)), vmul(fr.d, f.L + 2 * f.c), vmul(fr.e, fr.T + 2 * f.c), vmul(pf.n, f.H + f.c + 0.002)));
   }
   // yuvalar: tırnak yüzünün sahibi dışındaki gövdelerden
+  let touched = false;
   bodies = bodies.flatMap((b) => {
     if (b === owner) return [b];
     let r = b;
-    for (const sl of slots) if (bbOverlap(r, sl)) r = r.cut(sl.clone());
+    for (const sl of slots) if (bbOverlapStrict(r, sl)) (r = r.cut(sl.clone())), (touched = true);
     return solidsOf(r);
   });
+  // D7-11: tırnaklar karşı levhaya girmiyorsa yanlış (geniş) yüz seçilmiştir
+  if (!touched) throw new Error("Tırnaklar karşı levhaya girmiyor — karşı levhaya bakan dar uç yüzünü (ya da kenarını) seçin");
   const own = bodies.find((b) => b === owner);
   if (!own) throw new Error("Tırnak gövdesi bulunamadı");
   let m: Shape = own;
@@ -1899,6 +1949,11 @@ function miterFlange(f: Extract<KFeature, { type: "miterflange" }>) {
       );
     }),
   );
+  // D6-15: serbest uçlarda baştan / sondan kısaltma
+  const n0 = infos.length - 1;
+  if (!joints.some((j) => (j.i === 0 && j.ei === 0) || (j.j === 0 && j.ej === 0))) ext[0][0] = -((f as any).o1 ?? 0);
+  if (!joints.some((j) => (j.i === n0 && j.ei === 1) || (j.j === n0 && j.ej === 1))) ext[n0][1] = -((f as any).o2 ?? 0);
+  if (infos.some((g, i) => g.Le + ext[i][0] + ext[i][1] < 1e-3)) throw new Error("Kısaltmalar kenar uzunluğundan büyük");
   const solids = infos.map((g, i) => {
     const u = g.nF;
     const pn = vcross(g.s, u);
@@ -1962,7 +2017,15 @@ function closeCorner(f: Extract<KFeature, { type: "closecorner" }>) {
       for (const ed of body.edges as any[]) umin = Math.min(umin, vdot(vsub(tup(ed.startPoint), cb), ub), vdot(vsub(tup(ed.endPoint), cb), ub));
       prism = prism.cut(halfSpace(vadd(cb, vmul(ub, umin + f.r + f.t)), ub));
     }
-    if (volOf(prism) > 1e-9) bodies[bi] = bodies[bi].fuse(prism);
+    if (volOf(prism) <= 1e-9) continue;
+    if (f.overlap && f.gap > 0 && !f.weld) {
+      // D6-3: bindirmede karşı flanşın ucu, uzatılan flanştan boşluk kadar geri kırpılır (iki flanş kaynaşmaz, açınım alınabilir)
+      const fr = faceRectFrame(pf);
+      let region: Shape = prism.clone();
+      for (const s of [1, -1]) region = region.fuse(prism.clone().translate(vmul(fr.e, s * f.gap) as any));
+      bodies[bi] = bodies[bi].cut(region);
+    }
+    bodies[bi] = bodies[bi].fuse(prism);
   }
   bodies = bodies.flatMap(solidsOf);
 }
@@ -2547,7 +2610,8 @@ function memberCore(f: Extract<KFeature, { type: "member" }>): Omit<MemberPart, 
   if (f.corner !== "none" || ovs.length)
     for (const list of joints.values()) {
       if (list.length !== 2) continue;
-      const [A, B] = list;
+      // D8-6: köşede A = gelen (ucu köşede biten), B = giden eleman — kapalı çerçevede alın köşeleri tutarlı (fırıldak), 2 boy çıkar
+      const [A, B] = list[0].end === 0 && list[1].end === 1 ? [list[1], list[0]] : list;
       const la = lines[A.i], lb = lines[B.i];
       if (!la || !lb) continue;
       const V = A.end === 0 ? la.a : la.b;
@@ -2828,7 +2892,20 @@ function trimTool(f: Extract<KFeature, { type: "trim" }>) {
             return { bs, k: bk, dist: Infinity };
           }
         })
-        .filter((x) => x.dist < 3 * (reg.R + bR) && vdot(vsub(centroid(x.bs), P), dOut) > -(reg.R + bR));
+        .filter((x) => {
+          if (x.dist < 3 * (reg.R + bR) && vdot(vsub(centroid(x.bs), P), dOut) > -(reg.R + bR)) return true;
+          // D8-5: sınırı çok aşan uç — hedef ekseni sınır elemanın eksenini bu uca yakın yarıda kesiyorsa
+          const br = memberReg.get(x.k);
+          if (!br || br.arc) return false;
+          const u = vsub(reg.b, reg.a), w = vsub(br.b, br.a), r0 = vsub(reg.a, br.a);
+          const A = vdot(u, u), B = vdot(u, w), C = vdot(w, w), D = vdot(u, r0), E = vdot(w, r0), den = A * C - B * B;
+          if (Math.abs(den) < 1e-9) return false;
+          const s = (B * E - C * D) / den, t2 = (A * E - B * D) / den;
+          const gap = vlen(vsub(vadd(reg.a, vmul(u, s)), vadd(br.a, vmul(w, t2))));
+          const tol = (reg.R + br.R) / Math.sqrt(C);
+          if (gap > reg.R + br.R + 1 || t2 < -tol || t2 > 1 + tol) return false;
+          return end === 0 ? s < 0.5 : s > 0.5;
+        });
       if (!near.length) continue;
       touched = true;
       const M = 4 * bR + 2 * reg.R + Math.max(...near.map((x) => x.dist)) + 5;
@@ -3302,7 +3379,9 @@ function edgeFlange(f: Extract<KFeature, { type: "edgeflange" }>) {
   if (!bodies.length) throw new Error("Önce bir taban flanş oluşturun");
   const t = f.t, r = Math.max(0.01, f.r);
   const th = (f.angle * Math.PI) / 180;
-  const shift = f.pos === "bendout" ? 0 : f.pos === "outside" ? -r : -(r + t);
+  // D6-6: malzeme içte / dışta — dış / iç sanal keskin köşe kenarda kalır (90° dışında geri çekme (r(+t))·tan(θ/2))
+  const sb = f.angle <= 90 ? Math.tan(th / 2) : 1;
+  const shift = f.pos === "bendout" ? 0 : f.pos === "outside" ? -r * sb : -(r + t) * sb;
   let Lf = f.L;
   if (f.lenRef !== "tangent") {
     const R = f.lenRef === "outer" ? r + t : r;
@@ -3438,9 +3517,21 @@ function sheetForm(f: Extract<KFeature, { type: "sform" }>) {
   const ang = ((f.ang ?? 0) * Math.PI) / 180;
   const xd = vadd(vmul(fr.x, Math.cos(ang)), vmul(yv, Math.sin(ang))), yd = vcross(fr.n, xd);
   const tn = Math.tan(((f.draft ?? 0) * Math.PI) / 180);
+  // D6-9: şekillendirme seçilen yüzün sınırından taşmamalı
+  const pf = (f.pl as any).face ? planarFace((f.pl as any).face) : null;
   for (const p of f.pts) {
     // yüz alt taraftaysa (kabartma sacın içine doğru) taban yüzeyi kalınlık kadar kaydır
     const P0 = toWorld(fr, p);
+    if (pf && f.kind !== "louver") {
+      try {
+        const v = makeVertex(P0);
+        const r = f.kind === "dimple" ? f.D / 2 : Math.min(f.D, f.L) / 2;
+        if (measureDistanceBetween(v, pf.face) > 1e-3) throw new Error("Şekillendirme konumu seçilen yüzün dışında");
+        for (const e of pf.face.edges as any[]) if (measureDistanceBetween(v, e) < r - 1e-6) throw new Error("Şekillendirme yüzün sınırından taşıyor — konumu kenardan en az yarıçap kadar içeri alın");
+      } catch (e) {
+        if (/Şekillendirme/.test((e as Error).message)) throw e;
+      }
+    }
     const P = f.down ? vsub(P0, vmul(fr.n, t)) : P0;
     let outer: Shape, inner: Shape;
     if (f.kind === "dimple") {
@@ -3684,11 +3775,11 @@ function sketchBend(f: Extract<KFeature, { type: "sketchbend" }>) {
   bodies = bodies.flatMap(solidsOf);
 }
 
-function flatPattern(id: number, bodyIdx: number, t: number, k: number | ((a: number, r: number) => number)) {
+function flatPattern(id: number, bodyIdx: number, t: number, k: number | ((a: number, r: number) => number), fix?: { o: Vec3; n: Vec3 }) {
   try {
     if (!bodies.length) throw new Error("Açılacak sac yok");
     const b = bodies[Math.max(0, Math.min(bodyIdx, bodies.length - 1))];
-    const u = unfold(b, t, k);
+    const u = unfold(b, t, k, fix); // D6-16: kullanıcının seçtiği sabit yüz
     const solid = profile(u.loops).sketchOnPlane(makePlane(u.frame)).extrude(-t);
     const mesh = toMesh(solid);
     const sh = (p: Vec2): Vec2 => [p[0] - u.min[0], p[1] - u.min[1]];
@@ -3839,6 +3930,12 @@ async function buildFeature(f: KFeature) {
       if (!bodies.length) throw new Error("Delik için önce bir katı oluşturun");
       const solid = holeTool(f);
       tools.set(f.id, { solid, cut: true, merge: true });
+      // D8-18: özellik kapsamı — yalnız deliğin açıldığı yüzün gövdesi
+      if ((f as any).only && (f as any).pl?.face) {
+        const bi = bodyIdxOf((f as any).pl.face);
+        bodies = bodies.flatMap((b, i) => (i === bi ? solidsOf(b.cut(solid)) : [b]));
+        return;
+      }
       applyTool(solid, true);
       return;
     }
@@ -3863,7 +3960,7 @@ async function buildFeature(f: KFeature) {
           } catch {}
           continue;
         }
-        if (r.key.startsWith("fea|")) {
+        if (r.key.startsWith("fea|") || r.key.startsWith("photo|")) {
           const h = bodies.length ? [...matchFaces([r.face])][0] : undefined;
           const fc = h === undefined ? null : allFaces().find((x) => x.hashCode === h);
           if (fc) (frames as any)[r.key] = { o: [0, 0, 0], x: [1, 0, 0], n: [0, 0, 1], c: tup(fc.center), s: faceSig(fc, bbAll()).s };
@@ -4105,6 +4202,15 @@ async function buildFeature(f: KFeature) {
         const es: any[] = [];
         for (const b of src) for (const e of b.edges as any[]) if (hs.has(e.hashCode) && !es.some((x) => x.hashCode === e.hashCode)) es.push(e);
         if (es.length < f.edges!.length) throw new Error("Sınır kenarlarından bazıları bulunamadı");
+        // F1: kenarlar kapalı döngü oluşturmalı (her uç tam iki kenarda)
+        const ek = (p: Vec3) => p.map((v) => Math.round(v * 1000)).join(",");
+        const cnt = new Map<string, number>();
+        for (const e of es) {
+          const a = tup(e.startPoint), b = tup(e.endPoint);
+          if (vlen(vsub(a, b)) < 1e-6) continue;
+          for (const q of [a, b]) cnt.set(ek(q), (cnt.get(ek(q)) ?? 0) + 1);
+        }
+        if ([...cnt.values()].some((n) => n !== 2)) throw new Error("Seçilen kenarlar kapalı bir sınır oluşturmuyor — eksik kenarları da seçin");
         const mk = new oc.BRepOffsetAPI_MakeFilling(3, 15, 2, false, 1e-5, 1e-4, 0.01, 0.1, 8, 9);
         for (const e of es) mk.Add(e.wrapped, oc.GeomAbs_Shape.GeomAbs_C0, true);
         mk.Build(new oc.Message_ProgressRange());
@@ -4115,7 +4221,15 @@ async function buildFeature(f: KFeature) {
       const frame = resolvePlane(f.pl!);
       const off = f.mid ? -f.d / 2 : 0;
       let res: Shape;
-      if (f.mode === "planar") res = (profile(f.loops).sketchOnPlane(makePlane(frame)) as any).face();
+      if (f.mode === "planar") {
+        // D7-7: delikli (çok döngülü) profil Sketches döndürür → yüzleri tek kabuğa
+        const sk: any = profile(f.loops).sketchOnPlane(makePlane(frame));
+        res = typeof sk.face === "function" ? sk.face() : (() => {
+          const fs = typeof sk.faces === "function" ? sk.faces() : sk.sketches?.map((x: any) => x.face());
+          const arr = Array.isArray(fs) ? fs : [fs];
+          return arr.length === 1 ? arr[0] : makeCompound(arr.map((x: any) => x.clone()));
+        })();
+      }
       else {
         const wires: any[] = f.path ? [pathWire(f.path.segs, f.path.closed, frame)] : f.loops.map((l) => (loopDrawing(l).sketchOnPlane(makePlane(frame, off)) as any).wire);
         const shapes: Shape[] = wires.map((w) => {
@@ -4928,8 +5042,14 @@ async function asmOp(id: number, op: "step" | "interfere" | "clearance" | "draw"
   if (op === "step") {
     const ok = placed.filter(Boolean);
     if (!ok.length) return post({ id, type: "asm", blob: null, message: "Montajda katı yok" });
-    const c = makeCompound(ok.map((x) => x.clone()));
-    post({ id, type: "asm", blob: c.blobSTEP() });
+    // D9-19: XCAF ile bileşen adlı ürün yapısı; olmazsa tek bileşik
+    try {
+      const shapes = placed.map((s, i) => (s ? { shape: s.clone(), name: parts[i].name || `Bileşen ${i + 1}`, color: "#9fb4cc" } : null)).filter(Boolean) as any[];
+      post({ id, type: "asm", blob: exportSTEP(shapes, { unit: "MM" }) });
+    } catch {
+      const c = makeCompound(ok.map((x) => x.clone()));
+      post({ id, type: "asm", blob: c.blobSTEP() });
+    }
     return;
   }
   if (op === "clearance") {
@@ -4994,7 +5114,7 @@ self.onmessage = (ev: MessageEvent<KernelRequest>) => {
         } catch {}
       post({ id: req.id, type: "owner", r } as any);
     } else if ((req as any).type === "isect") faceIsect(req.id, (req as any).a, (req as any).b);
-    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k);
+    else if (req.type === "flat") flatPattern(req.id, req.body, req.t, (req as any).table?.length ? (ang: number, rin: number) => tableK((req as any).table, req.t, rin, ang) : req.k, (req as any).fix);
     else if (req.type === "cutlist") cutList(req.id);
     else if (req.type === "exportBody") exportBody(req.id, req.body);
     else if (req.type === "drawing") drawingData(req.id, req.body);

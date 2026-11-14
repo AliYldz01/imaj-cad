@@ -82,7 +82,8 @@ with sync_playwright() as p:
     t.mclick(20, 20); t.mclick(20, 50); t.close_quick()
     s = t.st(); d = t.data()
     cl = [e for e in d["ents"] if e["t"] == "line" and e.get("cons")]
-    t.chk("merkez çizgisi = yapı çizgisi, ikinci tıkla biter (SW'de zincir sürer)", len(cl) == 1 and not s["drawing"], (len(cl), s["drawing"]))
+    t.chk("merkez çizgisi = yapı çizgisi, zincir sürer (SW, D1-13)", len(cl) == 1 and s["drawing"], (len(cl), s["drawing"]))
+    t.key("Escape")
     t.chk("dikey merkez çizgisine dikey ilişkisi", s["rels"].count("vertical") >= 3, s["rels"])
 
     # ---------- 7) orta noktalı çizgi

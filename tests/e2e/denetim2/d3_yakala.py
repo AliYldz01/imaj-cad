@@ -61,7 +61,7 @@ with sync_playwright() as p:
     hz = [x for x in nr if x[0] == "horizontal" and C["c"] in x[1]]
     t.chk("çeyrek noktasında aynı yatay ilişki iki kez eklenmez (gereksiz kısıt)", len(hz) == 1 and not t.res()["red"], (hz, t.res()["red"]))
     # A: y=-20, B: (-40,-45)→(-20,5) eğim 2.5 → y=-20'de x=-30
-    case("kesişim → iki çizgi üzerinde", (-85, -60), (-30, -20), lambda e, r, s: sum(1 for x in r if x[0] == "onLine") == 2 and abs(P(s, e["p2"])[0] + 30) < 1e-6)
+    case("kesişim → iki çizgi üzerinde", (-85, -60), (-30, -20), lambda e, r, s: sum(1 for x in r if x[0] == "onLine") == 2 and abs(P(s, e["p2"])[0] + 30) < 1e-4)  # v0.90: çözücü toleransı
     case("çizgi üzerinde → üzerinde ilişkisi", (-60, 30), (-58, -20), lambda e, r, s: any(x[0] == "onLine" for x in r))
     case("yatay çıkarım (0,4° eğik) → yatay ilişkisi", (0, -60), (40, -59.7), lambda e, r, s: any(x[0] == "horizontal" for x in r) and abs(P(s, e["p1"])[1] - P(s, e["p2"])[1]) < 1e-6)
     case("dikey çıkarım → dikey ilişkisi", (75, -10), (75.3, -50), lambda e, r, s: any(x[0] == "vertical" for x in r))

@@ -35,7 +35,7 @@ with sync_playwright() as p:
     ok1 = L1 and math.hypot(P(s, L1["p1"])[0] + 40, P(s, L1["p1"])[1] - 70) < 3
     t.chk("telefon: parmakla çizgi (imleç kayması ile) doğru yerde", ok1, L1 and (P(s, L1["p1"]), P(s, L1["p2"])))
     # ikinci çizgi
-    b0 = t.sk(); t.cmd("Çizgi"); dtap(-40, 140); dtap(25, 160); t.key("Escape")
+    b0 = t.sk(); t.cmd("Çizgi"); dtap(-40, 20); dtap(25, 40); t.key("Escape")  # v0.90: orijin görünür bandın ortasında (y 140 üst panelin altında kalıyordu)
     ne2 = new(b0); L2 = ne2[0] if ne2 else None
     # 2) Seç → çizgiye dokun → Yatay
     t.cmd("Seç")

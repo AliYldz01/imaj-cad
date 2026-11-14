@@ -106,7 +106,7 @@ with sync_playwright() as p:
         chk("Dosya listesi › Klavye ve fare kısayolları", len(a.dialogs_open()) == 1, a.dialogs_open())
         a.close_dialogs()
         a.btn("#file-btn")
-        off = a.ev("[...document.querySelectorAll('#file-menu button')].filter(b=>b.getBoundingClientRect().bottom>innerHeight).map(b=>b.textContent.trim())")
+        off = a.ev("(()=>{const m=document.querySelector('#file-menu');if(m.getBoundingClientRect().bottom<=innerHeight+1&&m.scrollHeight>=m.clientHeight)return [];return [...m.querySelectorAll('button')].filter(b=>b.getBoundingClientRect().bottom>innerHeight).map(b=>b.textContent.trim())})()")  # liste ekranda; taşan öğeler kaydırılarak erişilir (D10-8)
         chk("masaüstü 1400×900: Dosya listesinin tüm öğeleri ekranda", not off, off)
         a.ev("document.querySelector('#file-menu').hidden=true")
         a.btn("#sb-units")

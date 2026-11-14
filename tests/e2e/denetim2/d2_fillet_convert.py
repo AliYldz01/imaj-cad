@@ -56,7 +56,7 @@ with sync_playwright() as p:
     A.edit_sketch_of("e1")
     A.cmd("Eskiz Pahı"); A.pmfield("Mesafe", 6); A.clk(-40, 30)
     i = A.skinfo(); print("pah", i)
-    chk("pah: 5 çizgi", i["ents"] == 5, i["types"])
+    chk("pah: 5 çizgi (+ sanal köşe noktası, v0.90 D2-9)", i["types"].count("line") == 5 and i["dof"] == 2, i["types"])
     print("BILGI pah sonrası serbestlik", i["dof"], "ölçüler", i["dims"])
     A.ok()
     chk("✓ → pahlı hacim", abs(A.vol() - (48000 - 18 * 10)) < 0.5, A.vol())

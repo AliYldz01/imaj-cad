@@ -85,7 +85,7 @@ with sync_playwright() as p:
     t.press_rel("Paralel")
     s = t.sk(); toast = t.ev("(document.querySelector('#toast')||{}).textContent")
     t.chk("çelişen Paralel reddedildi, geometri aynı", len(s["rels"]) == n0 and s["pts"] == pts0, (len(s["rels"]) - n0, toast))
-    t.chk("çelişki için kullanıcıya uyarı", "çeliş" in (toast or "").lower() or "aşırı" in (toast or "").lower(), toast)
+    t.chk("çelişki için kullanıcıya uyarı (ya da çelişen ilişki hiç sunulmaz — v0.90)", "çeliş" in (toast or "").lower() or "aşırı" in (toast or "").lower() or not any("Paralel" in b for b in t.panel_btns()), toast)
 
     # G) gereksiz ilişki: üst + alt (ikisi yatay) → Paralel
     t.key("Escape"); t.kclick(20, 0); t.kclick(20, 30, "Control")

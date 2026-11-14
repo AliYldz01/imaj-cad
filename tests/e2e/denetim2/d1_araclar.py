@@ -43,6 +43,7 @@ with sync_playwright() as p:
         if extra == "esc": t.close_quick(); t.key("Escape")
         if extra == "dbl30": t.mclick(30, 0, dbl=True)
         t.close_quick()
+        if label == "Merkez Çiz.": t.key("Escape")  # D1-13: merkez çizgisi zinciri sürer
         n = len(t.data()["ents"])
         ok = t.chk(f"[{label}] çizildi (öğe var, çizim bitti)", n > 0 and not t.st()["drawing"], (t.st()["ents"], t.st()["drawing"]))
         if not ok:

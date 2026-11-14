@@ -6,6 +6,8 @@ with sync_playwright() as p:
     t = T(p)
     sk0 = sketch("s0", "Taban", TOP, lambda pt, line, rect, c, tx: rect(-40, -30, 40, 30))
     sk0["data"]["dims"] = [{"id": "W", "t": "dist", "refs": ["p1", "p2"], "v": 80, "sub": "a", "lp": [0, -40]}]
+    # v0.90: dikdörtgen kalsın (H/V ilişkileri) — önce genişlik değişince kutu yamuğa dönüyordu, sağ kenar eğik kalıyordu
+    sk0["data"]["rels"] = [{"id": "rh1", "t": "horizontal", "refs": ["l5"]}, {"id": "rh2", "t": "horizontal", "refs": ["l7"]}, {"id": "rv1", "t": "vertical", "refs": ["l6"]}, {"id": "rv2", "t": "vertical", "refs": ["l8"]}]
     t.setup([sk0, ext("e0", "s0", 20)])
     P = lambda s, k: (s["pts"][k]["x"], s["pts"][k]["y"]) if k != "O" else (0.0, 0.0)
     # üst yüzde eskiz
@@ -39,7 +41,8 @@ with sync_playwright() as p:
     f = next(x for x in t.doc()["features"] if x["id"] == fid)
     t.edit_sketch(f["name"])
     cw2 = wld(P(t.sk(), circ["c"]))
-    t.chk("model kenarına verilen ölçü modeli izler (kutu 100 → daire x=38)", abs(cw2[0] - 38) < 1e-3, cw2)
+    mx = t.ev("window.__app.viewer.mesh.bbox.max[0]")
+    t.chk("model kenarına verilen ölçü modeli izler (kutu 100 → daire sağ kenardan 12)", abs(cw2[0] - (mx - 12)) < 1e-3, (cw2, mx))
     # ölçü silme: etiketi seç → Delete → geri al ; şeritten Sil
     nd = len(t.sk()["dims"])
     t.pg.locator(".dim").first.click(); time.sleep(0.2); t.key("Delete")

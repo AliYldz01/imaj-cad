@@ -81,7 +81,8 @@ export interface AsmFeat {
   off?: boolean;
 }
 /** desen güdümlü bileşen çoğaltma (SolidWorks): tohum bileşenler, sürücü bileşenin parçasındaki çoğaltma özelliğini izler */
-export interface DrivenPattern { id: string; seeds: string[]; drv: string; feat: string }
+/** desen güdümlü (drv + feat) ya da D9-14: montajın kendi doğrusal / dairesel bileşen çoğaltması (own) */
+export interface DrivenPattern { id: string; seeds: string[]; drv: string; feat: string; own?: { kind: string; ax: string; n: number; d: number; ang: number; n2: number; d2: number; ax2: string } }
 export interface AsmDoc { kind: "asm"; name: string; comps: AsmComp[]; mates: Mate[]; explode?: number; steps?: ExplodeStep[]; exploded?: boolean; subs?: SubAsm[]; feats?: AsmFeat[]; pdp?: DrivenPattern[] }
 /** montajın kendi ana düzlemleri / orijini için sanal bileşen kimliği */
 export const ASM_ID = "__asm";
@@ -310,7 +311,8 @@ export function loadLib(): Record<string, AsmPart> {
 }
 export function saveToLib(p: AsmPart) {
   const l = loadLib();
-  l[p.name] = JSON.parse(JSON.stringify({ name: p.name, features: p.features, eqs: p.eqs, profiles: p.profiles }));
+  const P: any = p; // D9-16: malzeme, değişkenler ve yapılandırmalar da
+  l[p.name] = JSON.parse(JSON.stringify({ name: p.name, features: p.features, eqs: p.eqs, profiles: p.profiles, material: P.material, vars: P.vars, configs: P.configs, config: P.config, key: P.key }));
   try {
     localStorage.setItem(LIB, JSON.stringify(l));
   } catch {}

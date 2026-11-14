@@ -110,6 +110,25 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
 - Betik düzeltmeleri: `d2_mobile`, `d1_mobil`, `d1_akis`, `d1_lib`, `d3_telefon` seçim araçlarında artık kaymasız dokunur; dar ekranda ekran çubuğu / görünüm çubuğu altına düşen noktalar yerine tuvaldeki noktalar kullanılır; iki parmak testi son işlemin (sürükleme) geri alındığını denetler.
 - Hâlâ açık (başka bulgular): A-1 görüntü stili telefonda menüde yok, küpün "Üst" hücresi 3B izdüşümde kutu merkezine denk gelmiyor (betik yapıtı).
 
+### Paket 5 notları (v0.90)
+
+- Eskiz: bloğun her örneği kendi ekleme noktasında kalır (D2-2); eskiz kendi alt özelliğinin yüzüne taşınamaz, ağaçtaki düzleme tıklanabilir (D2-3, E-15); döndürmede yatay / dikey ilişki ve ölçüler 90°'de yer değiştirir, diğer açılarda hizalı ölçüye çevrilir (D2-4); hızlı ölçü kutusu odak almaz, rakam yazınca odaklanır, öğenin ortasına konur, zincir bitince kalkar (D1-2); sayıyla girişte ölçü + var olan noktaya bağlanma, kapanınca gereksiz ölçü atılır (D1-4, D1-6); yay ucundan başlayan çizgide teğet (D1-7); yay kanal merkezi çıkarımı (D1-10).
+- Dönüştür yüzü tek adım, var olan kenar yinelenmez (D2-7); ayna ekseni sürüklemede yerinde kalır (D2-8); eskiz pahı iki mesafe ölçüsüyle ve sanal köşeyle gelir (D2-9); model kenarına ölçü, delme ve model köşesine yakalanan noktalar modeli izler (`links` p / k, D3-6).
+- Gereksiz ölçü / ilişki: eskiz "Aşırı tanımlı (gereksiz)" ve kırmızı (D3-7), gereksiz ilişki 2B / 3B reddedilir ve sunulmaz (D3-8, E-2), sürülen → sürücü sorulur (D3-9), mavi kılavuz ilişki eklemez (D3-10), Değiştir kutusu tam değeri / ifadeyi korur (D3-11, D7-8), 3B kutu ifade okur (D3-12), SketchXpert çözülemeyen eskizde de öneri verir (D3-14), ilişki simgesi tek seçim (D3-15).
+- Özellikler: 3B eskiz süpürme yolu (D3-13, D4-5), 3B yolda burulma alanı gizli (D4-6), kare dışa koniklik (D4-2), kaynak eskiz değişince bölge seçimi sıfırlanır (D4-4), sığdırma ölçü etiketlerini ve paneli hesaba katar (D4-7, D1-12, D6-7), ref. eksen iki düzlem / silindir yüzü (D5-7), koniklik analizi eğri yüz (D5-8), ✓ bekleyen önizlemeyi bekler (D5-10), "Eksik referans" bastırma / özellik hatasında açılmaz (D5-11, D7-17), düzlem türü değişince öteleme 0 (D5-12), nötr düzlem modelden (D5-14).
+- Sac: bindirmede boşluk uygulanır (D6-3 kısmi: bindirmeli köşe hâlâ düzleştirilemiyor), R ≠ t saca dönüştürme açılıyor (D6-4, doğrulandı), tırnak yüzü kenardan seçilir ve yanlış yüz uyarılır (D6-5, D7-11), malzeme içte / dışta 90° dışı geri çekme (D6-6), profil eskizi ✕ ile silinir ve ad çakışmaz (D6-8).
+- Yüzey / genel: Sınır Doldur önizleme + kapalı sınır denetimi + yüzeyde kalıcı referans (D7-5, D7-9), Yüzey Kırp araç listesi + referans düzlemi (D7-6, D7-16), delikli düzlemsel yüzey (D7-7), tüm sayısal alanlara denklem anahtarı (D7-12), tasarım tablosu geri alınır (D7-13), yapılandırmada değişkene bağlı ölçü için kapsam sorulur (D7-14), silmede geri sarma çubuğu (D7-15), silme / bastırma bağımlıları sorar ve birlikte bastırır (D7-17, D10-12).
+- Kaynaklı / SEA: panel malzeme ve geri al sonrası yenilenir, küçültülebilir (D8-2, D8-4, D8-12), çok aşan eleman kırpılır (D8-5), alın köşeleri gelen / giden düzeninde (D8-6), kesim listesi malzemesi kütlede, özellikler boy değişince taşınır (D8-7, D8-8), nokta seçimi ekran uzaklığıyla (D8-10).
+- Montaj / resim / dosya: parça geri alması resim açıklamalarını silmez (D9-7), hizalamayı çevir (D9-8), ilk işlem geri alınır (D9-9), bağlam içi düzenleme ve kütüphane malzeme / değişken / yapılandırmayı korur (D9-10, D9-16), tüm sekmelerde otomatik hizalama + SmartMate (D9-11), eşleşmesiz montaj ağacı (D9-12), patlatma ✕ (D9-13), bileşen çoğaltma düzenlenebilir desen (D9-14), rijit alt montaj kaymaz (D9-15), iki pencere: bu pencerede kaydedilmemiş değişiklik yoksa öbür pencerenin sürümü sessizce alınır, varsa uyarı (D10-6), yenilemede sekmeler (D10-7), sağ tık özellik işlemleri (D10-11), onaylanmamış eskiz kayda girmez (D10-13).
+- Betik düzeltmeleri: `d1_duzlem` (tık noktası 100 mm düzlemin içinde), `d1_cizgi` / `d1_araclar` (merkez çizgisi zinciri sürer), `d1_mobil` (yeni eskiz orijini görünür bandın ortasında), `d2_block_io` (yeni dairenin kenar noktası orijine yakalanmasın), `d10_akis` / `d10_dosya` / `d10_dosya2` / `d10_diger` / `d10_gezinme` / `d10_menu` (yeni pencereler, kaydırılabilir liste, küp dikişi tıkı), `d2_misc` (eskiz düzlemi ağaçtan), `d2_fillet_convert` (pah artık sanal köşe noktasıyla), `d3_olcu3` / `d3_iliski2` (kutu H/V ilişkili — önce genişlik değişince yamuğa dönüyordu), `d3_yakala` (çözücü toleransı 1e-4), `d3_tanim` (çelişen ilişki sunulmaz), `d1_serbest_sayi` (gereksiz sayısal ölçü atılır), `d4_supur3b` (3B yolda burulma gizli), `d7_yuzey2` (bağımlı Dik de bastırılır).
+
+### Paket 6 notları (v0.90)
+
+- Düzeltilen düşük bulgular: D1-11…D1-18, D2-10…D2-18, D3-16…D3-23, D3-25, D4-8…D4-11, D4-12 (kısmi: süpürme / loft "Sonucu birleştir"), D5-6, D5-9, D5-13, D5-15, D5-17, D6-9, D6-12…D6-17, D7-18, D7-20…D7-22, D8-9, D8-11, D8-13…D8-18, D9-17…D9-22, D9-25, D9-28, D10-14…D10-25; ilk rapordan P-4 (tüm tüketilen eskizler ağaçta çocuk), P-5 (dairesel çoğaltmada referans eksen).
+- Doğrulama sırasında bulunup düzeltilenler: ölçü etiketi ilişki simgesinin üstünde (çift tık engellenmiyordu), Delme dik bakışta uç uca görünen kenarlarda düzlemi kesen kenarı seçer, sekme kapatmada dosyaya kaydedilmemiş belge de sorulur (D10-19), Dosya listesi masaüstünde de ekranın altına taşmaz (D10-8).
+- Açıklamayla kapanan: D5-16 (OCC radyüs motoru teğet zinciri her zaman yayar — panelde belirtildi), D6-10 (bilgi).
+- Açık kalan: D3-24 (kısa dokunuşta kaydırmasız yerleştirme denendi; basma / bırakma konumu tutarsız kaldığı için geri alındı), D6-3 (bindirmeli köşe düzleştirme), D6-11 (açınım DXF'inde şekillendirme işaretleri), D7-19 (yüzey gövdesinde yüz rengi), D9-23 (montaj resminde ölçü araçları), D9-24 (sac resminde açınım görünüşü), D9-26 (simetrik eşleşmede gereksiz dönme), D9-27 (kam eşleşmesi %5), D4-12'nin diğer seçenekleri (süpürmede ince özellik, döndürmede uç koşulları).
+
 ## 4. Önerilen düzeltme sırası
 
 1. ✅ **Paket 1, veri kaybı ve sessiz yanlış** (v0.86):
@@ -271,7 +290,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/main.ts:1709-1712` `exitSketch(keep=false)`: `undoStack.pop()` koşulsuz çağrılıyor. Yeni eskizde `startSketch` (`:1648`) önce `undoStack.push` yaptığı için doğru. Ama var olan eskiz `editFeature` → `openSketch(f, false)` (`:2265`) ile açılırken yığına **hiç kayıt eklenmiyor**. Bu yüzden ilgisiz önceki kayıt atılıyor.
 - **Öneri:** `if (!keep) { if (isNew) { removeNew(); undoStack.pop(); } else f.data = JSON.parse(orig); }`. Yani var olan eskizde pop yapma.
 
-#### D1-2 — Çizimden sonra açılan hızlı ölçü kutusu klavye odağını alıyor: A, Esc ve kısayollar zincirde çalışmıyor
+#### ✅ D1-2 — Çizimden sonra açılan hızlı ölçü kutusu klavye odağını alıyor: A, Esc ve kısayollar zincirde çalışmıyor
 - **Önem:** Yüksek · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks'te:** Çizgi zincirinde A tuşu teğet yaya geçer. Esc zinciri bitirir. "Ekran üzerinde sayısal giriş" açık olsa bile değer kutusu kısayolları engellemez.
 - **Bizde (`d1_cizgi.py` §4):** "Çizdikten sonra ölçü gir" varsayılan açık (E-28). Çizgiden sonra fare ile `.dim-prompt.quick` kutusu açılıyor ve `input` odaklanıyor. A'ya basınca yay moduna geçilmiyor (`st.arc = false`). Kutudaki değer "a" oluyor (seçili metnin yerine yazılıyor). Kutu ✕ ile kapatılınca A çalışıyor. Esc de önce yalnız kutuyu kapatıyor, ikinci Esc gerekiyor. Ctrl+Z, Delete, F gibi kısayollar da bu sırada kutuya gidiyor (`keydown` → `stopPropagation`).
@@ -290,7 +309,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/sketch/editor.ts:1715-1717` (kutu konumu), `src/main.ts:7994-8004` (🎤 düğmesi tüm `.dim-prompt` kutularına ekleniyor). Dokunma `up` olayında çizim yapılıyor, tarayıcının ardından gönderdiği `click` aynı noktaya düşüyor.
 - **Öneri:** Kutuyu parmağın altına koyma (dokunma noktasının üstüne / altına en az 60 px uzağa konumla). Ya da kutu oluştuktan sonraki ~350 ms içinde gelen `click`'leri yut (`pointer-events: none` + `setTimeout`).
 
-#### D1-4 — Sayıyla girişte yatay / dikey çizgilere uzunluk ölçüsü eklenmiyor
+#### ✅ D1-4 — Sayıyla girişte yatay / dikey çizgilere uzunluk ölçüsü eklenmiyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** Sayısal girişle çizilen çizgiler girilen uzunlukla ölçülendirilir.
 - **Bizde (`d1_serbest_sayi.py`):**
@@ -308,7 +327,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/main.ts:7874` (`ed.isDrawing() ? ed.finishChain()`) ve `:7549`. `src/sketch/editor.ts:673` `finishChain()` yalnız `this.st = {}` yapıyor. `finishSpline` çağrılmıyor.
 - **Öneri:** `finishChain()` içinde `tool === "spline" && st.infs?.length >= 2` ise `finishSpline(false)`. Benzer biçimde çok tıklamalı araçlarda yarım kalan çizimi "Bitir"de anlamlıysa tamamla.
 
-#### D1-6 — Sayıyla giriş var olan noktalara bağlanmıyor: başlangıç orijine çakışık değil, kapanan zincir kapanmıyor
+#### ✅ D1-6 — Sayıyla giriş var olan noktalara bağlanmıyor: başlangıç orijine çakışık değil, kapanan zincir kapanmıyor
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks'te:** Sayısal girişle konan nokta var olan bir noktaya denk gelirse (orijin, zincirin ilk noktası) çakışık olur ve zincir kapanır.
 - **Bizde (`d1_serbest_sayi.py`):** X 0 / Y 0 ile başlayan, 50 / 30 / 50 / 30'luk dört kenarla başlangıca dönen kare:
@@ -320,7 +339,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/sketch/editor.ts:503-508` `at()` → `this.noInfer = true` (çıkarım tamamen kapalı, `ptId` hiç bulunmuyor).
 - **Öneri:** Sayıyla girişte yalnız yön / hizalama çıkarımını kapat. Tam aynı konumdaki (1e-6) var olan noktayı `ptId` olarak kullan.
 
-#### D1-7 — Yayın ucundan başlayan çizgide teğet çıkarımı / ilişkisi yok
+#### ✅ D1-7 — Yayın ucundan başlayan çizgide teğet çıkarımı / ilişkisi yok
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks'te:** Bir yayın ucundan yeni çizgi başlatılıp teğet doğrultuda çekilince sarı "Teğet" çıkarımı gösterilir ve teğet ilişkisi eklenir.
 - **Bizde (`d1_daire_yay.py` "D şekli"):**
@@ -346,14 +365,14 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/style.css:172` `#toast { bottom: calc(24px + …); z-index: 60 }`. `pointer-events: none` yok, konum telefon tepsisinin (`#tray`) üstünde.
 - **Öneri:** `#toast { pointer-events: none }` ve telefonda `bottom: calc(var(--tray-h) + …)`.
 
-#### D1-10 — Yay kanalın merkezi orijine (ya da tıklanan noktaya) bağlanmıyor
+#### ✅ D1-10 — Yay kanalın merkezi orijine (ya da tıklanan noktaya) bağlanmıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** Yay kanalda ilk tıklama (yay merkezi) orijin ya da var olan bir noktaysa çakışık olur.
 - **Bizde (`d1_kanal.py`):** Yay Kanal → orijine tık → (30,0) → (0,30) → (0,36). Yapı yayının merkezi yeni nokta `p1`, orijinle çakışık ilişkisi yok. Serbestlik 6. Uçtan sürükleyince şekil değişmiyor (E-26 hâlâ var).
 - **Kod:** `src/sketch/editor.ts:3063` `buildArcSlot` → `const c = addPt(sk, g.c)`. `clickInner` `case "aslot"` (`:2505`) çıkarım sonucunu (`st.infs[0]`) kullanmıyor (`ci` tanımlanıp `void` ediliyor, `:2520-2521`).
 - **Öneri:** Merkez için `this.makePoint(st.infs[0])` kullan. Başlangıç / bitiş tıklamalarındaki `ptId`'leri de çakışık yap.
 
-#### D1-11 — 3 noktalı merkez dikdörtgende ikinci nokta yatay / dikey çıkarımla konsa da ilişki eklenmiyor
+#### ✅ D1-11 — 3 noktalı merkez dikdörtgende ikinci nokta yatay / dikey çıkarımla konsa da ilişki eklenmiyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı / tutarsızlık
 - **Bizde (`d1_dikd.py`):**
   - 3N Merkez Dikd.: orijin → (30,0) (yatay çıkarım) → (30,20).
@@ -362,7 +381,7 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/sketch/editor.ts:2000` `st.bPos = this.infer(p, st.aPos).p` (çıkarımın `hv` bilgisi atılıyor). `rect3` / `para` `binf.hv` kullanıyor (`:2477`).
 - **Öneri:** `st.binf` sakla. `hv` varsa ilgili kenara (ya da yapı çizgisine) yatay / dikey ilişkisi ekle.
 
-#### D1-12 — Eskizi düzenle sığdırması ölçü etiketlerini hesaba katmıyor: etiketler ekran dışında kalıyor
+#### ✅ D1-12 — Eskizi düzenle sığdırması ölçü etiketlerini hesaba katmıyor: etiketler ekran dışında kalıyor
 - **Önem:** Düşük · **Tür:** Arayüz
 - **Bizde (`d1_daire_yay.py`, ekran görüntüsü `/tmp/c3.png`):**
   1. Çevre dairesi Ø30 → ✓ → ekstrüzyon → Eskizi düzenle.
@@ -372,41 +391,41 @@ Telefon yaşam döngüleri (`d1_mobil.py`): çizgi zinciri, dikdörtgen, daire, 
 - **Kod:** `src/main.ts:1691` `if (!isNew && f.data.ents.length) setTimeout(fitAll, 50)`.
 - **Öneri:** Sığdırma kutusuna `dims[].lp` noktalarını da kat. Ya da SolidWorks gibi düzenlemede görünümü değiştirme / yalnız dik bak.
 
-#### D1-13 — Merkez çizgisi tek parça çizince bitiyor (SolidWorks'te zincir sürer)
+#### ✅ D1-13 — Merkez çizgisi tek parça çizince bitiyor (SolidWorks'te zincir sürer)
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde:** Merkez Çiz. ile iki tık → yapı çizgisi oluşuyor, zincir bitiyor (`finishChain`).
 - **SolidWorks'te:** Merkez çizgisi aracı çizgi gibi zincirleme çalışır, çift tık / Esc ile biter.
 - **Kod:** `src/sketch/editor.ts:2231` `if (closed || cons) this.finishChain();`.
 
-#### D1-14 — Ağaçta zaten seçili özelliğe tıklamak seçimi kaldırıyor
+#### ✅ D1-14 — Ağaçta zaten seçili özelliğe tıklamak seçimi kaldırıyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (alan dışı, karşılaşıldı)
 - **Bizde:** Ekstrüzyon ✓ sonrası ağaçta Ekstrüzyon1 seçili geliyor. Kullanıcı "Eskizi düzenle" için ona tıklayınca seçim kalkıyor ve `#tree-actions` boşalıyor. İkinci tık gerekiyor.
 - **SolidWorks'te:** Seçili öğeye tıklamak seçili bırakır.
 - **Öneri:** Ctrl'süz tık her zaman seç (yalnız Ctrl+tık değiştirsin).
 
-#### D1-15 — Parabol gövdesinden sürükleme bütün parabolü taşıyor, biçim değişmiyor
+#### ✅ D1-15 — Parabol gövdesinden sürükleme bütün parabolü taşıyor, biçim değişmiyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde (`d1_egri.py`, deneme `pr6`):** (−20,0)–(20,0) uçlu, tepesi (0,20) parabolün tepesinden 10 mm yukarı sürüklendi. Uçlar da `(±20, 10)`'a kaydı. Kontrol noktası `k` (0,40 → 0,50) birlikte taşındı. Hacim aynı kaldı. Kapanış çizgisi de kaydı.
 - **SolidWorks'te:** Parabol sürüklenince uçlar yerinde kalıp tepe / odak değişir.
 - **Öneri:** Eğri gövdesinden sürüklemede uç noktaları geçici sabitle (E-34'teki yay önerisiyle aynı).
 
-#### D1-16 — Elle çizilen her spline "denklem eğrisi" (`eq: true`) olarak işaretleniyor
+#### ✅ D1-16 — Elle çizilen her spline "denklem eğrisi" (`eq: true`) olarak işaretleniyor
 - **Önem:** Düşük · **Tür:** Hata (görsel)
 - **Bizde:** `finishSpline` her spline'a `eq: true` yazıyor (`{"t":"spline","pts":[…],"eq":true}`). `renderRels` bu bayrakta spline noktalarındaki **Sabitle** simgelerini gizliyor. Elle çizilen spline'ın bir noktası sabitlenirse ⚓ görünmez.
 - **Kod:** `src/sketch/editor.ts:3092` (ayrıca `:1452`), `:4651`.
 - **Öneri:** `eq: true` yalnız `createEquationCurve`'de (`:1747`) kalsın.
 
-#### D1-17 — Şekil sihirbazı plakasında delikler kenar mesafesiyle değil merkezden ölçülü
+#### ✅ D1-17 — Şekil sihirbazı plakasında delikler kenar mesafesiyle değil merkezden ölçülü
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (beklenti)
 - **Bizde (`d1_serbest_sayi.py`):** Plaka 200×120, "Kenar mesafesi 20" → delikler x = ±80. Eskizde genişlik 200 → 260 yapılınca delikler ±80'de kaldı. Kenar mesafesi 20'den 50'ye çıktı.
 - **Öneri:** Delik konumlarını kenar çizgilerine ölçülendir (`pldist`, kenar mesafesi). Böylece sihirbazdaki "Kenar mesafesi" anlamı korunur.
 
-#### D1-18 — Ekstrüzyon / Kesme / Döndürme önerisi eskiz düzenlenirken de ekranda kalıyor
+#### ✅ D1-18 — Ekstrüzyon / Kesme / Döndürme önerisi eskiz düzenlenirken de ekranda kalıyor
 - **Önem:** Düşük · **Tür:** Arayüz
 - **Bizde (deneme `ps1`, ekran görüntüsü `/tmp/c3.png`):** Eskizden çıkınca 9 sn görünen `.suggest` çubuğu, hemen "Eskizi düzenle" ile girilen eskizde de duruyor. Çubuktaki "Ekstrüzyon"a basınca eskiz sessizce kapanıp ekstrüzyon paneli açılıyor.
 - **Öneri:** `openSketch` başında `.suggest`'i kaldır.
 
-#### D1-19 — Telefonda ekran çubuğunun ✓ düğmesi görünüm çubuğunun sağ düğmesinin üstüne biniyor
+#### ✅ D1-19 — Telefonda ekran çubuğunun ✓ düğmesi görünüm çubuğunun sağ düğmesinin üstüne biniyor
 - **Önem:** Düşük · **Tür:** Görsel (telefon)
 - **Bizde (390×844, `/tmp/m1.png`):** Yeşil ✓ (ekran çubuğu) `#viewbar`'daki son düğmenin ("Normal") üstünde. O düğmeye dokunulamıyor.
 - **Öneri:** Telefonda ekran çubuğunu görünüm çubuğunun altından başlat ya da görünüm çubuğunu sola kaydır.
@@ -579,7 +598,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/main.ts:1709-1712` `exitSketch(false)` → `if (isNew) removeNew(); else f.data = JSON.parse(orig); undoStack.pop();` — `undoStack.pop()` yalnız yeni eskizde (startSketch `:1648` push yapar) doğru; var olan eskiz açılırken (`openSketch(f,false)` / `editFeature :2265`) push yapılmıyor.
 - **Öneri:** `undoStack.pop()` yalnız `isNew` dalında yapılsın (ya da `openSketch` var olan eskizde de bir giriş push etsin ve ✓'de o kullanılsın).
 
-##### D2-2 — "Bloğu düzenle → Bloğu güncelle" diğer örneklerin yerini değiştiriyor (delik sessizce kayıyor)
+##### ✅ D2-2 — "Bloğu düzenle → Bloğu güncelle" diğer örneklerin yerini değiştiriyor (delik sessizce kayıyor)
 - **Önem:** Kritik · **Tür:** Hata (sessiz yanlış geometri)
 - **SolidWorks:** Blok tanımı değişince her örnek kendi ekleme noktasında kalır; örnekteki mevcut öğeler yerinden oynamaz.
 - **Bizde:** plaka + R5 daire (−20,0) → Seç → **Blok olarak kaydet** ("Delik") → **Blok Ekle** → (20,0)'a dokun → ✓ (2 delik, 46429,2) → yenile → 1. örneği seç → **Bloğu düzenle** → Daire aracıyla (−5,0) R3 çiz → **Bloğu güncelle**. Beklenen 2. örnek: R5 (20,0), R3 (35,0). Ölçülen: **R5 (12,5; 0)**, R3 (27,5; 0) → 2. örneğin mevcut deliği 7,5 mm sola kaydı; ✓ sonrası model bu yanlış konumla kuruldu, uyarı yok.
@@ -587,7 +606,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/editor.ts:1830` `blockDef` (noktalar öğelerin ağırlık merkezine göre) + `:1891-1912` `finishBlockEdit` (eski örneğin ağırlık merkezi `c` alınıp yeni tanım (yeni ağırlık merkezli) oraya yerleştiriliyor; tanımın ağırlık merkezi değişince örnek kayar).
 - **Öneri:** Blok örneğine kalıcı ekleme noktası / dönüşüm sakla (`blk` etiketinde ya da ayrı alan); tanım ekleme noktasına göre tutulsun; güncellemede örnek = ekleme noktası + tanım.
 
-##### D2-3 — "Eskiz düzlemini değiştir" eskizin kendi alt özelliğinin yüzünü kabul ediyor (döngüsel referans); model sessizce kayıyor
+##### ✅ D2-3 — "Eskiz düzlemini değiştir" eskizin kendi alt özelliğinin yüzünü kabul ediyor (döngüsel referans); model sessizce kayıyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Eskiz, kendisinden türeyen bir özelliğin yüzüne taşınamaz ("döngüsel referans" uyarısı).
 - **Bizde:** plaka (Üst düzlem, y 0…10) → ağaçta Eskiz1 → **Eskiz düzlemini değiştir** → grafik alanda (düzlem karesine ya da modele) tıkla → plakanın üst yüzü yakalandı, "Eskiz düzlemi değiştirildi". Sonuç: bbox **y 10…20** (plaka 10 mm yukarı kaydı), ağaçta hata yok; yenileme ve sonraki ölçü değişiklikleri bu döngüsel durumla devam ediyor. (E-15 hâlâ var: ağaçtaki "Ön Düzlem"e tıklanamadığı için kullanıcı grafik alanda tıklamak zorunda; ilk yakalanan da model yüzü.)
@@ -595,7 +614,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/main.ts:1475-1478` (`replanFor`: `planeRefFromHit` sonucu denetimsiz `commitDoc`).
 - **Öneri:** Seçilen yüzün sahibi (`kernel.faceOwner`) eskizden sonraki ve ona bağımlı bir özellikse reddet; ya da `face` referansını eskizden önceki özelliklerle sınırla.
 
-##### D2-4 — Döndür, ilişkili / ölçülü öğelerde H/V ilişkilerini siliyor ama yatay/dikey ölçüleri bırakıyor → şekil paralelkenara bozuluyor, uyarı yok
+##### ✅ D2-4 — Döndür, ilişkili / ölçülü öğelerde H/V ilişkilerini siliyor ama yatay/dikey ölçüleri bırakıyor → şekil paralelkenara bozuluyor, uyarı yok
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Döndürmede "ilişkileri koru" seçeneği vardır; döndürmeyle çelişen yatay/dikey ilişki ve ölçüler kaldırılır ya da işlem uyarıyla reddedilir; şekil bozulmaz.
 - **Bizde:** plaka 80×60 (H/V ilişkileri + yatay 80 / dikey 60 ölçüleri) → Eskizi düzenle → pencere seçimi (4 kenar) → **Döndür** → açı 90 → Uygula → ✓. Beklenen 60×80 (ya da uyarı). Ölçülen: H/V ilişkileri silindi, `dist:80 (sub h)` ve `dist:60 (sub v)` kaldı → çözücü 90° dönmüş dikdörtgeni yatay 80 / dikey 60'a zorladı → model bbox **85,74 × 114,26** (eğik paralelkenar), toast yok. Ölçüsüz dikdörtgende 60×80 doğru.
@@ -619,7 +638,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/editor.ts:685-701` `hitTest` (tolerans içindeki herhangi bir nokta, öğeden daha yakın olmasa da önce döner; dokunmada tolerans 20 px, `:1176`).
 - **Öneri:** Nokta ile öğe arasında gerçek uzaklığa göre seç (noktaya küçük bir öncelik payı verilebilir); dokunmada aday çubuğu (`offerCandidates` parça modunda var) eskizde de göster.
 
-##### D2-7 — Dönüştür (yüz) daha önce dönüştürülmüş kenarı yineliyor; her kenar ayrı geri alma adımı
+##### ✅ D2-7 — Dönüştür (yüz) daha önce dönüştürülmüş kenarı yineliyor; her kenar ayrı geri alma adımı
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Zaten eskizde olan kenar yeniden eklenmez; yüz dönüştürme tek geri alma adımıdır.
 - **Bizde:** üst yüzde yeni eskiz → Dönüştür → ön üst kenar (1 çizgi) → aynı yüze dokun → **5 çizgi** (ön kenar iki kez). ✓ → Ekstrüzyon PM'i ✓ basılınca "Eskizde bir noktada ikiden fazla çizgi birleşiyor" ve PM kapanmıyor. Yüz dönüştürmeyi geri almak için 4, kenarla birlikte 5 Ctrl+Z gerekti.
@@ -627,7 +646,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/editor.ts:3448-3449` (`for (const e of take) this.convertEdge(e)`), `:3456-3470` `convertEdge` (uç noktalar `exact` ile birleşiyor ama aynı iki nokta arasındaki çizgi denetlenmiyor; her kenar ayrı `this.op`).
 - **Öneri:** Aynı uçlara sahip çizgi / aynı merkez-yarıçaplı yay varsa ekleme; yüzdeki tüm kenarları tek `op` içinde ekle.
 
-##### D2-8 — Aynala sonrası kaynak öğe sürüklenince serbest merkez çizgisi (ayna ekseni) dönüyor / kayıyor
+##### ✅ D2-8 — Aynala sonrası kaynak öğe sürüklenince serbest merkez çizgisi (ayna ekseni) dönüyor / kayıyor
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Kaynak sürüklenince aynalanan öğe eksene göre hareket eder; eksen (merkez çizgisi) yerinde kalır (sürüklenen öğe dışındakiler en az hareket eder).
 - **Bizde:** plaka + R8 daire (20,0) + dikey merkez çizgisi (0,−40)-(0,40) → Aynala → kaynak dairenin merkezini (25,10)'a sürükle → aynalanan daire (−22,25; 6,2), merkez çizgisi **(5,22; −39,8)-(−1,19; 39,96)** oldu (eğildi). Simetri eğik eksene göre sağlanıyor; ✓ sonrası iki delik plakaya göre simetrik değil, uyarı yok.
@@ -635,7 +654,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/ops.ts:109-121` `mirrorEnts` (yalnız `symmetric` ilişkisi; eksen serbest), sürükleme çözümü `editor.ts` `dragTo` (sürüklenmeyen noktalara ağırlık / sabitleme yok).
 - **Öneri:** Sürüklemede seçili olmayan öğeleri geçici "tercihen sabit" (yüksek ağırlık) çöz; ya da aynalamada merkez çizgisi serbestse uyar.
 
-##### D2-9 — Eskiz pahı serbestliği 2 artırıyor; komşu ölçü değişince pah boyutu sessizce değişiyor (E-21'in sonucu)
+##### ✅ D2-9 — Eskiz pahı serbestliği 2 artırıyor; komşu ölçü değişince pah boyutu sessizce değişiyor (E-21'in sonucu)
 - **Önem:** Orta · **Tür:** Hata (sessiz geometri değişimi)
 - **SolidWorks:** Pah ölçüyle gelir; komşu ölçü değişince pah boyutu korunur.
 - **Bizde:** plaka 80×60 (serbestlik 2) → Eskiz Pahı 6 → serbestlik **4**, ölçü eklenmedi → ✓ (47820) → genişlik 80→90 → hacim **53604,85** (pah 6 kalsaydı 53820) → pah ~8,9 mm'ye büyüdü, uyarı yok.
@@ -643,7 +662,7 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/editor.ts:3267` `chamferAt` (ölçü / eşit mesafe ilişkisi yok). E-21 ile aynı kök; yeni olan model düzeyindeki sessiz etki.
 - **Öneri:** Pahta iki kenar uzunluğu (ya da mesafe + açı) ölçüsü ekle, sanal köşeyi radyüsteki gibi koru.
 
-##### D2-10 — Delme aracı önceden seçilen noktayı yok sayıyor; ipucu yanıltıcı
+##### ✅ D2-10 — Delme aracı önceden seçilen noktayı yok sayıyor; ipucu yanıltıcı
 - **Önem:** Düşük · **Tür:** Hata
 - **SolidWorks:** Nokta ve kenar herhangi bir sırayla seçilip Delme ilişkisi verilir.
 - **Bizde:** Seç ile noktayı seç → **Delme** → kenara dokun → hiçbir şey olmuyor (araç değişince seçim temizlendi). İpucu "Önce eskiz noktasını seçin, sonra … kenarına dokunun" diyor; çalışan yol: Delme aracı açıkken noktaya, sonra kenara dokunmak. Ayrıca eskiz dik bakışta açıldığından düzlemi delen kenar uçtan nokta gibi görünür; görünümü döndürmeden seçilemez.
@@ -651,48 +670,48 @@ Sütunlar: a oluştur + sayısal doğrulama · b aracın ürettiği ilişki/öl�
 - **Kod:** `src/sketch/editor.ts:443` (`setTool`: `pierce` OP_TOOLS'ta değil → `sel.clear()`), ipucu `:121`.
 - **Öneri:** `pierce` için seçimi koru; kenar seçimi için dokunulan yerin yakınında, düzlemi delen kenar noktasını (kenarın izdüşümü) aday olarak göster.
 
-##### D2-11 — "Blok olarak kaydet" geri alınamıyor
+##### ✅ D2-11 — "Blok olarak kaydet" geri alınamıyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Seç → daire → Blok olarak kaydet → Ctrl+Z → daire hâlâ `Delik#b11` etiketli (Ctrl+Z varsa önceki adımı geri alır).
 - **Kod:** `src/sketch/editor.ts:1855-1866` `saveBlock` (`e.blk = tag` doğrudan, `op` / `snapshot` yok).
 - **Öneri:** `this.op(() => …)` içinde yap.
 
-##### D2-12 — Ctrl+X (Kes) yok; Kopyala / Yapıştır eskizler arasında çalışmıyor
+##### ✅ D2-12 — Ctrl+X (Kes) yok; Kopyala / Yapıştır eskizler arasında çalışmıyor
 - **Önem:** Düşük · **Tür:** Eksik
 - **SolidWorks:** Ctrl+X / Ctrl+C / Ctrl+V eskiz öğelerinde ve eskizler arasında çalışır.
 - **Bizde:** Ctrl+X → hiçbir şey (3 daire kaldı). Eskiz1'de Ctrl+C → ✓ → Eskiz2'yi Düzenle → Ctrl+V → yapıştırılmadı (pano editör örneğinde, yeni editörde boş).
 - **Kod:** `src/sketch/editor.ts:636-668` (`private clip` editör örneğine bağlı), `src/main.ts:8615-8616` (Kes kaydı yok).
 - **Öneri:** Panoyu modül düzeyinde tut; `e.cut` = kopyala + sil.
 
-##### D2-13 — Değişikliksiz ✓ boş bir geri alma adımı ekliyor
+##### ✅ D2-13 — Değişikliksiz ✓ boş bir geri alma adımı ekliyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** e2 Bastır → Eskizi düzenle → hiçbir şey yapmadan ✓ → Ctrl+Z → model değişmedi (48000; boş adım) — bastırmayı geri almak için ikinci Ctrl+Z gerekiyor.
 - **Kod:** `src/main.ts:1716-1717` (`!isNew` ise `orig` ile karşılaştırmadan push).
 - **Öneri:** `JSON.stringify(f.data) === orig` ise push etme.
 
-##### D2-14 — Ölçekle ölçüleri sessizce siliyor; Esnet ölçüye takılınca sessizce etkisiz
+##### ✅ D2-14 — Ölçekle ölçüleri sessizce siliyor; Esnet ölçüye takılınca sessizce etkisiz
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (geri bildirim yok)
 - **Bizde:** ölçülü 80×60 → pencere seçimi → Ölçekle 0,5 → 40×30 ama 80/60 ölçüleri silindi (eskiz tanımsız), bildirim yok. Ölçülü dikdörtgende sağ kenar → Esnet X 20 → Uygula → genişlik 80 kaldı, bildirim yok.
 - **Kod:** `src/sketch/ops.ts:150-160` (ölçek ≠ 1'de ölçü süzme), `editor.ts:3555-3561` esnet (çözücü geri çekince sessiz).
 - **Öneri:** Ölçekte ölçü değerlerini de ölçekle (SolidWorks'te ölçüler güncellenir) ya da bildir; esnet ölçüyle çelişirse "Ölçü engelliyor" uyarısı.
 
-##### D2-15 — Güç kırpmada her kırpılan parça ayrı geri alma adımı
+##### ✅ D2-15 — Güç kırpmada her kırpılan parça ayrı geri alma adımı
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (Doğrulanmadı)
 - **Bizde:** tek sürüklemede 3 parça kırpıldı → 3 geri alma adımı (`undoStack` +3).
 - **Kod:** `src/sketch/editor.ts:1212-1220` (her yeni öğede `click` → `trimAt` → ayrı `op`).
 - **Öneri:** Sürükleme başında tek `snapshot`, sürüklemede `op` anlık görüntüsüz.
 
-##### D2-16 — Kırp aracında SolidWorks seçenekleri yok (köşe, içeriyi / dışarıyı kırp)
+##### ✅ D2-16 — Kırp aracında SolidWorks seçenekleri yok (köşe, içeriyi / dışarıyı kırp)
 - **Önem:** Düşük · **Tür:** Eksik
 - **Bizde:** Kırp PM'inde yalnız ipucu; tık = en yakına kırp, sürükle = güç kırpma. Köşe kırp (iki öğeyi seçip köşeye kadar uzat/kırp), Sınırlar içini / dışını kırp yok.
 - **Kod:** `src/sketch/editor.ts:3590` `trimAt`, panel `:4800-4860` (trim için seçenek yok).
 
-##### D2-17 — Kesişim Eğrisi komutu grafik alana dokunmayı bekliyor; yüz / düzlem seçimi yok
+##### ✅ D2-17 — Kesişim Eğrisi komutu grafik alana dokunmayı bekliyor; yüz / düzlem seçimi yok
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde:** Kesişim Eğr. → hiçbir şey olmuyor; grafik alanda herhangi bir yere dokununca eskiz düzleminin tüm katıyla kesişimi eklenir (4 çizgi). SolidWorks'te kesişecek yüzler/gövdeler seçilip ✓ ile uygulanır.
 - **Kod:** `src/sketch/editor.ts:2599-2600`, `:3098` `intersectionCurve`.
 
-##### D2-18 — Bölgeyi ikiye ayıran (uçları kenarda) çizgide hata iletisi "açık kontur" diyor
+##### ✅ D2-18 — Bölgeyi ikiye ayıran (uçları kenarda) çizgide hata iletisi "açık kontur" diyor
 - **Önem:** Düşük · **Tür:** İleti
 - **Bizde:** dikdörtgen + uçları üst/alt kenarda duran dikey çizgi (Uzat sonrası) → ekstrüzyon hatası "Eskiz açık kontur içeriyor. Uç noktaları birleştirin…". Açık uç yok; sorun paylaşılan kenar / iki bölge. SolidWorks "Seçili konturlar"ı önerir.
 - **Betik:** `d2_trim.py` (BILGI satırı)
@@ -931,7 +950,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/main.ts:7764-7766` `touchDrawOk = sketchDrawing()` (Seç'te false), `touchGrab` yalnız montajda. `src/viewer.ts:251-264`.
 - **Öneri:** Eskizde `viewer.touchGrab = (x,y) => mode.k==="sketch" && editor.tool==="select" && editor.hitAt(x,y)` gibi. Parmak altında nokta / öğe / ölçü etiketi varsa olayları düzenleyiciye verin (ikinci parmak gezinmeye dönsün).
 
-##### D3-6 — Model kenarına verilen ölçü, Delme ve model köşesine yakalama modeli izlemiyor
+##### ✅ D3-6 — Model kenarına verilen ölçü, Delme ve model köşesine yakalama modeli izlemiyor
 - **Önem:** Orta (model değişince eskiz sessizce eski yerde) · **Tür:** SolidWorks'ten farklı. E-5 kökünün yeni yüzleri.
 - **SolidWorks'te:** Model kenarına ölçü, Delme (Pierce) ve model köşesine çakışık ilişkileri modele bağlıdır. Model değişince eskiz güncellenir.
 - **Bizde:** (a) Kutu üst yüzünde daire. Akıllı Ölçü ile merkez + sağ model kenarı (x=40) → 12 → merkez x=28. Taban genişliği 80 → 100 yapıldı. Daire x=28'de kaldı (beklenen 38). (b) Sağ düzlemde nokta → Delme → üst ön kenar → (0,20,30) ✓. Kutu 60 → 80 yapıldı. Nokta (−30, 20)'de kaldı (beklenen ±40). (c) Model köşesine yakalanan nokta `fix` alıyor (aynı sorun).
@@ -939,7 +958,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:1111-1145` `ensureModelLine` / `modelLineAt` (sabit yapı çizgisi), `:3381-3385` `pierceAt` → `addRel(fix)`, `makePoint` `fixAt`.
 - **Öneri:** E-5 ile birlikte: kalıcı kenar referansı (`EdgeRef {m,d,s}`) ile "kenar üzerinde" / "delme" ilişkisi saklayın, her yeniden oluşturmada izdüşümü güncelleyin.
 
-##### D3-7 — Gereksiz (fazla) kısıtlı eskiz "Tam tanımlı" gösteriliyor. Renk ve durum değişmiyor
+##### ✅ D3-7 — Gereksiz (fazla) kısıtlı eskiz "Tam tanımlı" gösteriliyor. Renk ve durum değişmiyor
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks'te:** Gereksiz sürücü ölçü ya da ilişki varsa eskiz "Aşırı Tanımlı" olur. İlgili ölçü / öğeler kırmızı / sarı, durum çubuğu "Aşırı Tanımlı" gösterir.
 - **Bizde:** Orijinden 50×30 dikdörtgen tam tanımlı. Üst kenara ölçü → pencere → "Sürücü olarak bırak (aşırı tanımlı)". Toast "aşırı tanımlı" diyor ama `result {ok:true, dof:0, red:['d23']}`, durum çubuğu "Eskiz1: Tam tanımlı", panel "Eskiz tam tanımlı", çizgi rengi siyah `0x111418`.
@@ -947,7 +966,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:426-433` `resolve()`, `:4079` `entColor`, `renderPanel` sonu (`pm-status`). Hepsi yalnız `conflicts` / `ok`'a bakıyor, `redundant` yok sayılıyor.
 - **Öneri:** `redundant.length` > 0 ise durum "Aşırı tanımlı (gereksiz)" yazsın. Gereksiz ölçü / ilişki ve bağlı öğeler sarı / kırmızı olsun. SketchXpert gösterilsin.
 
-##### D3-8 — Gereksiz ilişki sessizce ekleniyor (2B ve 3B)
+##### ✅ D3-8 — Gereksiz ilişki sessizce ekleniyor (2B ve 3B)
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** Zaten belirli bir ilişki eklenirse eskiz aşırı tanımlı olur ve uyarı verilir. SolidWorks gereksiz ilişkiyi sunmaz da.
 - **Bizde:** 2B: iki yatay kenar seçilip Paralel → ilişki eklendi, `red:['r27']`, durum "Tam tanımlı". 3B: iki x-eksenli çizgiye Paralel → eklendi (bağlam çubuğu Paralel'i sunuyor). Zaten sabit orijin noktasına ikinci "Sabitle" eklendi (`cons3: fix, …, fix`).
@@ -955,7 +974,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:365-412` `op()` gereksizlik denetimini yalnız yeni ölçülerde yapıyor (`:383-386`). `src/sketch/sketch3d.ts:599-640` `addRel` yalnız `resolve()` başarısını denetliyor (`dofOf` karşılaştırması yok).
 - **Öneri:** İlişki eklemede de `r.redundant` artıyorsa ya da serbestlik düşmüyorsa reddedin / uyarın. `applicableRelations` / `relOptions` zaten sağlanan ilişkiyi sunmasın (E-2 ile birlikte).
 
-##### D3-9 — Gereksiz sürülen ölçü "Sürücü ölçü yap" ile uyarısız sürücü yapılıyor
+##### ✅ D3-9 — Gereksiz sürülen ölçü "Sürücü ölçü yap" ile uyarısız sürücü yapılıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** Sürülen ölçüyü sürücü yapmak eskizi aşırı tanımlayacaksa uyarı verir ve reddeder (ya da aşırı tanımlı gösterir).
 - **Bizde:** Tam tanımlı dikdörtgende üst kenar sürülen (50) eklendi → etiket seçildi → panel "Sürücü ölçü yap". Ölçü sürücü oldu, `red:['d26']`, durum "Tam tanımlı". Pencere ya da uyarı yok.
@@ -963,7 +982,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:3262-3269` `toggleRefDim` → `op`. `op` yalnız yeni kimlikli ölçüleri denetliyor (`:383`).
 - **Öneri:** `toggleRefDim`'de `dimRedundant` ile denetleyin. Gereksizse `askRedundant` penceresini gösterin.
 
-##### D3-10 — Otomatik hizalama ilişkileri yalnız koordinat eşitliğine göre ekleniyor (kılavuz yokken, Ctrl basılıyken, ızgarada). Fazla / gereksiz ilişkiler oluşuyor
+##### ✅ D3-10 — Otomatik hizalama ilişkileri yalnız koordinat eşitliğine göre ekleniyor (kılavuz yokken, Ctrl basılıyken, ızgarada). Fazla / gereksiz ilişkiler oluşuyor
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks'te:** Yatay / dikey nokta ilişkisi yalnız ekranda çıkarım çizgisi (uyandırılmış nokta) gösterilirken eklenir. Ctrl ile çıkarım kapalıyken hiç eklenmez.
 - **Bizde:**
@@ -976,7 +995,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:2214-2222` (yeni noktada tüm noktalarla `|Δx|<1e-6` → ilişki; `noInfer` / kılavuz denetimi yok), `makePoint` çeyrek dalı `:1164` + aynı döngü (çift ekleme).
 - **Öneri:** Hizalama ilişkisini yalnız `inf.guides` içinde gerçekten kullanılan (uyandırılmış) noktayla kurun. `noInfer` (Ctrl) iken hiç kurmayın. Eklemeden önce aynı (sırasız) ilişki var mı bakın.
 
-##### D3-11 — Değiştir kutusu değeri 3 ondalığa yuvarlıyor. Değiştirmeden Enter geometriyi değiştiriyor (inçte 0,01 mm)
+##### ✅ D3-11 — Değiştir kutusu değeri 3 ondalığa yuvarlıyor. Değiştirmeden Enter geometriyi değiştiriyor (inçte 0,01 mm)
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** Kutu belge hassasiyetinde gösterilir. Değer değiştirilmeden onaylanınca asıl değer korunur.
 - **Bizde:** D1 = `100/3` (33,3333…) → tekrar çift tık → kutuda "33,333" → Enter → `33.333`. Dosya > Birim inç → 80 mm ölçü kutuda "3,15" → Enter → `80.00999999999999` mm.
@@ -984,7 +1003,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:3965` `inp.value = fmtNum(cur, 3)` (inçte `cur/25.4` → 3 ondalık).
 - **Öneri:** Başlangıç metnini sakla. `apply` anında metin değişmemişse `done(origValue)` ya da `cancel` çağrılsın. İnçte en az 4–5 ondalık gösterilsin.
 
-##### D3-12 — 3B ölçü kutusu ifadeyi sessizce yanlış okuyor ("100*3+20" → 100)
+##### ✅ D3-12 — 3B ölçü kutusu ifadeyi sessizce yanlış okuyor ("100*3+20" → 100)
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** Değiştir kutusu (2B / 3B) aritmetik ve `=değişken` kabul eder.
 - **Bizde:** 3B ölçüye çift tık → `100*3+20` → Enter → çizgi 100 mm oldu (beklenen 320). Uyarı yok. 2B kutusunda `10*3` doğru çalışıyor. 3B kutusunda ±, tekerlek, ⟳ ve ✕ da yok. Odak kaybında (blur) değer uygulanıyor.
@@ -992,7 +1011,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/sketch3d.ts:922-940` `askValue` ve `:1463` `parseFloat(box.value…)`.
 - **Öneri:** 2B `promptValue` / `evalNum` kullanın (ifade + değişken + inç). Geçersiz girişte kırmızı gösterin, uygulamayın.
 
-##### D3-13 — Yalnız 3B eskiz varken Süpürme açılmıyor ("yol eskizi gerekir")
+##### ✅ D3-13 — Yalnız 3B eskiz varken Süpürme açılmıyor ("yol eskizi gerekir")
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks'te:** 3B eskiz tek başına süpürme yolu olabilir (dairesel profil ile profil eskizi gerekmez).
 - **Bizde:** Belgede yalnız 3B Eskiz1 (L yolu) varken ağaçta seçilip Özellikler → Süpürme → toast "Süpürme için bir yol eskizi gerekir", PM açılmıyor. Bir 2B eskiz eklenince yol listesinde 3B eskiz çıkıyor. Varsayılan yol 2B eskiz seçiliyor. Seçilince boru doğru oluşuyor ve 3B ölçü değişince güncelleniyor.
@@ -1000,7 +1019,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/main.ts:1944-1946` `free = doc.features.filter(f => f.type === "sketch" …)` (sketch3d yok).
 - **Öneri:** `free`'ye `sketch3d` ekleyin. Seçili 3B eskiz varsa onu yol yapın ve `circ: 20` ile başlayın.
 
-##### D3-14 — SketchXpert çözülemeyen eskizde hiçbir öneri vermiyor
+##### ✅ D3-14 — SketchXpert çözülemeyen eskizde hiçbir öneri vermiyor
 - **Önem:** Orta · **Tür:** Hata / eksik
 - **SolidWorks'te:** SketchXpert "Tanıla" ile çelişen kısıtları bulur ve silinebilecek kümeleri önerir.
 - **Bizde:** D3-2 senaryosundaki eskiz açılınca panelde SketchXpert var ama "Tek bir öğeyi silmek yetmiyor" diyor ve öneri yok. Çözücü `ok:false, conflicts:[], redundant:[]` döndürüyor. Oysa üçüncü ölçünün silinmesi eskizi çözer.
@@ -1008,7 +1027,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:5135-5137` `xpertSolutions`: adaylar yalnız `conflicts + redundant`.
 - **Öneri:** Aday listesi boşsa tüm ölçü ve ilişkileri tek tek kaldırıp deneyin (önce ifadeli / son eklenen ölçüler). Kırmızı göstermek için çözücüde PlaneGCS "partial redundancy / conflicting" tanılamasını açın.
 
-##### D3-15 — İlişki simgesine tık mevcut seçime ekliyor. Ardından Delete geometriyi de siliyor
+##### ✅ D3-15 — İlişki simgesine tık mevcut seçime ekliyor. Ardından Delete geometriyi de siliyor
 - **Önem:** Orta (beklenmedik geometri silme) · **Tür:** SolidWorks'ten farklı
 - **SolidWorks'te:** İlişki simgesine (Ctrl'siz) tık yalnız o ilişkiyi seçer. Delete yalnız ilişkiyi siler.
 - **Bizde:** Çizgi l3 seçiliyken başka çizginin "Dikey" simgesine tıklandı → seçim `['l3','r8']`. Delete → l3 çizgisi (ve ilişkileri) ile r8 silindi.
@@ -1016,7 +1035,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:4660-4668` (`renderRels` tık işleyicisi `sel.add/delete`, `ctrlKey` bakmıyor).
 - **Öneri:** Fare ve Ctrl / Shift yoksa önce `sel.clear()`.
 
-##### D3-16 — "Eşit kanallar" çözümü kanalları büyük ölçüde değiştiriyor
+##### ✅ D3-16 — "Eşit kanallar" çözümü kanalları büyük ölçüde değiştiriyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (Doğrulanmadı: kök çözücü davranışı)
 - **SolidWorks'te:** Çözücü en az yer değiştirmeyle sonuçlanır (bir kanal diğerine eşitlenir).
 - **Bizde:** R6 (40 mm) ve R4 (25 mm) iki yatay kanal → Eşit kanallar → ikisinin yarıçapı 13,34, merkezler 36,7. Alt kanal yaklaşık 17° döndü (görüntü `/tmp/d3/s2.png`).
@@ -1024,42 +1043,42 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/model.ts:441-460` (yay eşit + merkez çizgisi eşit), PlaneGCS çözümü.
 - **Öneri:** İlişki eklerken ikinci kanalın değerlerini önce birinciye kopyalayıp sonra çözün (başlangıç tahmini). Ya da `drag` hedefleriyle ilk kanalı yerinde tutun.
 
-##### D3-17 — 2B eskizde seçim bağlam çubuğu yok. Sağ tık menüsünde ilişki yok
+##### ✅ D3-17 — 2B eskizde seçim bağlam çubuğu yok. Sağ tık menüsünde ilişki yok
 - **Önem:** Düşük · **Tür:** Eksik (SolidWorks'ten farklı)
 - **SolidWorks'te:** Öğe seçilince imlecin yanında ilişki düğmeleri olan bağlam araç çubuğu çıkar. Sağ tık menüsünde de ilişkiler vardır. 3B eskizde bizde var (`.s3-relbar`).
 - **Bizde:** 2B'de ilişki eklemek için yalnız panel var. Sağ tık menüsü: Seç / Yapı geometrisi / Sil / Akıllı Ölçü / Hızlı yakalama / Dik / Sığdır / Eskizden çık.
 - **Kod:** `src/main.ts:7546-7562` `openContextMenu` (sketch dalı). Parça `showMiniBar` yalnız `part`.
 - **Öneri:** `applicableRelations` düğmelerini 3B `showRelBar` biçiminde seçimin yanında gösterin.
 
-##### D3-18 — Kıpırdamayan sürükleme / tıklama geri alma yığınına boş adım ekliyor
+##### ✅ D3-18 — Kıpırdamayan sürükleme / tıklama geri alma yığınına boş adım ekliyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Tam tanımlı eskizde köşe ve daire kenarı sürüklendi (hiçbir şey değişmedi). `undoStack` 7 → 9. Ardından Ctrl+Z görünürde hiçbir şey yapmıyor (Tam Tanımla geri alınmıyor, iki kez daha basmak gerekiyor).
 - **Betik:** `d3_secim.py` (bölüm 5)
 - **Kod:** `src/sketch/editor.ts:2820-2824` `beginDrag` her basışta `snapshot()`. `endDrag :2862` veri değişmediyse geri almıyor.
 - **Öneri:** `endDrag`'de veri anlık görüntüyle aynıysa `undoStack.pop()`.
 
-##### D3-19 — Değişiklik yapılmadan açılıp ✓ ile kapatılan eskiz parça geri alma yığınına boş adım ekliyor
+##### ✅ D3-19 — Değişiklik yapılmadan açılıp ✓ ile kapatılan eskiz parça geri alma yığınına boş adım ekliyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Derinlik 35 → Eskizi düzenle → hemen ✓ → Ctrl+Z → derinlik 35 kaldı (boş adım geri alındı).
 - **Betik:** `d3_gerial.py` (C)
 - **Kod:** `src/main.ts:1715-1717` (`!isNew` iken koşulsuz `undoStack.push`).
 - **Öneri:** `JSON.stringify(f.data) !== orig` ise ekleyin.
 
-##### D3-20 — 3B gereksiz ölçüde tarayıcı `confirm()` penceresi (2B'deki 3 seçenekli pencere yok)
+##### ✅ D3-20 — 3B gereksiz ölçüde tarayıcı `confirm()` penceresi (2B'deki 3 seçenekli pencere yok)
 - **Önem:** Düşük · **Tür:** Tutarsızlık
 - **Bizde:** Eşit ilişkili çizgiye 3B boy ölçüsü → yerel `confirm("Bu ölçü eskizi aşırı tanımlıyor…")`. "Sürücü olarak bırak" seçeneği yok. Telefonda da yerel pencere.
 - **Betik:** `d3_3b.py`
 - **Kod:** `src/sketch/sketch3d.ts:577`
 - **Öneri:** 2B `askRedundant` penceresini ortak kullanın.
 
-##### D3-21 — 3B bağlam çubuğu uygunsuz seçenekler sunuyor
+##### ✅ D3-21 — 3B bağlam çubuğu uygunsuz seçenekler sunuyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde:** İki x-eksenli (paralel) çizgi seçilince "Paralel" ve "Açı ölçüsü" (0°) sunuluyor. Zaten sabit noktaya "Sabitle" sunuluyor ve ikinci kez ekleniyor.
 - **Betik:** `d3_3b.py`
 - **Kod:** `src/sketch/sketch3d.ts:693-707` `relOptions`, `:680-683`.
 - **Öneri:** Mevcut eksen / ilişkiyle sağlanan seçenekleri süzün.
 
-##### D3-22 — Eşit eğrilik tek seferlik tutamak ayarı. İlişki olarak kalmıyor
+##### ✅ D3-22 — Eşit eğrilik tek seferlik tutamak ayarı. İlişki olarak kalmıyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **SolidWorks'te:** "Eşit eğrilik" kalıcı bir ilişkidir. Yay değişince spline uyar.
 - **Bizde:** Spline ucu + R20 yay → "≈ Eşit eğrilik" → tutamak 2,58 mm. `rels` içinde ilişki yok. Yay R 31,8'e sürüklendi, tutamak aynı kaldı (eğrilik artık eşit değil).
@@ -1067,7 +1086,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/sketch/editor.ts:2783-2808` `equalCurvature`.
 - **Öneri:** `eqcurv` ilişki türü ekleyin. Her çözümden sonra tutamağı yeniden hesaplayın (ya da çözücüye kısıt olarak verin).
 
-##### D3-23 — Delme aracına geçince seçim temizleniyor. "Önce noktayı seçin" ipucu yanıltıcı
+##### ✅ D3-23 — Delme aracına geçince seçim temizleniyor. "Önce noktayı seçin" ipucu yanıltıcı
 - **Önem:** Düşük · **Tür:** Arayüz
 - **Bizde:** Nokta seçilip şeritten Delme'ye basılınca seçim `[]` oluyor. Kenara tıklayınca "Önce bir eskiz noktası seçin" diyor. Araç içinde noktaya yeniden dokunmak gerekiyor.
 - **Betik:** `d3_iliski2.py`
@@ -1081,7 +1100,7 @@ Her satırda geometri koşulu ve serbestlik düşüşü sayısal olarak doğrula
 - **Kod:** `src/viewer.ts:264-283` (`touchDrawOk` yalnız 2B çizim araçları), 3B PM yolu ayrı.
 - **Öneri:** Kısa dokunuşta (sürüklemesiz) kaydırma uygulanmasın ya da iki eskizde aynı kural kullanılsın. Büyüteç zaten konumu gösteriyor.
 
-##### D3-25 — Telefonda eskiz açıkken orijin ve yeni geometri alt panelin arkasında kalıyor
+##### ✅ D3-25 — Telefonda eskiz açıkken orijin ve yeni geometri alt panelin arkasında kalıyor
 - **Önem:** Düşük · **Tür:** Arayüz (Doğrulanmadı: arayüz ajanının alanına da girer)
 - **Bizde:** 390×844'te yeni eskiz açılınca orijin ekran y≈407'de, PM alt paneli y≈430'dan başlıyor, ekran çubuğu (`.actbar`) y≈420 civarını kapatıyor. Orijin altına (eskiz y<−15) yapılan dokunuşlar panele / çubuğa gidiyor. Görünüm görünür alana göre ortalanmıyor.
 - **Betik:** `x13` denemesi (`d3_telefon.py` koordinatları bu yüzden yukarıda)
@@ -1257,7 +1276,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/doc/compile.ts:343-348`. Kapak özellikleri `startOff: so` ile kuruluyor; `fromFace` / `fromVtx` / `dirVec` / `twist` / `draft` kapaklara aktarılmıyor.
 - **Öneri:** Kapak kfeature'larına `fromFace`, `fromVtx` (ve `dirVec`) ekle, öteleme bunlara göre (`so` + `sg·(d1 − cap)`) hesaplansın. Ya da çekirdekte kapakları ana ince gövdenin uç düzlemlerinden üret. Desteklenmeyen birleşimlerde (koniklik, büküm) hata ver.
 
-##### D4-2 · Dışa koniklik kare profilde hep başarısız; var olan özellik eskiz kareye dönünce model kayboluyor
+##### ✅ D4-2 · Dışa koniklik kare profilde hep başarısız; var olan özellik eskiz kareye dönünce model kayboluyor
 - **Önem:** Yüksek · **Tür:** Hata (P-10 ile aynı kök, yeni ve daha ağır belirti)
 - **SolidWorks:** 60×60 kare, 20 mm, 5° dışa koniklik → kesik piramit (6 düzlemsel yüz, 76 281,1 mm³).
 - **Bizde:** Üst düzlemde 60×60 eskiz → Ekstrüzyon → Koniklik 5 → Dışa doğru → durum "Geometri işlemi başarısız (OpenCascade hatası)", ✓ reddediliyor. 40×40 ve 100×100'de de aynı. Dikdörtgende çalışıyor: 80×60 → 100 977,8 (P-10), 60×40 → 51 576,5. Daire dışa → 27 395,7. Kalıcı etki: 80×60 dışa konik ekstrüzyon oluşturulup "Eskizi düzenle" ile 80 → 60 yapılınca ✓ sonrası **model tümüyle kayboluyor** (hacim yok, ağaçta "Geometri işlemi başarısız"). İç koniklik karede doğru (E5d).
@@ -1273,7 +1292,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/sketch/profile.ts:298-317` `thinRegion`. İçe `offsetSegs` sonucunun yönü / alanı denetlenmiyor.
 - **Öneri:** İç döngünün işaretli alanı dış döngüyle aynı yönde ve daha küçük olmalı; değilse "İnce kalınlık profil için çok büyük" hatası at. Açık konturda da kendini kesme denetimi ekle.
 
-##### D4-4 · Düzenlemede kaynak eskiz değişince eski "Seçili konturlar" seçimi kalıyor, kaldırılamıyor
+##### ✅ D4-4 · Düzenlemede kaynak eskiz değişince eski "Seçili konturlar" seçimi kalıyor, kaldırılamıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Kaynak eskiz değişince seçili konturlar listesi temizlenir. Yeni eskiz tek bölgeliyse tamamı kullanılır.
 - **Bizde:** İki dikdörtgenli Eskiz1 + tek dikdörtgenli Eskiz2 (hazır). Ekstrüzyon → Bölge 2 → ✓. Ağaçta Düzenle → Eskiz = Eskiz2 → durum "Seçili kontur bulunamadı", model yok. PM'de "Seçili konturlar" grubunda yalnız "Eskizde tek bölge var." yazıyor, kaldırılacak kutu yok. ✓ reddediliyor. Kullanıcı ancak eski eskize geri dönüp Bölge 2'yi kaldırıp yeniden Eskiz2'yi seçerek kurtulabiliyor.
@@ -1281,7 +1300,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/main.ts:2277` `sketchSel` onChange (`d.sketch = v`, `d.contours` silinmiyor); `src/main.ts:2297` tek bölgede yalnız ipucu.
 - **Öneri:** Eskiz değişince `d.contours = undefined` yap ve PM'i yeniden çiz. Tek bölgede de var olan seçimi "Seçimi temizle" ile göster.
 
-##### D4-5 · Süpürme: yalnız 3B eskiz yol varken komut açılmıyor; profil + 3B yolda varsayılan yol yanlış
+##### ✅ D4-5 · Süpürme: yalnız 3B eskiz yol varken komut açılmıyor; profil + 3B yolda varsayılan yol yanlış
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks:** 3B eskiz yol olarak seçilebilir. Profil olmadan dairesel profil seçeneğiyle süpürme yapılabilir.
 - **Bizde:** Hazır model: yalnız "3B Yol" 3B eskizi. Şerit → Süpürme → toast "Süpürme için bir yol eskizi gerekir", PM açılmıyor. Profil eskizi + 3B yol varken PM açılıyor ama "Yol" = **Profil** (kapalı eskiz) ve "Dairesel profil" seçili geliyor. Kullanıcı yolu 3B eskize, profili "Eskiz profili"ne kendisi çevirmeli; çevirince doğru (20 000 mm³, yenilemede kalıcı). v0.71 (3B yol) yalnız setDoc ile test edilmişti (wl1).
@@ -1289,7 +1308,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/main.ts:1944-1951` `newFeature("sweep")` yalnız 2B `sketch` özelliklerini sayıyor. `sketch3d` ve `pathSk` seçiminde 3B eskizler yok.
 - **Öneri:** Aday yol listesine `sketch3d`'yi kat (açık 2B eskiz yoksa son 3B eskiz). Kapalı tek eskiz varsa onu profil say, yolu boş bırakıp kullanıcıdan iste.
 
-##### D4-6 · 3B yolda "Burulma açısı" alanı gösteriliyor ama sessizce yok sayılıyor
+##### ✅ D4-6 · 3B yolda "Burulma açısı" alanı gösteriliyor ama sessizce yok sayılıyor
 - **Önem:** Orta · **Tür:** Hata (alan etkisiz)
 - **SolidWorks:** 3B yolda da profil burulması (twist) uygulanır.
 - **Bizde:** Profil (20×10 dikdörtgen) + 3B yol (iki çizgi). Süpürme → Burulma açısı 90 → önizleme ve ✓ sonrası hacim 20 000 ve sınır kutusu (z ±5) değişmiyor, uyarı yok. Kodda kılavuz eğri de aynı nedenle 3B yolda yok sayılıyor (denenmedi).
@@ -1297,7 +1316,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/doc/compile.ts:367-371`. 3B yol dalı kfeature'a `twist` / `guide` aktarmıyor. `src/main.ts` süpürme PM'inde alanlar yalnız `!d.helix` koşuluyla gösteriliyor.
 - **Öneri:** `sweepStations`'ı `path3` teli için de çalıştır, ya da 3B yol seçiliyken burulma / kılavuz alanlarını gizle.
 
-##### D4-7 · "Eskizi düzenle" görünümü ölçü etiketlerini ve paneli hesaba katmıyor (telefonda etiket alt panelin arkasında)
+##### ✅ D4-7 · "Eskizi düzenle" görünümü ölçü etiketlerini ve paneli hesaba katmıyor (telefonda etiket alt panelin arkasında)
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı / kullanılabilirlik
 - **SolidWorks:** Eskiz düzenlemeye girince görünüm eskiz ve ölçülerini görünür alana sığdırır.
 - **Bizde:** Telefonda (390×844) 80×60 plakanın ekstrüzyonunda Eskizi düzenle: 80 ölçüsünün etiketi (y ≈ 537 px) alt PM panelinin arkasında (`elementFromPoint` = panel). Dokunuş panele gidiyor, Değiştir kutusu açılmıyor. ▾ ile panel küçültülünce dokunulabiliyor. Masaüstünde Ø10 profil dairesinin Ø etiketi şerit grubunun altında kalıyor (dokunuş "cmd" düğmesine gidiyor), tekerlekle uzaklaşmak gerekiyor (`/home/claude/d4tmp/s1dim.png`, `/home/claude/d4tmp/m1.png`).
@@ -1305,7 +1324,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/main.ts:7003-7009` `fitAll`. `editor.bounds()` ölçü etiketi konumlarını (`lp`) içermiyor. `viewer.fitBox` tuvalin tamamına sığdırıyor; telefonda `#side.pm-open` panelinin, masaüstünde üst şeridin örttüğü alan düşülmüyor.
 - **Öneri:** Sınır kutusuna ölçü etiketlerini kat. Sığdırmada görünür tuval alanını (alt panel / şerit hariç) kullan.
 
-##### D4-8 · Süpürmeli / loft kesme "Süpürme1" / "Loft1" adını alıyor; ayrı komut yok
+##### ✅ D4-8 · Süpürmeli / loft kesme "Süpürme1" / "Loft1" adını alıyor; ayrı komut yok
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** "Swept Cut" / "Lofted Cut" ayrı komutlar; ağaçta "Kesme-Süpürme1", "Kesme-Loft1".
 - **Bizde:** Şeritte yalnız Süpürme / Loft var. PM'de "Kes" segmentiyle oluşturulan kesme ağaçta "Süpürme1" / "Loft1" adını alıyor. Ekst. Kesme ve Dönd. Kesme "Kesme-…" adı alıyor. `FEAT_NAMES` içinde `cutLoft: "Kesme-Loft"` tanımlı ama kullanılmıyor.
@@ -1313,20 +1332,20 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/main.ts:2242` `nextName(kind)`. PM'in açıldığı komut adı kullanılıyor.
 - **Öneri:** `nextName(kindOf(draft))`. Şeride "Süpürmeli Kesme" / "Loft Kesme" komutlarını ekle.
 
-##### D4-9 · Loft PM'inde merkez çizgisi / kılavuz seçilince "Bağlayıcılar" grubu kalıyor
+##### ✅ D4-9 · Loft PM'inde merkez çizgisi / kılavuz seçilince "Bağlayıcılar" grubu kalıyor
 - **Önem:** Düşük · **Tür:** Hata (arayüz)
 - **Bizde:** Loft → Merkez çizgisi = Merkez → "Bağlayıcıları kullan" görünür kalıyor. Kod bu durumda grubu gizlemek istiyor (`!d.center && !d.guides?.length`), ama seçim PM'i yeniden çizmiyor. Önceden açılmış bağlayıcı verisi taslakta kalıyor. Model doğru (28 000).
 - **Betik:** `d4_loft.py` L5.
 - **Kod:** `src/main.ts:2849` (merkez çizgisi `selectField` → yalnız `upd()`), kılavuz onay kutuları da öyle.
 - **Öneri:** `renderFeaturePM(kind)` çağır; merkez / kılavuz varken `d.conn`'u temizle.
 
-##### D4-10 · Instant3D oku "Başla: Yüzey / yüz" ve "Köşe"de eskiz düzleminden çiziliyor
+##### ✅ D4-10 · Instant3D oku "Başla: Yüzey / yüz" ve "Köşe"de eskiz düzleminden çiziliyor
 - **Önem:** Düşük · **Tür:** Hata (görsel)
 - **Bizde:** Boru ucundan (y = 60) başlayan flanş ekstrüzyonunda (d = 20) ok y ≈ 20'de, borunun ortasında duruyor. Model y 60..80'de doğru (`/home/claude/d4tmp/w3.png`). Sürükleme derinliği doğru değiştiriyor ama tutamak modelin ucunda değil.
 - **Kod:** `src/main.ts:8100` `base` yalnız `startOff` ekliyor; `fromFace` / `fromVtx` dikkate alınmıyor.
 - **Öneri:** Başlangıç ötelemesini `extrudeTool` ile aynı formülle (`dot(face.c − o, n)`) hesapla.
 
-##### D4-11 · Kapalı loft kendini kesen dizilimde hatasız katı üretiyor (Doğrulanmadı)
+##### ✅ D4-11 · Kapalı loft kendini kesen dizilimde hatasız katı üretiyor (Doğrulanmadı)
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (SW davranışı doğrulanmadı)
 - **Bizde:** Üst üste paralel üç kare profil (y 0 / 30 / 60) → Loft → Kapalı loft → durum "Hazır", hacim 121 785,21 mm³ (açık düzgün loft 44 800). Son profilden ilkine dönüş gövdenin içinden geçiyor. Kendini kesen bir katı, uyarı yok. SW'nin burada "kendini kesen geometri" hatası vermesi beklenir.
 - **Betik:** `d4_loft.py` L2 (çıktı satırı "L3 kapalı loft").
@@ -1554,13 +1573,13 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/main.ts:5073–5081` (`d.verts.push([...best])` dünya noktası); `src/kernel.worker.ts:1148` ve `:1680` (`Köşe modelde bulunamadı`, yalnız konumla arama, imza yok).
 - **Öneri:** Köşeyi kenar referansı + uç (`{m, d, s, end}`) ya da köşe imzası (bağlı kenar yönleri + `u`) olarak sakla; `matchEdges` onarımına kat.
 
-##### D5-6 · "Yeniden seç" köşe pahında eski köşeyi temizlemiyor
+##### ✅ D5-6 · "Yeniden seç" köşe pahında eski köşeyi temizlemiyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** D5-5 sonrası açılan "Eksik referans" → **Yeniden seç** → PM açılır ama `verts` (Pah) / `v` (Köşe Pahı) eski koordinatla dolu kalır; yeni köşeye dokunmak listeye ekler (eski hatalı köşe durur).
 - **Betik:** `d5_pah.py` (V5, K5c) · **Kod:** `src/main.ts:905` yalnız `edges` / `faces` / `face` temizleniyor.
 - **Öneri:** `verts`, `v`, `edges2`/`faces2` de temizlensin.
 
-##### D5-7 · Ref. Eksen: "İki düzlem" modu ve silindir yüzü seçimi tıklamayla çalışmıyor
+##### ✅ D5-7 · Ref. Eksen: "İki düzlem" modu ve silindir yüzü seçimi tıklamayla çalışmıyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Eksen için iki düzlem / yüz ya da silindirik yüz seçilir.
 - **Bizde:** 40×30×20 kutu → Ref. Eksen → "İki düzlem" → üst yüze ve ön yüze tıkla → `_picks` boş kalır, eksen değişmez; ✓ → kaydedilen eksen **p (0,0,0), d (0,1,0)** (varsayılan Y ekseni) — kullanıcıya uyarı yok. Silindir (x = 10) yüzüne tıklayınca da aynı varsayılan eksen kaydediliyor (beklenen x = 10). Dairesel kenara tıklamak çalışıyor (x = 10 ✓). Önceki `md1` testi bu yolu `__app.pmPick` ile geçtiği için görülmemiş.
@@ -1568,20 +1587,20 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/main.ts:1445` `pickWant()` → `if (t === "axis") return { edge: true }` → yüz tıklaması hiç `pmPick`'e gelmiyor; oysa `src/main.ts:5320–5345` (2pl) ve `:5371` (silindir yüzü) yüz bekliyor.
 - **Öneri:** `axis` için `{ edge: true, face: true }`; ayrıca ✓'de eksen hiç seçilmemişse (varsayılan) uyar.
 
-##### D5-8 · Koniklik Analizi eğri yüzlü modelde çöküyor
+##### ✅ D5-8 · Koniklik Analizi eğri yüzlü modelde çöküyor
 - **Önem:** Orta · **Tür:** Hata
 - **Bizde:** Düşey kenarları R5 radyüslü kutu (hazır) → Değerlendir > Koniklik Analizi → sayfa hatası `Cannot read properties of null (reading '1')`, istatistik satırı boş; panel yarım kalır.
 - **Betik:** `d5_kabuk_konik.py` (N1)
 - **Kod:** `src/main.ts:5553` `cnt[draftClass(f.n)]` — düz olmayan yüzlerde `f.n` `null`; `draftClass` (`:5545`) `n[ax]` okur.
 - **Öneri:** Eğri yüzleri köşe normalleriyle sınıflandır (en küçük / en büyük açı → "karışık" sınıfı, SolidWorks'teki "straddle" yüz); en azından `f.n` yoksa atla.
 
-##### D5-9 · Koniklik Analizi istatistiği model değişince güncellenmiyor
+##### ✅ D5-9 · Koniklik Analizi istatistiği model değişince güncellenmiyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Kutu: "Pozitif 1 · Negatif 1 · Koniklik gerekli 4" ✓. Panel açıkken Koniklik (ön yüz 5°) → ✓ → yazı hâlâ "gerekli 4" (3 olmalı).
 - **Betik:** `d5_kabuk_konik.py` (N3) · **Kod:** `applyDraftAnalysis` (`src/main.ts:5548`) yalnız aç / alan değişiminde çağrılıyor; `rebuild` sonunda yok.
 - **Öneri:** `rebuild()` sonunda `if (draftAna) applyDraftAnalysis()`.
 
-##### D5-10 · Yüze dokunup hemen ✓ basınca bayat önizleme hatası onayı engelliyor
+##### ✅ D5-10 · Yüze dokunup hemen ✓ basınca bayat önizleme hatası onayı engelliyor
 - **Önem:** Orta · **Tür:** Hata (zamanlama)
 - **SolidWorks:** Seçim yapılır yapılmaz ✓ kabul edilir.
 - **Bizde:** Delik Sihirb. → üst yüze tıkla → ~0,3 sn içinde ✓ → kırmızı toast **"Deliğin açılacağı yüzü seçin"**, PM açık kalır (taslakta düzlem ve konum dolu). 3 sn bekleyip ✓ → delik oluşur. Telefonda / ağır modelde önizleme kurulumu uzadıkça pencere büyür.
@@ -1589,44 +1608,44 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/main.ts:2236` `if (draftError && …) return toast(draftError)` — `draftError` son tamamlanan yapımdan (`:978`); seçimden sonra `schedulePreview` 220 ms + yapım süresi boyunca eski hata (yüz seçilmemiş) duruyor. Aynı yol radyüs / pah dışındaki tüm "önizlemeli" özelliklerde.
 - **Öneri:** ✓'de taslağı eşzamanlı `compile` edip yalnız güncel derleme hatasına bak ya da bekleyen önizlemeyi `await` et; önizleme sürerken ✓'yi kuyruğa al.
 
-##### D5-11 · Çoğaltma tohumu bastırılınca yanlışlıkla "Eksik referans / Yeniden seç" penceresi açılıyor
+##### ✅ D5-11 · Çoğaltma tohumu bastırılınca yanlışlıkla "Eksik referans / Yeniden seç" penceresi açılıyor
 - **Önem:** Orta · **Tür:** Hata
 - **Bizde:** Kesme1 + Doğrusal çoğaltma → ağaçta Kesme1 → Bastır → (P-7: çoğaltma kırmızı) ve ayrıca modal **"Eksik referans — DoğrusalÇoğaltma1: Çoğaltılacak özellik seçin — Model değiştiği için seçili kenar / yüz bulunamadı"** penceresi; "Yeniden seç" çoğaltmanın kenar / yüzü olmadığı için anlamsız. Dairesel çoğaltma + Delik Sihirb. tohumunda da aynı (W4).
 - **Betik:** `d5_cogalt.py` (L8a), `d5_akis.py` (W4b)
 - **Kod:** `src/main.ts:973` `/bulunamad|seçin/i.test(msg)` — "Çoğaltılacak özellik seçin" eşleşiyor.
 - **Öneri:** Pencereyi yalnız referans eşleme hatalarına (çekirdekten gelen "bulunamadı") bağla; bastırma işleminden sonra hiç açma (P-7 düzeltilince zaten kalkar).
 
-##### D5-12 · Ref. düzlem türü değişince "Mesafe 20" taşınıyor: ekrana paralel / teğet düzlem noktadan / silindirden 20 mm uzakta
+##### ✅ D5-12 · Ref. düzlem türü değişince "Mesafe 20" taşınıyor: ekrana paralel / teğet düzlem noktadan / silindirden 20 mm uzakta
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** "Ekrana paralel" ve "teğet" düzlem seçilen noktadan / teğet noktasından geçer (öteleme 0).
 - **Bizde:** Ref. Düzlem (öteleme varsayılanı 20) → Tür "Ekrana paralel" → köşeye dokun → ✓ → düzlem normali bakış yönünde ✓ ama köşeden **20 mm** uzakta (o = 32,23 / 30,03 / 27,23). "Teğet (silindire)" → R10 silindire dokun → düzlem eksenden **30 mm** (teğet değil). PM'de "Öteleme 20" görünüyor ama kullanıcı bunu türden gelen bir değer sanmıyor.
 - **Betik:** `d5_ref.py` (P13, P14) · **Kod:** `src/main.ts:1942` `offset: 20`; tür değişimi (`:4098–4110`) `pts`/`edge`'i sıfırlıyor, `offset`'i sıfırlamıyor.
 - **Öneri:** Tür değişince `offset = 0` (öteleme türü dışında); teğet türünde öteleme varsayılanı 0.
 
-##### D5-13 · Kaburga (eskize paralel) varsayılan malzeme tarafı kapalı bölgeyi bulmuyor
+##### ✅ D5-13 · Kaburga (eskize paralel) varsayılan malzeme tarafı kapalı bölgeyi bulmuyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (SolidWorks'ün varsayılan yönü **Doğrulanmadı**)
 - **Bizde:** L braket iç köşesine çapraz çizgi → Kaburga → ✓ → "Kaburga gövdeyle kapalı bir bölge oluşturmuyor; malzeme tarafını ters çevirin", PM açık; ters çevirince 3062,5 ✓. SolidWorks'te önizleme oku genellikle kapalı bölgeye bakar.
 - **Betik:** `d5_gelismis.py` (R1b) · **Kod:** `src/kernel.worker.ts:866` `thinRegion(…, f.flip ? "rev" : "one")`.
 - **Öneri:** `flip` belirtilmemişse iki tarafı dene, kapalı bölge veren tarafı seç.
 
-##### D5-14 · Koniklik: nötr düzlem modelde yüz / düzlem tıklanarak seçilemiyor
+##### ✅ D5-14 · Koniklik: nötr düzlem modelde yüz / düzlem tıklanarak seçilemiyor
 - **Önem:** Orta · **Tür:** Eksik / SolidWorks'ten farklı
 - **SolidWorks:** "Nötr düzlem" kutusu etkinken bir model yüzüne ya da düzleme tıklanır (çoğunlukla parçanın alt yüzü).
 - **Bizde:** PM'de nötr düzlem yalnız açılır listeden (Ön / Üst / Sağ / ref. düzlemler); model yüzüne tıklamak onu konik yüz listesine ekler, düzlem tıklaması yok sayılır (`pickWant` yalnız yüz). Bu nedenle tabanı orijinde olmayan parçada (ör. kutu y = 10'dan başlıyorsa) doğru nötr düzlem için önce ref. düzlem kurmak gerekiyor.
 - **Kod:** `src/main.ts:5398–5402` (yüz → `faces`), `:1444` `draft → { face: true }`; "Görünümden düzleme / yüze dokunarak seçebilirsiniz" ipucu bu PM'de yanıltıcı (`planeField` `:2330`).
 - **Öneri:** Nötr düzlem / yüzler için iki seçim kutusu (ayırma çizgisi PM'indeki gibi segment).
 
-##### D5-15 · Telefonda özellik paneli açıkken modelin alt kısmı panelin altında kalıyor
+##### ✅ D5-15 · Telefonda özellik paneli açıkken modelin alt kısmı panelin altında kalıyor
 - **Önem:** Düşük · **Tür:** Kullanılabilirlik
 - **Bizde:** 390×844, izometrik + sığdır → Koniklik paneli açılınca ön yüzün merkezi `.pm-head` altında (dokunma panele gidiyor); W8'de sağ ön düşey kenar alt çubuğun altında. Kullanıcı önce kaydırmak zorunda.
 - **Betik:** `d5_mobil.py` (N1 notu), `d5_akis.py` (W8 notu)
 - **Öneri:** PM açılınca `fit()` görünür alanı (panel üstü) hesaba katsın.
 
-##### D5-16 · Radyüste "Teğet yayılımı" kapatılamıyor
+##### ✅ D5-16 · Radyüste "Teğet yayılımı" kapatılamıyor
 - **Önem:** Düşük · **Tür:** Eksik seçenek
 - **Bizde:** Teğet zincir her zaman tümüyle radyüslenir (23460,4 = tüm zincir; doğru). SolidWorks'teki onay kutusu (kapatınca yalnız seçilen kenar) yok. `docs/SOLIDWORKS_OZELLIKLERI.md:115` seçeneği listeliyor.
 
-##### D5-17 · Ayrı "Basit Delik" komutu ve koordinat sisteminde Y / Z yönü seçimi yok
+##### ✅ D5-17 · Ayrı "Basit Delik" komutu ve koordinat sisteminde Y / Z yönü seçimi yok
 - **Önem:** Düşük · **Tür:** Eksik
 - **Bizde:** Basit delik yalnız Delik Sihirb. "Düz" türüyle (yeterli ama SW'de ayrı, yüzden ötele / sonrakine kadar uçlu komut); Koord. Sist.'te yalnız başlangıç + X kenarı seçiliyor, Y ekseni `up` vektöründen otomatik (`src/main.ts:5368–5372`), Y / Z yönü ya da ters çevirme seçilemiyor.
 
@@ -1772,36 +1791,36 @@ Kapsama oranı: **21 / 21 komut** (+ alandaki 34 seçenek satırı).
 - **Kod:** `src/kernel.worker.ts` `closeCorner` (≈ satır 3584 çağrısı) — bindirmede uzatma diğer flanşın dış yüzüne kadar boşluksuz yapılıyor, gövdeler kaynaşıyor.
 - **Öneri:** Bindirmede uzatılan flanşı karşı flanşın iç yüzünü geçecek kadar uzatıp karşı flanştan `gap` kadar uzak tut (iki gövde arası ayrık); açınımda boşluk korunmalı.
 
-##### D6-4 · Saca Dönüştür'de büküm yarıçapı ≠ kalınlık: açınım yok / OCC hatası
+##### ✅ D6-4 · Saca Dönüştür'de büküm yarıçapı ≠ kalınlık: açınım yok / OCC hatası
 - **Önem:** Yüksek · **Tür:** İşlev çalışmıyor
 - **Bizde:** `x8.py`: aynı kutu, Kalınlık 2, Büküm yarıçapı **4** (ya da **0,5**) → ✓: model kurulur (34 468,42; silindirler R4/R6) ama Düzleştir: "Bu gövde sabit kalınlıklı bir sac değil ya da sac kalınlığı farklı". R2 ile kurulmuş özelliği Düzenle → R 4 → ✓: "Geometri işlemi başarısız (OpenCascade hatası)". Yalnız R = t çalışıyor.
 - **Kod:** `toSheet` köşe boşaltma `rt = f.r + t` kutuları ve dış / iç kenar yuvarlatma (`doFillet(outer, r+t)`, `doFillet(inner, r)`) — R ≠ t'de köşe bölgesinde sabit kalınlık bozuluyor.
 - **Öneri:** Köşe boşaltmasını büküm bölgesinin açınım genişliğine (r+t) göre her iki komşu bükümde ayrı kur; hatada hangi köşenin sorun olduğunu söyle.
 
-##### D6-5 · Tırnak ve Yuva: gereken uç yüzü grafik alanda seçilemiyor
+##### ✅ D6-5 · Tırnak ve Yuva: gereken uç yüzü grafik alanda seçilemiyor
 - **Önem:** Yüksek · **Tür:** İşlev UI'dan kullanılamıyor
 - **SolidWorks:** Tırnak için kenar / yüz, yuva için karşı yüz ayrı seçilir; çakışık yüzler "Diğerini seç" ile alınır.
 - **Bizde:** `d6_sekil.py` T1: dikey levha (y 0..40, z 0..3) yatay levhanın (y −4..0) üstünde (sm4 düzeni) → Sac Metal > Tırnak ve Yuva → dikey levhanın alt dar yüzüne (y = 0) 4 kez tıklandı: her seferinde dikey levhanın ön yüzü (`c [50,20,3] n +z`) seçildi. Yüz, karşı levhanın üst yüzüyle çakışık olduğu için hiçbir yönden görünmüyor; PM'de "diğerini seç" yok. İlk denetimdeki sm4 bu yüzü `setDoc` ile verdiği için kaçırılmıştı.
 - **Öneri:** Kenar seçimi (alt kenar) kabul et, ya da yüzey seçiminde aynı yere tekrar tıkla / Alt ile çakışık adayları dolaş; seçilen yüz yanlışsa "dar uç yüzü değil" diye uyar.
 
-##### D6-6 · 90° dışı kenar flanşında "Malzeme içte" konumu ve açınım SW'den farklı
+##### ✅ D6-6 · 90° dışı kenar flanşında "Malzeme içte" konumu ve açınım SW'den farklı
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı (yarı doğrulandı)
 - **Bizde:** `d6_taban.py` T3, `x3.py`: 100×60 levha, ön kenar, L25 dış sanal keskin, 45°, Malzeme içte → taban yine **r+t = 4** mm kısaltılıyor (90° kuralı); flanş dış yüzünün taban alt yüzüyle kesişimi (dış sanal keskin) z = **−2,343** (kenar z = 0 olmalı); tabanın dış ölçüsü 57,66; açınım **81,699** (SW: 60 + 25 − 2·OSSB + BA = **84,042**). 135°'de de aynı 4 mm geri çekme (açınım 84,069).
 - **Kod:** `src/kernel.worker.ts` `edgeFlange` konum kaydırması açıdan bağımsız `r + t`.
 - **Öneri:** Malzeme içte için geri çekme = dış setback `(r+t)·tan(θ/2)` (θ ≤ 90°); θ > 90°'de SW'nin teğet / sanal keskin tanımı.
 
-##### D6-7 · Telefonda ⤢ Sığdır özellik panelini hesaba katmıyor
+##### ✅ D6-7 · Telefonda ⤢ Sığdır özellik panelini hesaba katmıyor
 - **Önem:** Orta · **Tür:** Telefon kullanılabilirliği
 - **Bizde:** `d6_mobil.py` M2, `x11.py` (390×844): Taban flanş → Kenar Flanş → ekran çubuğu ⤢ → ön kenar ekranda y = 492,6, panel üstü 481,6: seçilecek kenar alt panelin arkasında. Kullanıcı ▾ ile paneli küçültüp tekrar ⤢ yapmak zorunda (betik bunu yaptı, sonra seçim çalıştı). Kenet ve şekillendirme dokunuşlarında da aynı.
 - **Öneri:** PM açıkken `fit` görünür alanı (panel üstüne kadar) kullansın; kenar seçimi bekleyen PM açılınca otomatik sığdır.
 
-##### D6-8 · "Profil eskizi oluştur" ✕ ile geri alınmıyor
+##### ✅ D6-8 · "Profil eskizi oluştur" ✕ ile geri alınmıyor
 - **Önem:** Orta · **Tür:** Veri kirliliği / geri alma tutarsızlığı
 - **Bizde:** `d6_kenar.py` K5: Kenar Flanş PM → kenar → "Profil eskizi oluştur (dikdörtgen)" → ✕ → Kaydetmeden çık: belgede **"Eskiz1 (flanş profili)"** kalıyor (ağaçta, kayıtta). Ad ayrıca taban eskizi "Eskiz1" ile çakışıyor. ✓ ile kurulunca profil eskizi ağaçta flanştan **sonra** listeleniyor.
 - **Kod:** `src/main.ts` ≈ 3853–3870 (doğrudan `doc.features.splice` + `saveDoc()`).
 - **Öneri:** Profil eskizini taslağa bağla; ✕'te sil; `nextName` tüm eskizleri saysın; flanştan önce ekle.
 
-##### D6-9 · Şekillendirme yüz sınırı dışına taşabiliyor, uyarı yok
+##### ✅ D6-9 · Şekillendirme yüz sınırı dışına taşabiliyor, uyarı yok
 - **Önem:** Düşük · **Tür:** Sessiz garip geometri (doğrulanmadı ayrıntısı)
 - **Bizde:** `d6_ebeveyn` ilk sürüm: izometrikte ön flanşın arkasında kalan taban noktasına tıklanınca kabartma flanş dış yüzünün üst kenarına konuldu; bbox y 25 → 29, z 0 → 8 (kabartma flanş kenarından taşıyor), hata yok.
 - **Öneri:** Konum yüz sınırı + çap/2 içinde değilse uyar.
@@ -1814,29 +1833,29 @@ Kapsama oranı: **21 / 21 komut** (+ alandaki 34 seçenek satırı).
 - **Bizde:** `d6_sekil` F1 / X1: panjurlu / kabartmalı / çapraz kırmalı levhanın DXF'i yalnız 4 KESIM çizgisi + 2 not; kabartma merkezi, panjur kesiği ya da kırma çizgisi yok. SW düz desende şekillendirme aracını (merkez / profil) ve çapraz kırmayı gösterebilir.
 - **Öneri:** NOTLAR / ayrı katmanda şekillendirme merkezleri ve panjur kesik çizgileri.
 
-##### D6-12 · Büküm tablosunda geçersiz BA uyarısız kırpılıyor
+##### ✅ D6-12 · Büküm tablosunda geçersiz BA uyarısız kırpılıyor
 - **Önem:** Düşük · **Tür:** Sessiz düzeltme
 - **Bizde:** T3: 135° satırına BA 3 (iç yay 4,712'den küçük → K < 0) → açınım 81,712 (K = 0'a kırpılmış), uyarı yok. SW tabloyu olduğu gibi kullanır.
 - **Kod:** `src/sheet/sheet.ts` `tableK` (0…1 kırpma). **Öneri:** BA'yı doğrudan kullan (P-15 ile birlikte) ya da uyar.
 
-##### D6-13 · Kenet uzunluğu düz kısım (teğet) olarak ölçülüyor
+##### ✅ D6-13 · Kenet uzunluğu düz kısım (teğet) olarak ölçülüyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı (doğrulanmadı)
 - **Bizde:** H1: kapalı kenet L10 → katlanan düz bölüm tam 10 (dıştan 12,05); açınım 71,249 (dış katlama kenarından ölçülseydi 69,199). Kapalı kenette 0,1 mm boşluk (iç R 0,05). Kod kendi içinde tutarlı.
 - **Öneri:** SW'deki ölçü tanımıyla karşılaştırıp PM'de ölçü referansını belirt.
 
-##### D6-14 · Çizgiden Büküm tek çizgiyle sınırlı
+##### ✅ D6-14 · Çizgiden Büküm tek çizgiyle sınırlı
 - **Önem:** Düşük · **Tür:** Eksik seçenek
 - **Bizde:** B1: iki çizgili eskiz → ✓ → "Eskizde tek bir büküm çizgisi olmalı" (PM açık kalır). SW aynı eskizdeki birden çok çizgiyle birden çok büküm yapar.
 
-##### D6-15 · Gönye flanşta flanş konumu seçenekleri yok
+##### ✅ D6-15 · Gönye flanşta flanş konumu seçenekleri yok
 - **Önem:** Düşük · **Tür:** Eksik seçenek
 - **Bizde:** G1: yalnız "Malzeme tarafını ters çevir" ve köşe boşluğu; SW'deki Malzeme içte / dışta / Bükümün dışı ve baştan/sondan kısaltma yok. Profil çizgisi düşey bacağın iç yüzü ama üst bacağın dış yüzü oluyor (bbox y 22, z 0..15 → açınım 92,425).
 
-##### D6-16 · Açınım büküm yönü (YUKARI / AŞAĞI) sabit yüze göre değişiyor; sabit yüz seçilemiyor
+##### ✅ D6-16 · Açınım büküm yönü (YUKARI / AŞAĞI) sabit yüze göre değişiyor; sabit yüz seçilemiyor
 - **Önem:** Düşük · **Tür:** Tutarlılık
 - **Bizde:** Aynı yöne bükülmüş tek kenar flanşı K1'de "Yukarı", iki kenarlı tepside (K6) her ikisi "Aşağı"; kenet "içte" Yukarı, "bükümün dışı" Aşağı. Tek modelde göreli olarak doğru (zıt flanşlar zıt çıkıyor, K3), ama abkant DXF'inde yön etiketi bakış yüzüne bağlı ve kullanıcı sabit yüzü seçemiyor (SW: Düz Desen'de sabit yüz).
 
-##### D6-17 · "Eksik referans" penceresi geri al sonrası açık kalıyor
+##### ✅ D6-17 · "Eksik referans" penceresi geri al sonrası açık kalıyor
 - **Önem:** Düşük · **Tür:** Arayüz
 - **Bizde:** C1g: Kenar-Flanş2 silinince Köşe-Kapatma1 için "Eksik referans" penceresi açılıyor; Ctrl+Z ile flanş geri gelince pencere kapanmıyor, kalıcı (modal) pencere ağaç / sekme tıklamalarını engelliyor (betikte Esc gerekti).
 
@@ -1986,90 +2005,90 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 - **Kod:** `src/kernel.worker.ts:4290` mesh hatası `featureId: ""`; `applyTool` (186) kesmede boş sonucu, `thicken` (3909) iki parçanın birleşimini denetlemiyor; `src/main.ts:969–980` boş kimlikli hata sayılıp gösterilmiyor.
 - **Öneri:** Her özellikten sonra gövde geçerliliğini (yüz sayısı > 0, hacim > 0) denetleyip hatayı o özelliğe yaz ve önceki gövdeyle devam et; Ne yanlış?'ta kimliksiz hataları da listele.
 
-#### D7-5 · Sınır Doldur PM'de kenar seçimi ✓'yi açmıyor (önizleme yenilenmiyor)
+#### ✅ D7-5 · Sınır Doldur PM'de kenar seçimi ✓'yi açmıyor (önizleme yenilenmiyor)
 - **Önem:** Yüksek · **Tür:** Hata (komut arayüzden kullanılamıyor)
 - **SolidWorks:** Sınır yüzeyi / Doldurma yüzeyi PM'de kenarlar seçilince önizleme gelir, ✓ oluşturur.
 - **Bizde:** Kontur → Yüzey Ekstrüzyon 20 → Sınır Doldur → 4 üst kenara tıkla → PM "4 kenar seçili" → ✓ → toast "Doldurulacak sınırın kenarlarını seçin", PM açık kalıyor (masaüstü F1a, telefonda dokunarak P3). Yalnız kenarlar komuttan **önce** Ctrl+tıkla seçilirse çalışıyor (24000 katı). Tersi: var olan Sınır Doldur'u Düzenle → "Seçimi temizle" → ✓ kabul ediliyor; özellik kenarsız kalıp "Eksik referans" penceresi açılıyor. `d7_yuzey2.py` F1, `d7_mobil.py` P3.
 - **Kod:** `src/main.ts:5392–5424` `pmPick` doldurma dalı `d.edges`'i değiştiriyor ama `schedulePreview()` çağrılmıyor (yalnız `GHOST_TYPES` ve mirror/plane); "Seçimi temizle" (2567) de önizleme yapmıyor; `commitFeature` (2234) bayat `draftError`'a bakıyor.
 - **Öneri:** Doldurma dalında ve seçim temizlemede `schedulePreview()` / `upd()`; ✓'de `edges.length` doğrudan denetle.
 
-#### D7-6 · Yüzey Kırp: "Kırpılacak yüzey" değişince araç listesi yenilenmiyor; araç = kırpılan yüzey olabiliyor
+#### ✅ D7-6 · Yüzey Kırp: "Kırpılacak yüzey" değişince araç listesi yenilenmiyor; araç = kırpılan yüzey olabiliyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Kırpma aracı ve kırpılacak yüzey ayrı seçim kutuları; aynı yüzey iki rolde seçilemez, her sırada oluşturulmuş yüzeyler kullanılabilir.
 - **Bizde:** Düzlemsel Yüzey1, sonra Yüzey2 (kesen) → Yüzey Kırp → PM varsayılanı kırpılacak = Yüzey2, araç = Düzlemsel Yüzey1. Kırpılacak'ı Düzlemsel Yüzey1 yap → araç listesi hâlâ `Ön, Üst, Sağ, Düzlemsel Yüzey1` (Yüzey2 yok), taslak `surf = tool`; ✓ → "Kırpma tüm yüzeyi kaldırdı" (yanıltıcı). Önceki yüzeyi sonraki yüzeyle kırpmanın arayüzde yolu yok (düzenlemede de aynı). Yalnız oluşturma sırası ters çevrilirse çalışıyor (400 / 2000 ✓). `d7_yuzey2.py` T1.
 - **Kod:** `src/main.ts:2582–2586` `selectField` değişikliğinde `renderFeaturePM` çağrılmıyor; `surf === tool` denetimi yok.
 - **Öneri:** "Kırpılacak yüzey" değişince PM'i yeniden çiz, `tool === surf` ise aracı bir sonrakine kaydır; compile'da "araç ve kırpılan aynı olamaz" hatası.
 
-#### D7-7 · Delikli konturdan Düzlemsel Yüzey oluşturulamıyor (İngilizce iç hata)
+#### ✅ D7-7 · Delikli konturdan Düzlemsel Yüzey oluşturulamıyor (İngilizce iç hata)
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** İç döngülü kapalı kontur delikli düzlemsel yüzey verir.
 - **Bizde:** 40×30 dikdörtgen + ortada Ø10 daire → Düzlemsel Yüzey → durum "Ko(...).sketchOnPlane(...).face is not a function", ✓ kabul edilmiyor. Deliksiz kontur çalışıyor. `d7_yuzey1.py` Y3.
 - **Kod:** `src/kernel.worker.ts` `case "surface"` planar dalı `(profile(f.loops).sketchOnPlane(...) as any).face()` — çok döngülü profilde `Sketches` döner, `.face()` yok.
 - **Öneri:** Çok döngüde `sketches.faces()` / `makeFace(outer, inners)` kullan.
 
-#### D7-8 · Denkleme bağlı ölçünün Değiştir kutusu sayıyı gösteriyor; Enter bağlantıyı siliyor
+#### ✅ D7-8 · Denkleme bağlı ölçünün Değiştir kutusu sayıyı gösteriyor; Enter bağlantıyı siliyor
 - **Önem:** Yüksek · **Tür:** Hata (sessiz denklem kaybı)
 - **SolidWorks:** Bağlı ölçünün Değiştir kutusu `="L"*2` ifadesini gösterir; Enter / ✓ bağlantıyı korur.
 - **Bizde:** L = 40, genişlik `=L*2` (etiket "Σ 80"). Eskizi düzenle → etikete çift tık → kutuda **80** → değiştirmeden Enter → ✓ → `expr` silindi; L 40→45 yapılınca genişlik 80'de kaldı (derinlik `=L/2` 22,5'e geçti). `d7_denklem.py` E1.
 - **Kod:** `src/sketch/editor.ts:3931` `promptValue(x, y, Math.abs(d.v), …)` ilk değer olarak ifade yerine sayı; 3933–3943 `lastExpr` boşsa `delete dd.expr`.
 - **Öneri:** Kutuya `"=" + d.expr` koy; değer değişmediyse ifadeye dokunma; ifade silinecekse SolidWorks gibi sor.
 
-#### D7-9 · Sınır Doldur kenarları ebeveyn değişince izlenmiyor
+#### ✅ D7-9 · Sınır Doldur kenarları ebeveyn değişince izlenmiyor
 - **Önem:** Orta · **Tür:** Hata
 - **Bizde:** Kontur → Yüzey Ekstrüzyon 20 → Düzlemsel Yüzey → (önceden seçilmiş 4 kenarla) Sınır Doldur → Yüzey Dik (katı) 24000 → Kontur genişliği 40→50 → "Sınır Doldur1: Sınır kenarlarından bazıları bulunamadı", "Yüzey Dik1: Dikilecek yüzeylerden biri bulunamadı", "Eksik referans" penceresi, hacim 0 (beklenen 30000). `d7_yuzey2.py` F1c.
 - **Kod:** `src/kernel.worker.ts` `case "surface"` fill `matchEdges(f.edges)`; seçimde kenar imzası `s` yazılmıyor (`pmPick` `{m, d}`), yüzey kenarları için onarım (heal) oluşmuyor.
 - **Öneri:** Kenar referansına seçimde imza ekle; yüzey gövdelerini `matchEdges` imza eşleşmesine kat.
 
-#### D7-10 · Mandal konumu statik nokta: taban / yüz taşınınca mandal havada kalıyor (P-9 ailesi)
+#### ✅ D7-10 · Mandal konumu statik nokta: taban / yüz taşınınca mandal havada kalıyor (P-9 ailesi)
 - **Önem:** Orta · **Tür:** Hata (yanlış geometri, uyarı yok)
 - **Bizde:** 80×60×20 blok → Mandal üst yüze (y 20) → taban derinliği 20→30 → yüz referansı onarılıyor (`face.c` y 30) ama `p` = [10, 20, 5] kalıyor → mandal y 20…45'te gövdenin içinde (y max 45, beklenen 55). A5: Yüz Taşı +5 + Mandal (y 40) → taban 20→10 → yüz y 15'e iniyor, mandal y 25…40'ta **havada ayrı parça** (hacim 72000 + 193,6). `d7_detay.py` MN, `d7_akis.py` A5.
 - **Kod:** `SnapHookFeature.p` (Vec3) — `applyHeals` (main.ts:920) yalnız `{m,d}` / `{c,n}` biçimlerini onarıyor.
 - **Öneri:** `p`'yi yüzün yerel (u, v) koordinatı olarak sakla ve onarılmış yüz çerçevesinden yeniden hesapla.
 
-#### D7-11 · Tırnak ve Yuva: dar uç yüzü tıklanamıyor; yanlış (geniş) yüz uyarısız kabul ediliyor
+#### ✅ D7-11 · Tırnak ve Yuva: dar uç yüzü tıklanamıyor; yanlış (geniş) yüz uyarısız kabul ediliyor
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks:** Tırnak gövdesinin kenarı (ve yuva gövdesi) seçilir; yanlış seçim önizlemede görülür.
 - **Bizde:** Dikey A levhası (100×40×3) yatay B levhasının üstünde. Sac Metal > Tırnak ve Yuva → PM ipucu "dar uç yüzüne dokunun (karşı levhaya bakan)" — bu yüz B'ye dayalı, görünmüyor. A'nın alt kenarına tıklanınca A'nın ön yüzü (`n = +z`) seçiliyor; ✓ → tırnaklar ön yüzden dışarı çıkıyor, hacim **+3182,5** (doğrusu −42,9), hata / uyarı yok. `d7_detay.py` TS.
 - **Kod:** `src/main.ts` tabslot `pmPick` yüz kabulü; worker `faceRectFrame` yüzün dar / karşı gövdeye bakan olup olmadığını denetlemiyor.
 - **Öneri:** Kenar seçimi kabul et (kenarın komşu dar yüzü), ya da yüzün kalınlık yönünde dar olduğunu ve normal yönünde başka gövdeye değdiğini denetle; değilse hata.
 
-#### D7-12 · Denklem anahtarı olmayan alanlar =ifadeyi bağlamıyor
+#### ✅ D7-12 · Denklem anahtarı olmayan alanlar =ifadeyi bağlamıyor
 - **Önem:** Orta · **Tür:** Eksik / tutarsızlık
 - **Bizde:** T = 3, D = 40. Yüzey Ekstrüzyon "Mesafe" `=D`, Kalınlaştır "Kalınlık" `=T` → 7200 ✓; Denklemler T 5, D 50 → model 7200'de kalıyor (beklenen 15000), `doc.eqs` boş. Alan ifadeyi kabul ettiği için kullanıcı bağlandığını sanıyor. Aynı durum Dudak / Mandal / Tırnak alanlarında (kodda `key` yok). `d7_denklem.py` E3.
 - **Kod:** `src/main.ts:2573, 2579, 3977–4000` `numField(...)` çağrılarında `key` yok (Kubbe `key: ${d.id}.h` ile çalışıyor — A6 ✓).
 - **Öneri:** Tüm sayısal özellik alanlarına `key: \`${d.id}.<alan>\`` ver.
 
-#### D7-13 · Tasarım tablosunda bastır + Ctrl+Z tutarsız durum bırakıyor
+#### ✅ D7-13 · Tasarım tablosunda bastır + Ctrl+Z tutarsız durum bırakıyor
 - **Önem:** Orta · **Tür:** Hata (geri alma tutarsızlığı)
 - **Bizde:** Yapılandırmalar → etkin sütunda "Bastır: Kesme1" işaretle → Kapat → Ctrl+Z → Kesme1 etkin (`off` yok) ama yapılandırmanın `off` listesinde hâlâ `e2`; başka yapılandırmaya geçip dönünce Kesme1 kendiliğinden bastırılıyor (96000). `d7_denklem.py` C1.
 - **Kod:** `src/main.ts:4300–4310` onay kutusu `c.off`'u `commitDoc` **dışında** değiştiriyor, ardından `setConfig` → `commitDoc` anlık görüntüyü zaten değişmiş tabloyla alıyor; yapılandırma ekleme / ad / silme de geri alma dışı.
 - **Öneri:** Tablo değişikliklerini `commitDoc(() => …)` içinde yap.
 
-#### D7-14 · Bir yapılandırmada ölçüye sayı yazmak tüm yapılandırmaları değiştiriyor
+#### ✅ D7-14 · Bir yapılandırmada ölçüye sayı yazmak tüm yapılandırmaları değiştiriyor
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Ölçü değişince "Bu yapılandırma / Tüm yapılandırmalar / Belirtilen" sorulur.
 - **Bizde:** Genişlik `=L` (Varsayılan L 80, Kısa L 40). Kısa etkinken genişliğe 55 → ✓ → ifade silindi; Varsayılan'a dönünce genişlik **55** (80 olmalı). `d7_denklem.py` C1.
 - **Öneri:** Yapılandırma varken değer değişikliğinde kapsam sor; "bu yapılandırma" için yapılandırma değişkeni / ölçü geçersiz kılma sakla.
 
-#### D7-15 · Geri sarma çubuğunun üstünde özellik silinince çubuk kayıyor
+#### ✅ D7-15 · Geri sarma çubuğunun üstünde özellik silinince çubuk kayıyor
 - **Önem:** Orta · **Tür:** Hata
 - **Bizde:** [Eskiz1, Ekstrüzyon1, Delik, Kesme1, Radyüs1] → Radyüs1'e geri sar (rollback 4) → Kesme1 → Sil (eskiziyle) → özellik sayısı 3, `rollback` hâlâ 4 → Radyüs1 artık çubuğun altında değil, hesaplanıyor; çubuk listenin sonunda. `d7_genel.py` GS.
 - **Kod:** `src/main.ts` `deleteFeature` (~6390) `doc.rollback`'i ayarlamıyor (`exitSketch` 1707 ve 2957 ayarlıyor); `moveFeature` de bakılmalı.
 - **Öneri:** Silinen her özellik `rollback`'ten önceyse `rollback--`.
 
-#### D7-16 · Yüzey Kırp aracında referans düzlem / eskiz yok
+#### ✅ D7-16 · Yüzey Kırp aracında referans düzlem / eskiz yok
 - **Önem:** Orta · **Tür:** Eksik
 - **SolidWorks:** Kırpma aracı düzlem (referans düzlemler dahil), yüzey ya da eskiz olabilir; karşılıklı kırpma seçeneği.
 - **Bizde:** Belgede Düzlem1 (Sağ + 10) varken liste yalnız `Ön Düzlem, Üst Düzlem, Sağ Düzlem` + yüzeyler; eskiz ve karşılıklı kırpma yok. `d7_yuzey2.py` T1.
 - **Kod:** `src/main.ts:2584`; compile 806 yalnız `std:`.
 
-#### D7-17 · Yüzey bastırılınca / silinince bağımlılar hata veriyor ve yanıltıcı "Eksik referans" penceresi açılıyor
+#### ✅ D7-17 · Yüzey bastırılınca / silinince bağımlılar hata veriyor ve yanıltıcı "Eksik referans" penceresi açılıyor
 - **Önem:** Orta · **Tür:** Hata (P-7 / P-24 ailesi; pencere yeni)
 - **Bizde:** Yüzey1 → Bastır → Kalınlaştır1 kırmızı "Yüzey bulunamadı (önce yüzey özelliği)" + modal **"Eksik referans — Model değiştiği için seçili kenar / yüz bulunamadı · Yeniden seç / Daha sonra"** (kullanıcı bastırdı, model değişmedi). Yüzey Kırp bastırılınca Kalınlaştır aynı; Düzlemsel kapak bastırılınca Yüzey Dik "Dikilecek yüzeylerden biri bulunamadı" + aynı pencere. Yüzey1 → Sil → yalnız "silinsin mi?" soruluyor, Kalınlaştır1 hatalı kalıyor. `d7_yuzey1.py` Y1g, `d7_yuzey2.py` T1g, L2g.
 - **Kod:** `src/main.ts:972` `offerReselect` regex `/bulunamad|seçin/` bastırma kaynaklı hataları da yakalıyor; `deleteFeature` / `parentsOf` `surf` / `surfs` / `tool` alanlarını bilmiyor; `sketchUsers` (compile.ts:963) `surface` türünü kapsamıyor.
 - **Öneri:** Bastırma / silmede `surf`, `surfs`, `tool` çocuklarını da bastır / sor; ebeveyni bastırılmış özellikte pencere açma.
 
-#### D7-18 · Yalnız yüzey varken Kütle Özellikleri 0 g gösteriyor
+#### ✅ D7-18 · Yalnız yüzey varken Kütle Özellikleri 0 g gösteriyor
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde:** Yalnız Yüzey1 → Kütle Özell. → "Kütle: 0 g · Hacim: 0 mm³ · Yüzey alanı: 0 mm²". SolidWorks yüzey gövdesinde alan verir / "katı yok" uyarır. Kod: `src/main.ts:5835` (`props` yalnız `bodies`).
 
@@ -2077,15 +2096,15 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 - **Önem:** Düşük · **Tür:** Eksik
 - **Bizde:** Yüzey1'e sağ tık → menüde "Görünüm: yüz rengi…" yok (yalnız parça rengi); katı yüzlerde var. `d7_genel.py` RN.
 
-#### D7-20 · Ne yanlış? ve klasörden Bastır etkin yapılandırmaya yazılmıyor
+#### ✅ D7-20 · Ne yanlış? ve klasörden Bastır etkin yapılandırmaya yazılmıyor
 - **Önem:** Düşük · **Tür:** Tutarsızlık
 - **Bizde:** Yapılandırmalı belgede Ne yanlış? → Radyüs1 → Bastır → yapılandırma `off` listeleri boş; klasör → "Klasörü bastır" → aynı. Ağaçtaki Bastır listeyi güncelliyor. Yapılandırma değiştirilip dönülünce özellik yeniden etkinleşir. Kod: `src/main.ts:5501` (ww Bastır), `6328` (klasör bastır).
 
-#### D7-21 · Kontrol, katı varken yüzey gövdelerini bildirmiyor
+#### ✅ D7-21 · Kontrol, katı varken yüzey gövdelerini bildirmiyor
 - **Önem:** Düşük · **Tür:** Eksik
 - **Bizde:** Blok + açık Yüzey1 → Kontrol → yalnız "✓ Gövde 1: geçerli"; `__geomCheck.surfs = 1` ama "1 yüzey gövdesi" yazısı yalnız katı yokken çıkıyor. Kod: `src/main.ts:5524`.
 
-#### D7-22 · Yüzey özelliklerinin eskizi ağaçta çocuk değil, "Eskizi düzenle" eylemi yok (P-4 ailesi)
+#### ✅ D7-22 · Yüzey özelliklerinin eskizi ağaçta çocuk değil, "Eskizi düzenle" eylemi yok (P-4 ailesi)
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **Bizde:** Yüzey Ekstrüzyon / Düzlemsel Yüzey / Yüzey Loft sonrası eskizler ayrı satırda kalıyor ve grafik alanda görünür kalıyor; Yüzey1 seçilince eylemlerde "Eskizi düzenle" yok (eskiz kendi satırından düzenlenebiliyor). Kod: `src/main.ts:6234` `kids`, `6366`; `compile.ts:963` `sketchUsers`'ta `surface` yok.
 
@@ -2207,7 +2226,7 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/main.ts:964` — sonuç yalnız `fea.vf.length !== res.mesh.vertices.length / 3` olunca siliniyor. Aynı topolojide (boy / ölçü değişikliği) köşe sayısı aynı kalıyor, sonuç geçerli sayılıyor. Hemen ardından `fea.vf = undefined` yapıldığı için denetim yalnız bir kez çalışıyor.
 - **Öneri:** Her yeniden yapıda (`build` sonrası) `fea.res`, `field` ve `disp` silinip `renderFea()` çağrılmalı. Ya da sonuç, model özetiyle (yapı anahtarı / hacim + bbox) damgalanmalı; uyuşmazsa "Model değişti — yeniden çözün" yazılmalı.
 
-##### D8-2 — Malzeme değişince Statik Analiz paneli eski malzemeyi ve eski sonucu gösteriyor
+##### ✅ D8-2 — Malzeme değişince Statik Analiz paneli eski malzemeyi ve eski sonucu gösteriyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Malzeme değişince etüt güncel değil sayılır.
 - **Bizde:** F1 sonucu görünürken Değerlendir > Malzeme → Alüminyum → Tamam. Panel başlığı "Yapı çeliği … E 210000 MPa" ve sonuç δ 0,0717 olarak kalıyor. Yeniden çözünce 0,2177 çıkıyor (doğru oran 210000 / 69000).
@@ -2223,14 +2242,14 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/main.ts:5583` `feaFaceIdx`: aynı normal + merkez ≤ 2 mm. `doc.fea.fix / loads.ref` = `{c, n}`.
 - **Öneri:** FaceRef'e özelliklerdeki gibi imza (`s`) ekleyip eşleşmeyi `matchFaces` yoluyla yap, bulununca yeni konumu yaz. Bulunamayan referansı panelde ⚠ ile göster.
 
-##### D8-4 — Statik Analiz paneli Ctrl+Z / Ctrl+Y sonrası yenilenmiyor
+##### ✅ D8-4 — Statik Analiz paneli Ctrl+Z / Ctrl+Y sonrası yenilenmiyor
 - **Önem:** Orta · **Tür:** Hata
 - **Bizde:** 1 yük + sonuç varken Ctrl+Z → `doc.fea.loads` 0 oluyor, ama panel hâlâ "Yükler (1) Normal kuvvet 100 N" ve eski sonucu gösteriyor. Temizle → Ctrl+Z → belge geri dönse de panel "Sabitlemeler (0 yüz)" gösteriyor.
 - **Betik:** `d8_sea.py` F3, F6.
 - **Kod:** `src/main.ts` `undo/redo` → `renderFea` çağrılmıyor. Fikstür / yük ekleme `commitDoc` ile geri alınabiliyor, ama panel durumu (`fea.res`) belgeden bağımsız.
 - **Öneri:** `undo/redo` (ve `setDoc`) sonrasında `fea` açıksa `fea.res = undefined; renderFea(); feaPaint()`.
 
-##### D8-5 — Kırp / Uzat, sınır elemanı ~56 mm'den fazla aşan elemanı kırpamıyor
+##### ✅ D8-5 — Kırp / Uzat, sınır elemanı ~56 mm'den fazla aşan elemanı kırpamıyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** Kırp/Uzat, sınırı ne kadar aşarsa aşsın hedefi sınırda keser (taşan uç atılır).
 - **Bizde:** 600×400 kutu 40x40x3 çerçeve + y −100…500 dikme (kırpma kapalı). Kaynaklı > Kırp / Uzat → dikmeye tık → Sınır → alt ve üst kirişe tık (taslak: 1 hedef, 2 sınır) → ✓ → durum "Hedef elemanın uçları sınır elemanlara yakın değil", özellik eklenmiyor. Aynı dikme −30…430 olunca 360 ✓.
@@ -2238,7 +2257,7 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/kernel.worker.ts:~2705` `near` süzgeci: `vdot(centroid(bs) − P, dOut) > −(reg.R + bR)`. Uç, sınırın merkezinden R + bR'den (kutu 40 → ~56 mm) daha ötedeyse aday atılıyor. Ayrıca `dist < 3·(R + bR)`.
 - **Öneri:** Uç yerine hedefin ekseninin sınır gövdesini kestiği noktayı (eksen–gövde kesişimi) bul. Taşma miktarına bakmadan uca en yakın kesişimden kırp.
 
-##### D8-6 — Kapalı çerçevede Alın 1 / Alın 2 köşeleri tutarsız (dört farklı boy)
+##### ✅ D8-6 — Kapalı çerçevede Alın 1 / Alın 2 köşeleri tutarsız (dört farklı boy)
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Tek gruptaki kapalı dikdörtgende alın köşeler tutarlı çözülür: iki uzun + iki kısa eleman. Doğrulanmadı: SW'nin tam deseni (fırıldak ya da simetrik), ama her iki durumda da yalnız 2 boy çıkar.
 - **Bizde:** 600×400 iskelet, boru 42.4x3.2, Alın 1, boşluk 3 → boylar 642,4 / 597 / 397 / 351,6. Alt eleman iki uçta sürekli, sol eleman iki uçta kırpılmış, diğer ikisi karışık. Alın 2: 597 / 551,6 / 442,4 / 397. Kesim listesinde 2 yerine 4 kalem var.
@@ -2246,7 +2265,7 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/kernel.worker.ts:2423` `const [A, B] = list` (köşedeki eleman sırası = öğe dizini). `2553` `butt1 ? [A, B] : [B, A]`. Kapanış köşesinde (son ↔ ilk segment) A ilk segment olduğu için yön zincire göre değil dizine göre belirleniyor.
 - **Öneri:** Köşede A / B'yi zincir yönüne göre (gelen / giden eleman) ata. Ya da SW gibi "uzun kenar sürekli" kuralı uygula; böylece 2 kalem çıkar.
 
-##### D8-7 — Kesim listesi kalem malzemesi Kütle Özellikleri'ne (ve analizlere) yansımıyor
+##### ✅ D8-7 — Kesim listesi kalem malzemesi Kütle Özellikleri'ne (ve analizlere) yansımıyor
 - **Önem:** Orta · **Tür:** Hata / SolidWorks farkı
 - **SolidWorks:** Kesim listesi gövdesine atanan malzeme kütle özelliklerinde kullanılır.
 - **Bizde:** Kesim Listesi → 640 kalemi Özellikler → Malzeme Alüminyum → satır 0,68 kg, toplam 4,239 kg (CSV). Değerlendir > Kütle Özell. → 6,84 kg (tüm hacim × 7,85).
@@ -2254,7 +2273,7 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/main.ts:5835` `showMassProps` yalnız `doc.material`. Mukavemet (`openAnalysis`) ve SEA (`renderFea`) de öyle.
 - **Öneri:** Gövde başına malzeme haritası (`cutProps` → gövde) kurup kütle / ağırlık merkezini gövde toplamıyla hesapla.
 
-##### D8-8 — Kesim listesi kalem özellikleri boy değişince kayboluyor
+##### ✅ D8-8 — Kesim listesi kalem özellikleri boy değişince kayboluyor
 - **Önem:** Orta · **Tür:** Hata (veri kaybı, görünür)
 - **SolidWorks:** Kesim listesi kalemi özellikleri kalemle (klasörle) birlikte kalır, boy değişse de kaybolmaz.
 - **Bizde:** 640 kalemine "Yatay kiriş", Alüminyum, Boya = RAL 7016 verildi → 3B iskelet 600 → 800 → kesim listesinde 840 satırı "Kutu 40x40x3 / Yapı çeliği", özellikler yok. Eski kayıt `cutProps["m|Kutu 40x40x3|6400|45|45"]` belgede sahipsiz kalıyor.
@@ -2262,14 +2281,14 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/main.ts:~4689` `ck = m|ad|boy×10|açı1|açı2`. Özellik anahtarı geometriye bağlı.
 - **Öneri:** Anahtarı elemanın kaynağına (özellik kimliği + segment / grup) bağla. Ya da eşleşme bulunamazsa en yakın eski kalemden taşı.
 
-##### D8-9 — Kesim listesi Özellikler değişikliği geri alınamıyor
+##### ✅ D8-9 — Kesim listesi Özellikler değişikliği geri alınamıyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Özellikler → Tamam → Ctrl+Z → `doc.cutProps` değişmiyor.
 - **Betik:** `d8_kesim.py` C1.
 - **Kod:** `src/main.ts` `openCutProps` "Tamam" → `saveDoc()` (commitDoc değil).
 - **Öneri:** `commitDoc(() => …)` kullan.
 
-##### D8-10 — Yapı sistemi "Noktayı seç": iskelet köşesine tıklayınca eleman yüzündeki rastgele nokta alınıyor
+##### ✅ D8-10 — Yapı sistemi "Noktayı seç": iskelet köşesine tıklayınca eleman yüzündeki rastgele nokta alınıyor
 - **Önem:** Orta · **Tür:** Hata
 - **SolidWorks:** Nokta-uzunluk elemanı için eskiz noktası / köşe seçilir.
 - **Bizde:** Çerçeve var → Düzenle → "+ Nokta-uzunluk birincil eleman" → iskeletin (600, 0, 0) köşesine (ekranda tam üstüne) tık → nokta (614, 13.9, 20). Eleman havada, profilin dış yüzünden başlıyor.
@@ -2277,53 +2296,53 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 - **Kod:** `src/main.ts:4643` `snapPoint(p)`: 3B uzaklık `≤ worldPerPixel·14`. Tıklanan nokta eleman yüzünde (z = 20), iskelet noktası 28 mm uzakta olduğu için yakalanmıyor.
 - **Öneri:** Adayları ekran (piksel) uzaklığıyla seç. İskelet / 2B eskiz noktalarına öncelik ver.
 
-##### D8-11 — Yapı elemanının iskelet eskiziyle ebeveyn bağı yok: Ebeveyn / çocuk boş, ▲ Yukarı onu eskizinin önüne taşıyor
+##### ✅ D8-11 — Yapı elemanının iskelet eskiziyle ebeveyn bağı yok: Ebeveyn / çocuk boş, ▲ Yukarı onu eskizinin önüne taşıyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Ebeveyn / çocuk → "Ebeveyn: — · Çocuk: —". Taban-Ekst, Çerçeve (gizli), Yapı-Elemanı1 düzeninde elemana ▲ Yukarı → sıra `s0, e0, m1, s1` (eleman, kullandığı eskizden önce). Uyarı yok.
 - **Betik:** `d8_uye.py` U6, U7.
 - **Kod:** `src/main.ts:6255` `parentsOf` yalnız `sketch/path/center/base2/sketches/feats/plane`. `member.segs[].sk`, `groups[].segs`, `std:'sketch'` boyutu yok.
 - **Öneri:** `parentsOf`'a yapı elemanı segment ve profil eskizlerini ekle (`sketchUsers` ile aynı küme).
 
-##### D8-12 — Telefonda Statik Analiz paneli grafik alanın çoğunu örtüyor; yüze dokunulamıyor
+##### ✅ D8-12 — Telefonda Statik Analiz paneli grafik alanın çoğunu örtüyor; yüze dokunulamıyor
 - **Önem:** Orta · **Tür:** Telefon kullanılabilirliği
 - **Bizde:** 390×844: `.fea-panel` x 110…380, y 159…810 (≈ %70 genişlik × %77 yükseklik). Küçültme düğmesi yok. Kirişin uç yüzü (solda) dokunulup sabitlendi. Üst yüze dokunuş paneldeki `SELECT`e gidiyor → yük eklenemiyor.
 - **Betik:** `d8_mobil.py` M5.
 - **Öneri:** Telefonda paneli alt sayfa (`#side` gibi) yap, küçültülebilir olsun. Ya da yüz seçerken paneli geçici gizle.
 
-##### D8-13 — 3B eskiz düzenlerken "Ekrana sığdır" 3B eskizi kapsamıyor
+##### ✅ D8-13 — 3B eskiz düzenlerken "Ekrana sığdır" 3B eskizi kapsamıyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** 1000 mm tek çizgilik 3B iskelet → Düzenle → Ekrana sığdır → görünüm değişmiyor (geri sarılmış model boş → varsayılan ±60 kutu). 3B ölçü etiketleri ekran dışında kalıp çift tıklanamıyor.
 - **Betik:** `d8_deger.py` E4 (yardımcı `s3_open` bu yüzden önce parça modunda sığdırıyor).
 - **Kod:** `src/main.ts:7003` `fitAll`: yalnız 2B eskiz (`mode.k === "sketch"`) için eskiz sınırlarını katıyor.
 - **Öneri:** 3B eskiz PM'inde `draft.xyz` sınır kutusunu kat.
 
-##### D8-14 — İmalat resmi başlığında yazım hatası: "İmalat resmileri"
+##### ✅ D8-14 — İmalat resmi başlığında yazım hatası: "İmalat resmileri"
 - **Önem:** Düşük · **Tür:** Metin
 - **Bizde:** Kesim Listesi → Tüm imalat resimleri → başlık "İmalat resmileri (3 sayfa)".
 - **Betik:** `d8_kesim.py` C4.
 - **Kod:** `src/main.ts` `openDrawings`: `İmalat resmi${rows.length > 1 ? "leri …"}`.
 - **Öneri:** Tekil / çoğul dizgeyi tam yaz ("İmalat resimleri").
 
-##### D8-15 — Kaynak tablosunda kaynak metali kütlesi hep çelik yoğunluğuyla
+##### ✅ D8-15 — Kaynak tablosunda kaynak metali kütlesi hep çelik yoğunluğuyla
 - **Önem:** Düşük · **Tür:** Hata (kod incelemesi; betikle alüminyumla denenmedi — Doğrulanmadı)
 - **Kod:** `src/main.ts:4869` ve `4888` `(w.vol * 7.85) / 1e6` sabit.
 - **Öneri:** `MATERIALS[doc.material].rho` kullan.
 
-##### D8-16 — Fotoğraf işareti statik koordinatta; model değişince yüzle gitmiyor
+##### ✅ D8-16 — Fotoğraf işareti statik koordinatta; model değişince yüzle gitmiyor
 - **Önem:** Düşük · **Tür:** SolidWorks farkı
 - **SolidWorks:** Notlar / açıklamalar yüze bağlıdır.
 - **Bizde:** 100×60×20 blok, fotoğraf +X yüzüne (x = 50) bağlandı → Eskizi düzenle → genişlik 140 → +X yüz x = 81,44, işaret x = 50'de (modelin içinde) kalıyor.
 - **Betik:** `d8_saha.py` P1.
 - **Öneri:** Fotoğrafa FaceRef + yüzdeki göreli konum sakla, yapı sonrası yeniden konumla.
 
-##### D8-17 — Ne Yanlış? ile bastırılan hatalı özellik Ctrl+Z ile geri gelince "Eksik referans" penceresi açılıyor
+##### ✅ D8-17 — Ne Yanlış? ile bastırılan hatalı özellik Ctrl+Z ile geri gelince "Eksik referans" penceresi açılıyor
 - **Önem:** Düşük · **Tür:** Hata
 - **Bizde:** Hatalı Uç-Kapağı1 → Ne Yanlış? → Bastır → Ctrl+Z → modal "Eksik referans" penceresi açılıyor. Hata yeni değil, ama pencere sonraki tuşları (Ctrl+Z) da yutuyor.
 - **Betik:** `d8_deger.py` E6 → E7 başında.
 - **Kod:** `src/main.ts:974` `builtOk`: bastırılmış özellik hata vermediği için "hatasız kuruldu" sayılıyor.
 - **Öneri:** `builtOk`'a yalnız `!f.off` özellikleri ekle.
 
-##### D8-18 — Delik / kesme için "Özellik kapsamı" yok: kaynaklı yapıda tümünden geçen delik bütün gövdeleri deliyor
+##### ✅ D8-18 — Delik / kesme için "Özellik kapsamı" yok: kaynaklı yapıda tümünden geçen delik bütün gövdeleri deliyor
 - **Önem:** Düşük · **Tür:** Eksik seçenek
 - **SolidWorks:** Çok gövdeli parçada kesme / delik özelliklerinde "Özellik kapsamı" (seçili gövdeler) vardır.
 - **Bizde:** Kaynaklı > Delik Sihirb. → üst kirişe dokun → Ø9 tümünden geçen → alt kiriş de delindi (iki 640 kalemi −381,7 mm³). Yalnız üst kirişi delmenin yolu yok (kör derinlik dışında).
@@ -2602,7 +2621,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/drawing/techdraw.ts:51` `UDim {a, b}` (sayı çifti) ve `:364` `val = |a−b|`. `src/main.ts` `addAt` yakalama noktasının koordinatını kopyalıyor, kenar / köşe kimliğini değil.
 - Öneri: Yakalanan noktanın kaynağını (görünüş kenarı indeksi / 3B köşe noktası) sakla. Her çizimde yeni görünüşte en yakın eşdeğeri bul; bulunamazsa ölçüyü kırmızı / "asılı" göster. Değeri her çizimde yeniden hesapla.
 
-#### D9-7 · Parçada Ctrl+Z, resimde sonradan eklenen açıklamaları siliyor
+#### ✅ D9-7 · Parçada Ctrl+Z, resimde sonradan eklenen açıklamaları siliyor
 - Önem: **Yüksek** · Tür: Hata (veri kaybı)
 - SolidWorks'te: Çizim ayrı belgedir. Modeldeki geri alma çizim açıklamalarını silmez.
 - Bizde (`d9_resim.py` R11):
@@ -2612,7 +2631,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/main.ts:494` `keepDr` `doc.drawing`'i `saveDoc()` ile yazıyor ama geri alma yığınına girmiyor. `undo()` (`:6958`) eski anlık görüntüyü (eski `drawing`) geri yüklüyor.
 - Öneri: Geri alırken `doc.drawing`'i koru: anlık görüntüyü geri yükledikten sonra `drawing = mevcut`. Ya da resim değişikliklerini de `commitDoc` ile yığına yaz.
 
-#### D9-8 · "Hizalamayı çevir" sağlanmış eşleşmede bileşeni döndürmüyor, eşleşme ⚠ oluyor
+#### ✅ D9-8 · "Hizalamayı çevir" sağlanmış eşleşmede bileşeni döndürmüyor, eşleşme ⚠ oluyor
 - Önem: **Yüksek** · Tür: Hata (işlev çalışmıyor)
 - SolidWorks'te: Hizalama çevrilince bileşen 180° döner (Flip Mate Alignment).
 - Bizde (`d9_esles.py` E4, `d9_tur.py` flipco):
@@ -2623,7 +2642,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/solver.ts:57` `alignU` artığı `B ± A`. Tam ters (180°) başlangıçta gradyan sıfır olduğu için LM eyer noktasında kalıyor. `src/asm/asmui.ts:1338` `mateAct('flip')` ön döndürme yapmıyor.
 - Öneri: Çevirmeden önce serbest bileşeni varlık normaline dik bir eksen etrafında 180° döndür (ya da küçük bir pertürbasyon ver), sonra çöz.
 
-#### D9-9 · Sayfa yüklendikten sonraki ilk montaj işlemi geri alınamıyor
+#### ✅ D9-9 · Sayfa yüklendikten sonraki ilk montaj işlemi geri alınamıyor
 - Önem: **Yüksek** · Tür: Hata (geri alma tutarsızlığı, veri kaybı riski)
 - SolidWorks'te: Açılıştan sonraki ilk işlem de geri alınır.
 - Bizde (`d9_ek.py` UN, `d9_esles.py` E10 ilk koşu):
@@ -2633,7 +2652,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/asmui.ts:2616` `private last = ""`. `save()` (`:116`) yalnız `this.last` doluysa geçmişe yazıyor; açılışta `last` hiç atanmıyor.
 - Öneri: Kurucuda ve `enter()` / `applyState` / dosya açmada `this.last = this.ser()`.
 
-#### D9-10 · Bağlam içi "Parçayı düzenle" sonrası bileşenin malzemesi, değişkenleri ve yapılandırmaları siliniyor
+#### ✅ D9-10 · Bağlam içi "Parçayı düzenle" sonrası bileşenin malzemesi, değişkenleri ve yapılandırmaları siliniyor
 - Önem: **Yüksek** · Tür: Hata (veri kaybı)
 - SolidWorks'te: Bağlam içi düzenleme parçanın yalnız düzenlenen özelliklerini değiştirir. Malzeme ve yapılandırmalar kalır.
 - Bizde (`d9_parca.py` P4/P7):
@@ -2644,7 +2663,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/main.ts:8176` düzenleme belgesi yalnız `features/profiles/eqs` ile kuruluyor. `:8188` `np` ad / özellikler / eqs / profiles içeriyor; material / vars / configs / config yok. `src/asm/asmui.ts:2024` `replaceComp` parçayı tümüyle `np` ile değiştiriyor.
 - Öneri: Düzenleme belgesine ve `np`'ye `material, vars, configs, config` taşı. `replaceComp(allInstances)` yalnız `features/eqs/profiles` güncellesin.
 
-#### D9-11 · Otomatik hizalama yalnız Standart sekmede: önce tür seçilince ve SmartMate'te bileşen ters dönüyor
+#### ✅ D9-11 · Otomatik hizalama yalnız Standart sekmede: önce tür seçilince ve SmartMate'te bileşen ters dönüyor
 - Önem: Orta · Tür: SolidWorks'ten farklı
 - SolidWorks'te: Hizalama, varlıkların mevcut yönüne en yakın seçilir (tür önce de seçilse).
 - Bizde (`d9_tur.py` limit / pcenter, `d9_ek.py` SM):
@@ -2654,7 +2673,7 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/asmui.ts:1157` `pickInto` `autoFlip` yalnız `d.tab === "std"` iken. `:803` SmartMate `addMate` çağrısında `flip` / `autoFlip` yok.
 - Öneri: Seçim tamamlandığında tüm hizalanabilir türlerde `autoFlip` / `autoSide` uygula. SmartMate'te de `flip: this.autoFlip(...)` ver.
 
-#### D9-12 · Eşleşmesiz montaj sayfa yenilendikten sonra açılınca ağaç parça ağacını gösteriyor
+#### ✅ D9-12 · Eşleşmesiz montaj sayfa yenilendikten sonra açılınca ağaç parça ağacını gösteriyor
 - Önem: Orta · Tür: Hata (yanlış arayüz durumu)
 - Bizde (`d9_ek.py` UN):
   1. 3 bileşen, eşleşme yok. Sayfa yenilenir → Montaj sekmesi (otomatik açılır).
@@ -2662,64 +2681,64 @@ Telefon 390×844 (CDP dokunma):
 - Kod: `src/asm/asmui.ts:147` `renderTree()` yalnız `lost.size || mates.length` iken çağrılıyor.
 - Öneri: `enter()` sonunda koşulsuz `renderTree()`.
 
-#### D9-13 · Patlatılmış Görünüm ✕ ile kapatılınca eklenen adımlar kalıyor
+#### ✅ D9-13 · Patlatılmış Görünüm ✕ ile kapatılınca eklenen adımlar kalıyor
 - Önem: Orta · Tür: Hata (vazgeç çalışmıyor)
 - SolidWorks'te: ✕ yeni adımları iptal eder.
 - Bizde (`d9_arac1.py` T8): 1 adımlı montaj → Patlatılmış Görünüm → Plaka2 seç → +X 40 → Adım ekle → ✕. Kayıtta 2 adım var; montaj patlatılmış durumda.
 - Kod: `src/asm/asmui.ts:1576-1587` ✓ ve ✕ için aynı `finish` (save) kullanılıyor; `doc.exploded = true` hemen yazılıyor.
 - Öneri: Açılışta `steps` ve `exploded` anlık görüntüsü al; ✕'te geri yükle.
 
-#### D9-14 · Bileşen çoğaltma özellik değil: düzenlenemiyor, parça değişikliğini izlemiyor, ağaçta yok
+#### ✅ D9-14 · Bileşen çoğaltma özellik değil: düzenlenemiyor, parça değişikliğini izlemiyor, ağaçta yok
 - Önem: Orta · Tür: SolidWorks'ten farklı
 - SolidWorks'te: Doğrusal / dairesel bileşen çoğaltma ağaçta özelliktir; adet / aralık sonradan düzenlenir.
 - Bizde (`d9_arac2.py` B5): Pim → Bileşen Çoğalt → 3 × 40 → ✓. Pim<2>, Pim<3> bağımsız, eşleşmesiz serbest bileşen (−). Ağaçta çoğaltma öğesi yok, düzenlenemiyor. Panelde önizleme de yok.
 - Kod: `src/asm/asmui.ts:1832-1860` `openPattern` kopyaları doğrudan `comps`'a ekliyor.
 - Öneri: Desen güdümlü gibi bir `AsmPattern {seed, kind, ax, n, d}` kaydı tut; `updatePatterns()` ile örnekleri kur; ağaçta düzenle.
 
-#### D9-15 · Rijit alt montaj sürüklenince bileşenler birbirine göre ~0,7 mm kayıyor
+#### ✅ D9-15 · Rijit alt montaj sürüklenince bileşenler birbirine göre ~0,7 mm kayıyor
 - Önem: Orta · Tür: Hata
 - SolidWorks'te: Rijit alt montaj tek gövde gibi hareket eder.
 - Bizde (`d9_arac2.py` B10): Pim + Plaka<2> → Seçilenlerden alt montaj (rijit) → Plaka<2> sürüklenir. Plaka2 yer değiştirmesi (10,490 / −4,081 / −6,779), pim (10,497 / −3,594 / −6,261). Göreli kayma 0,71 mm.
 - Kod: `src/asm/solver.ts:27` örtük kilit `__rig_` (L: 50, ceza tabanlı) sürüklemede tam sağlanmıyor (Doğrulanmadı: kesin kök).
 - Öneri: Rijit alt montajı çözücüde tek değişken grubu (ortak poz) olarak ele al.
 
-#### D9-16 · "Kütüphaneye Kaydet" malzemeyi, değişkenleri ve yapılandırmaları kaydetmiyor
+#### ✅ D9-16 · "Kütüphaneye Kaydet" malzemeyi, değişkenleri ve yapılandırmaları kaydetmiyor
 - Önem: Orta · Tür: Hata (veri kaybı)
 - Bizde (`d9_parca.py` P4): malzemesi aluminium olan Pim kütüphaneye kaydedilip eklenir. Bileşende `material = None`; kütle çelikle (varsayılan) hesaplanıyor. Yapılandırmalı parça kütüphaneden eklenince "Yapılandırma: …" seçeneği yok.
 - Kod: `src/asm/assembly.ts:313` yalnız `name, features, eqs, profiles`.
 - Öneri: `material, vars, configs, config` da kaydet.
 
-#### D9-17 · "Montaj: 'Bileşen Ekle' ile parça ekleyin" ipucu bileşen eklendikten sonra da kalıyor
+#### ✅ D9-17 · "Montaj: 'Bileşen Ekle' ile parça ekleyin" ipucu bileşen eklendikten sonra da kalıyor
 - Önem: Düşük · Tür: Görsel
 - Bizde (`d9_i3d.py`, telefon ekran görüntüsü): ilk bileşen eklendikten sonra ipucu ortada kalıyor (telefonda modeli örtüyor).
 - Kod: `src/asm/asmui.ts:137` ipucu `enter()`'de konuyor; `addComp` (`:1350`) temizlemiyor.
 - Öneri: `addComp` / `insertSub` sonunda `ctx.hint("")`.
 
-#### D9-18 · Girişim Algılama sonuçları dışa aktarılamıyor
+#### ✅ D9-18 · Girişim Algılama sonuçları dışa aktarılamıyor
 - Önem: Düşük · Tür: Eksik
 - SolidWorks'te: "Sonuçları kaydet" / rapor.
 - Bizde (`d9_arac1.py` T5): panelde yalnız liste, "Yalnız çakışan…" ve "Yeniden hesapla" var; CSV / rapor yok.
 - Öneri: Malzeme listesindeki gibi "CSV indir" ekle.
 
-#### D9-19 · Montaj STEP'inde ürün adları bileşen adı değil, montaj yapısı yok
+#### ✅ D9-19 · Montaj STEP'inde ürün adları bileşen adı değil, montaj yapısı yok
 - Önem: Düşük · Tür: SolidWorks'ten farklı
 - Bizde (`d9_arac1.py` T10): `Montaj1.step` 3 katı içeriyor. PRODUCT adları "Open CASCADE STEP translator 8.0 1 / 1.1 / 1.2…"; "Plaka<1>", "Pim<1>" yok. Tek bileşik (compound), montaj ağacı yok.
 - Kod: `src/kernel.worker.ts:4555-4560` `makeCompound(...).blobSTEP()`.
 - Öneri: XCAF (`STEPCAFControl_Writer`) ile ad + montaj yapısı yaz; olmuyorsa en az ürün adlarını bileşen adlarıyla ver.
 
-#### D9-20 · Antette malzeme anahtarı ("steel") yazıyor
+#### ✅ D9-20 · Antette malzeme anahtarı ("steel") yazıyor
 - Önem: Düşük · Tür: Görsel
 - Bizde (`d9_resim.py` R1): malzemesi `steel` olan parçanın resminde antet "steel" yazıyor (Malzeme penceresinde "Yapı çeliği (S235/S355)").
 - Kod: `src/main.ts:453` `material: doc.material` (anahtar).
 - Öneri: `MATERIALS[doc.material]?.name ?? doc.material`.
 
-#### D9-21 · Ölçü gizlenince "Gizli ölçüleri göster" düğmesi araç değiştirilene kadar çıkmıyor
+#### ✅ D9-21 · Ölçü gizlenince "Gizli ölçüleri göster" düğmesi araç değiştirilene kadar çıkmıyor
 - Önem: Düşük · Tür: Hata (arayüz)
 - Bizde (`d9_resim.py` R6): ölçüye tıkla → Gizle. Araç çubuğunda düğme yok. "Seç / taşı"ya basınca görünüyor.
 - Kod: `src/main.ts:715` Gizle `renderEdit()` + `draw()` çağırıyor, `renderTools()` çağırmıyor.
 - Öneri: Gizle sonrası `renderTools()`.
 
-#### D9-22 · Masaüstü Dosya menüsünde "Belge özellikleri…" yok (ISO / ANSI, ondalık resmi etkiliyor)
+#### ✅ D9-22 · Masaüstü Dosya menüsünde "Belge özellikleri…" yok (ISO / ANSI, ondalık resmi etkiliyor)
 - Önem: Düşük · Tür: Eksik (keşfedilebilirlik)
 - Bizde (`d9_resim.py` R12): Dosya menüsünde yok; yalnız komut arama ya da ☰ dosya menüsünden açılıyor. Komut tanımlı (`F("f.docprops")`) ama menü listesine eklenmemiş.
 - Kod: `src/main.ts:8695` `MENUS` Dosya listesinde `f.docprops` yok.
@@ -2734,7 +2753,7 @@ Telefon 390×844 (CDP dokunma):
 - Önem: Düşük · Tür: Eksik
 - Bizde (`d9_resim2.py` SM1): flanşlı sacın resmi yalnız katlı görünüşler (100 / 60 / 30); açınım görünüşü, büküm çizgileri / notları yok (ayrı "Sac açınımı (DXF)" var).
 
-#### D9-25 · Profil merkezi eşleşmesi yüz ağırlık merkezini kullanıyor ve varsayılan öteleme 10 mm
+#### ✅ D9-25 · Profil merkezi eşleşmesi yüz ağırlık merkezini kullanıyor ve varsayılan öteleme 10 mm
 - Önem: Düşük · Tür: SolidWorks'ten farklı
 - Bizde (`d9_tur.py` pcenter): delikli üst yüzlerde merkezler ~0,5 mm kayık (yüz merkezi delik yüzünden 50,27). Panel varsayılanı "Öteleme 10" olduğundan yüzler 10 mm aralıklı. SolidWorks'te profil merkezi dış sınırın merkezidir, öteleme 0.
 - Kod: `src/asm/asmui.ts:1117` (`v: 10` varsayılan), çözücü `profileCenter` artığı `f.c`.
@@ -2749,7 +2768,7 @@ Telefon 390×844 (CDP dokunma):
 - Bizde (`d9_tur.py` cam): takipçi = Plaka2 Ø10 delik kenarı, kam = pim üst Ø10 çemberi. Eksenler arası beklenen 10; ölçülen 10,49.
 - Kök: Doğrulanmadı (çember zincirinin çokgen yaklaşımı / takipçi yarıçapı).
 
-#### D9-28 · Alt montaj (.icasm) eklenince bileşen adları yinelenir
+#### ✅ D9-28 · Alt montaj (.icasm) eklenince bileşen adları yinelenir
 - Önem: Düşük · Tür: Hata
 - Bizde (`d9_arac2.py` B10): Alt1.icasm eklenince ağaçta iki "Pim<1>" ve iki "Plaka<2>" var. Ağaç seçiminde ve BOM dışı raporlarda belirsizlik oluşuyor.
 - Kod: `src/asm/asmui.ts:1960-1966` `insertSub` adları olduğu gibi kopyalıyor.
@@ -3153,7 +3172,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - `openInNewTab` / `closeTab` da PM'i hesaba katmıyor.
 - **Öneri:** `workDirty()` doğruysa `askExit` ("Uygula ve geç / Atıp geç / Vazgeç") sorulsun. Ya da salt okunur komutlar (dışa aktarma, son belgeler, belge özellikleri) PM'i hiç kapatmasın.
 
-#### D10-6 · Aynı uygulama iki pencerede açıkken (PWA + tarayıcı sekmesi) bir pencere diğerinin değişikliğini sessizce eziyor
+#### ✅ D10-6 · Aynı uygulama iki pencerede açıkken (PWA + tarayıcı sekmesi) bir pencere diğerinin değişikliğini sessizce eziyor
 - **Önem:** Yüksek · **Tür:** Hata (sessiz veri kaybı)
 - **SolidWorks:** Aynı belge ikinci kez açılırken "salt okunur" uyarısı verir.
 - **Bizde (W9):**
@@ -3167,7 +3186,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - `window.addEventListener("storage")` ile başka pencerenin yazdığı fark edilsin ("Bu belge başka bir pencerede değişti — yeniden yükle / bu pencerenin sürümünü koru").
   - Ya da `BroadcastChannel` + belge başına kilit kullanılsın.
 
-#### D10-7 · Sayfa yenilendikten sonra belge sekmeleri çubuğu görünmüyor
+#### ✅ D10-7 · Sayfa yenilendikten sonra belge sekmeleri çubuğu görünmüyor
 - **Önem:** Orta · **Tür:** Hata (veri var ama görünmüyor)
 - **SolidWorks:** Açık belgeler pencere listesinde her zaman görünür.
 - **Bizde:**
@@ -3217,7 +3236,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - Konum ekran çubuğunun (`.actbar`) ve tepsinin dikdörtgeninden kaçınsın.
   - Ya da dokunmatikte mini çubuk ekran çubuğunun yanına sabitlensin.
 
-#### D10-11 · Model ve ağaç sağ tık (uzun basma) menüsünde özellik işlemleri yok
+#### ✅ D10-11 · Model ve ağaç sağ tık (uzun basma) menüsünde özellik işlemleri yok
 - **Önem:** Orta · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Yüze sağ tık → sahibi özellik için Özelliği Düzenle, Eskizi Düzenle, Bastır, Gizle, Sil, Ebeveyn/Çocuk, Görünüm. Ağaçta sağ tıkta da aynı liste.
 - **Bizde:**
@@ -3229,7 +3248,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts:7544-7614` `openContextMenu` (parça kolu). `kernel.faceOwner` zaten var (kırıntılar kullanıyor).
 - **Öneri:** Yüz sağ tıkında `faceOwner` ile sahibi özellik bulunup `renderTreeActions` eylemleri eklensin. Ağaç sağ tıkı `renderTreeActions` listesini kullansın.
 
-#### D10-12 · Ağaç işlemleri geometrik bağımlılığı bilmiyor (silme onayı, ebeveyn/çocuk, sıralama)
+#### ✅ D10-12 · Ağaç işlemleri geometrik bağımlılığı bilmiyor (silme onayı, ebeveyn/çocuk, sıralama)
 - **Önem:** Orta · **Tür:** Hata / SolidWorks'ten farklı
 - **SolidWorks:**
   - Silerken "Alt özellikleri de sil" listesi gösterilir.
@@ -3245,7 +3264,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - `orderOk` (6266) ve `deleteFeature` (≈6400) bunu kullanıyor.
 - **Öneri:** Kenar / yüz referanslı özellikler için ebeveyn = başvurulan geometriyi oluşturan önceki özellikler (en azından "kendinden önceki ilk katı özellik") sayılsın. Silme onayı etkilenecek sonraki özellikleri listelesin.
 
-#### D10-13 · Onaylanmamış eskiz düzenlemesi, yenileme / sekme kapatma ("Ayrıl") sonrası kalıcı oluyor
+#### ✅ D10-13 · Onaylanmamış eskiz düzenlemesi, yenileme / sekme kapatma ("Ayrıl") sonrası kalıcı oluyor
 - **Önem:** Orta · **Tür:** Tutarsızlık
 - **SolidWorks:** Kaydedilmemiş eskiz düzenlemesi, uygulama kapatılınca (kaydetmeden çık seçilirse) kaybolur. ✕ ile aynı sonuç.
 - **Bizde:**
@@ -3257,7 +3276,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts:1667-1669` + `1693-1697`. Düzenleyici `changed` → `saveDocSoon()`. Düzenleyici verisi belge özelliğinin kendisi (`f.data`, v0.84 `putData`) olduğu için 400 ms sonra localStorage'a yazılıyor.
 - **Öneri:** Eskiz açıkken kayıtta `f.data` yerine `orig` kullanılsın (ya da ayrı bir "kurtarma" anahtarına yazılıp açılışta "kaydedilmemiş eskiz bulundu — geri yükle?" sorulsun).
 
-#### D10-14 · Parça modunda Düzen › Kopyala / Yapıştır / Tümünü seç hiçbir şey yapmıyor
+#### ✅ D10-14 · Parça modunda Düzen › Kopyala / Yapıştır / Tümünü seç hiçbir şey yapmıyor
 - **Önem:** Düşük · **Tür:** Eksik
 - **SolidWorks:** Ctrl+C ile seçili eskiz / özellik kopyalanır, bir yüze Ctrl+V ile yapıştırılır.
 - **Bizde:** Ağaçta Eskiz1 seçili → Düzen › Kopyala → Düzen › Yapıştır: özellik sayısı 2 → 2, ileti yok. Menü öğeleri etkin görünüyor.
@@ -3265,7 +3284,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts` `fixedActs()` `e.copy` / `e.paste` / `e.selall` yalnız `sk()?.…`
 - **Öneri:** Parça modunda bu öğeler gri gösterilsin ya da en azından "Eskiz içinde çalışır" iletisi verilsin. İleride eskiz kopyala → seçili yüze yapıştır.
 
-#### D10-15 · "İzometrik" gerçek izometrik değil
+#### ✅ D10-15 · "İzometrik" gerçek izometrik değil
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** İzometrik bakış (1, 1, 1) yönüdür: üç eksen eşit kısalır, 35,26° yükselme.
 - **Bizde:**
@@ -3275,7 +3294,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/viewer.ts:612` `iso: [V(1, 0.82, 1), …]`
 - **Öneri:** `V(1, 1, 1)`. Önceki görünüm isteniyorsa ayrı bir "Dimetrik" seçeneği olsun.
 
-#### D10-16 · Görünüm küpünde yüzün ortasından geçen tıklanmayan çapraz çizgi
+#### ✅ D10-16 · Görünüm küpünde yüzün ortasından geçen tıklanmayan çapraz çizgi
 - **Önem:** Düşük · **Tür:** Arayüz
 - **SolidWorks:** –
 - **Bizde:**
@@ -3285,7 +3304,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts:8218-8250`. 3B dönüşümlü 3×3 hücreler arasında yarım piksel boşluk; tıklama `.cell` öğesine bağlı.
 - **Öneri:** Hücrelere 0,5 px taşma / `outline` verilsin. Ya da tıklama `.cube` üzerinde ele alınıp en yakın hücre bulunsun.
 
-#### D10-17 · Görüntü stili ve düzlem görünürlüğü yenilemede saklanmıyor
+#### ✅ D10-17 · Görüntü stili ve düzlem görünürlüğü yenilemede saklanmıyor
 - **Önem:** Düşük · **Tür:** Eksik
 - **SolidWorks:** Görüntü durumu belgeyle birlikte saklanır.
 - **Bizde:**
@@ -3296,7 +3315,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `viewer.setStyle` / `planesOn` (`src/main.ts:1041`) kaydedilmiyor.
 - **Öneri:** `doc.view {style, planes}` ya da `imajcad.view` olarak saklansın.
 
-#### D10-18 · "Şeridi özelleştir" ve "Görev bölmesi" hiçbir menüde yok; telefonda erişilemez
+#### ✅ D10-18 · "Şeridi özelleştir" ve "Görev bölmesi" hiçbir menüde yok; telefonda erişilemez
 - **Önem:** Düşük · **Tür:** Eksik
 - **SolidWorks:** Araçlar › Özelleştir ve şeride sağ tık (A-14).
 - **Bizde:**
@@ -3307,7 +3326,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts` `MENUS` (Araçlar: `t.custom, t.print, t.input, t.wheel`). `t.ribbon`, `t.taskpane` eklenmemiş.
 - **Öneri:** Araçlar menüsüne ve telefonda ☰ listesine eklensin. Komut arama Türkçe kök eşlemesi yapsın (ya da etiket + eş anlamlılar).
 
-#### D10-19 · Belge sekmesi kapatma: her durumda tarayıcı `confirm` penceresi, "Kaydet" seçeneği yok
+#### ✅ D10-19 · Belge sekmesi kapatma: her durumda tarayıcı `confirm` penceresi, "Kaydet" seçeneği yok
 - **Önem:** Düşük · **Tür:** SolidWorks'ten farklı
 - **SolidWorks:** Kapatırken yalnız değişmiş belgede "Kaydet / Kaydetme / İptal" sorulur.
 - **Bizde:**
@@ -3317,7 +3336,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts:169-195` `closeTab`.
 - **Öneri:** `askExit` benzeri 3 seçenekli pencere ("Kaydet ve kapat / Kaydetmeden kapat / Vazgeç"). Belge kayıttan beri değişmemişse sorulmasın. Kapanan belge `pushRecent` ile listeye konsun.
 
-#### D10-20 · Kaydet / Farklı kaydet ad penceresinde "İptal" yine indiriyor
+#### ✅ D10-20 · Kaydet / Farklı kaydet ad penceresinde "İptal" yine indiriyor
 - **Önem:** Düşük · **Tür:** Hata
 - **SolidWorks:** Farklı kaydet penceresinde İptal hiçbir şey yapmaz.
 - **Bizde:**
@@ -3327,7 +3346,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `src/main.ts:7194-7198`: `(prompt(...) || doc.name)`. İptalde `null || doc.name`.
 - **Öneri:** `const n = prompt(...); if (n === null) return;`. `_named` dosyaya değil belleğe yazılsın.
 
-#### D10-21 · Durum çubuğu inç modunda da "MMGS" gösteriyor
+#### ✅ D10-21 · Durum çubuğu inç modunda da "MMGS" gösteriyor
 - **Önem:** Düşük · **Tür:** Hata (görsel)
 - **SolidWorks:** Birim sistemi göstergesi seçili sistemi gösterir (IPS) ve tıklanınca değiştirilir.
 - **Bizde:**
@@ -3337,7 +3356,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `index.html` `#sb-units` sabit metin. `setUnits` güncellemiyor.
 - **Öneri:** Birim değişince "IPS" / "MMGS" yazılsın. Tıklanınca birim menüsü açılsın.
 
-#### D10-22 · Bozuk localStorage kayıtları sessizce boş belge açtırıyor ya da menüleri ölü bırakıyor
+#### ✅ D10-22 · Bozuk localStorage kayıtları sessizce boş belge açtırıyor ya da menüleri ölü bırakıyor
 - **Önem:** Düşük · **Tür:** Hata (sağlamlık)
 - **SolidWorks:** –
 - **Bizde:**
@@ -3353,7 +3372,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
   - Tüm okumalar `try`'a alınsın, bozuk değer silinsin.
   - Bozuk belge `imajcad.doc.bozuk` olarak yedeklenip kullanıcıya "Kayıtlı belge okunamadı — yedek indirildi" denilsin.
 
-#### D10-23 · Telefon ve tablette yüz seçiliyken kırıntı çubuğu görünüm küpünün "Üst" yüzünü örtüyor
+#### ✅ D10-23 · Telefon ve tablette yüz seçiliyken kırıntı çubuğu görünüm küpünün "Üst" yüzünü örtüyor
 - **Önem:** Düşük · **Tür:** Arayüz
 - **SolidWorks:** –
 - **Bizde:** Telefonda / tablette bir yüze dokununca `#crumbs` ("T › Ekstrüzyon1 › Yüz (düz)") küpün üst yüzünün ortasının üstüne biniyor. `elementFromPoint` "Üst" hücresinde `crumb` döndürüyor. Diğer 5 yüz hücresi dokunulabilir.
@@ -3361,7 +3380,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `#crumbs` ve `.vcube` mobil konumu (`style.css`).
 - **Öneri:** Mobilde kırıntılar küpün sağına ya da durum ipucunun yanına alınsın.
 
-#### D10-24 · Telefonda ekran çubuğu kaydırmalı; ☰ ⤢ 🎤 görünür alanın dışında, kaydırınca ✓ başlığın altına giriyor
+#### ✅ D10-24 · Telefonda ekran çubuğu kaydırmalı; ☰ ⤢ 🎤 görünür alanın dışında, kaydırınca ✓ başlığın altına giriyor
 - **Önem:** Düşük · **Tür:** Arayüz (A-3 / A-22 ile ilgili, yeni yönü)
 - **SolidWorks:** –
 - **Bizde:**
@@ -3374,7 +3393,7 @@ Betik kısaltmaları: m = d10_menu, do = d10_dosya, do2 = d10_dosya2, ge = d10_g
 - **İlgili kod:** `renderActBar` (`src/main.ts:~7860`) + `.actbar` stil (`max-height`, `overflow:auto`).
 - **Öneri:** Telefonda ekran çubuğu iki sütun ya da yatay alt şerit olsun. Görünüm çubuğu ekran çubuğunun solunda bitsin.
 
-#### D10-25 · Aday çubuğu mod değişince kalıyor ve eskiz PM başlığının (✓) üstüne biniyor
+#### ✅ D10-25 · Aday çubuğu mod değişince kalıyor ve eskiz PM başlığının (✓) üstüne biniyor
 - **Önem:** Düşük · **Tür:** Arayüz · **Doğrulama:** Kısmen (ekran görüntüsüyle; programla yeniden üretilemedi)
 - **SolidWorks:** –
 - **Bizde:**

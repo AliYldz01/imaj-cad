@@ -134,12 +134,10 @@ with sync_playwright() as p:
     A.btn("#tree-actions button:has-text('Eskiz düzlemini değiştir')"); time.sleep(0.4)
     chk("düzlem seçme modu", A.mode() == "pickSketchPlane", A.mode())
     # grafik alanda Ön düzleme tıkla (düzlem görünür olmalı) — düzlem karesinin köşesine yakın
-    fr = A.ev("(()=>{const b=window.__app.viewer.mesh.bbox;return b})()")
-    clicked = False
-    for w in ([0, 45, 0], [0, 60, 0], [-50, 50, 0]):
-        x, y = A.wsc(w); A.click(x, y); time.sleep(0.5)
-        if A.mode() != "pickSketchPlane":
-            clicked = True; break
+    # v0.90: D2-3 — eskizin kendi alt özelliğinin yüzü reddedilir; E-15 — ağaçtaki düzleme tıklanabilir
+    x, y = A.wsc([0, 10, 0]); A.click(x, y); time.sleep(0.6)
+    chk("D2-3: kendi ekstrüzyonunun üst yüzü reddedilir", A.mode() == "pickSketchPlane" and A.feat("s1")["plane"].get("n") == "top", (A.mode(), A.feat("s1")["plane"], A.toast()))
+    A.btn("#tree li:has-text('Ön Düzlem')"); time.sleep(0.6)
     print("düzlem değiştir sonrası", A.mode(), A.feat("s1")["plane"], A.size(), A.errtree())
     chk("eskiz Ön düzleme taşındı → ekstrüzyon Z yönünde", A.feat("s1")["plane"].get("n") == "front" and A.size() and abs(A.size()[2] - 10) < 0.01, (A.feat("s1")["plane"], A.size()))
     A.press("Control+z"); A.wait(0.8)

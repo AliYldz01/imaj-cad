@@ -30,11 +30,13 @@ with sync_playwright() as p:
             a.pmseg("Eskiz profili"); a.wait(0.5)
         a.pmselect("Profil (kapalı", "p"); a.wait(1.5)
         v0 = a.vol(); b0 = a.bbox(); st0 = a.status()
-        a.pmfield("Burulma açısı", 90); a.wait(1.5)
+        gizli = not a.pmhas("Burulma açısı")  # v0.90 D4-6: 3B yolda alan gizli
+        if not gizli:
+            a.pmfield("Burulma açısı", 90); a.wait(1.5)
         v1 = a.vol(); b1 = a.bbox()
-        print("   3B yol + profil:", v0, st0, b0, "| burulma 90:", v1, b1)
+        print("   3B yol + profil:", v0, st0, b0, "| burulma 90:", v1, b1, "gizli:", gizli)
         chk("SB2 3B yol + eskiz profili → katı", v0 and v0 > 0, (v0, st0))
-        chk("SB3 3B yolda burulma alanı etkili ya da gizli (sessizce yok sayılmaz)", b0 != b1, (b0, b1))
+        chk("SB3 3B yolda burulma alanı etkili ya da gizli (sessizce yok sayılmaz)", gizli or b0 != b1, (b0, b1))
         a.ok()
         nm = a.names()[-1]
         a.reload()

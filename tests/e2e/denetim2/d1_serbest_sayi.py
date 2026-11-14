@@ -67,7 +67,7 @@ with sync_playwright() as p:
     t.key("5"); num_entry(t, [50, 180]); t.close_quick()
     t.key("3"); num_entry(t, [30, 270]); t.close_quick()
     s = t.st()
-    t.chk("sayıyla 4 çizgi + 4 uzunluk ölçüsü", s["ents"].count("line") == 4 and len(s["dims"]) == 4, s)
+    t.chk("sayıyla 4 çizgi + uzunluk ölçüleri, gereksiz ölçü yok (v0.90)", s["ents"].count("line") == 4 and len(s["dims"]) >= 2 and "Aşırı" not in s["status"], s)
     t.chk("sayıyla kare son nokta başlangıca birleşir (kapalı, 3 nokta + orijin)", s["npts"] == 3, (s["npts"], s["drawing"]))
     print("  sayıyla kare durumu:", s["dof"], s["rels"], s["conf"])
     t.key("Escape")

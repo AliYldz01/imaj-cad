@@ -393,7 +393,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           const p3 = feats.find((x) => x.id === f.path && x.type === "sketch3d") as Sketch3DFeature | undefined;
           if (p3) {
             const path3 = chain3(p3);
-            kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: { frame: STD_FRAMES.front }, segs: [], closed: path3.closed }, path3, circ: f.circ, circIn: f.circIn, orient: f.orient });
+            kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: { frame: STD_FRAMES.front }, segs: [], closed: path3.closed }, path3, circ: f.circ, circIn: f.circIn, orient: f.orient, merge: (f as any).merge } as any);
             break;
           }
           const ps = sketchOf(f.path);
@@ -403,7 +403,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           if (f.helix) {
             const ci = ps.data.ents.find((e: any) => e.t === "circle" && !e.cons) as any;
             if (!ci) throw new Error(`${ps.name}: helis için eskizde bir daire olmalı (taban çapı)`);
-            kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: [], closed: false }, circ: f.circ, circIn: f.circIn, orient: f.orient, helix: { ...f.helix, c: pointPos(ps.data, ci.c), r: ci.r } });
+            kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: [], closed: false }, circ: f.circ, circIn: f.circIn, orient: f.orient, helix: { ...f.helix, c: pointPos(ps.data, ci.c), r: ci.r }, merge: (f as any).merge } as any);
             break;
           }
           const path = extractPath(ps.data);
@@ -420,7 +420,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
             kfeats.push({ id: f.id, type: "sweep", cut: true, pl: null, loops: [], path: { pl: ppl, segs: path.segs, closed: path.closed }, tool: f.tool });
             break;
           }
-          kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient, twist: f.twist, guide });
+          kfeats.push({ id: f.id, type: "sweep", cut: f.cut, pl, loops, path: { pl: ppl, segs: path.segs, closed: path.closed }, circ: f.circ, circIn: f.circIn, orient: f.orient, twist: f.twist, guide, merge: (f as any).merge } as any);
           break;
         }
         case "loft": {
@@ -450,7 +450,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
               return pts;
             });
           }
-          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd, conn: f.conn, faceStart: f.faceStart, faceEnd: f.faceEnd, closed: f.closed, thinT: f.thinT });
+          kfeats.push({ id: f.id, type: "loft", sheetT: f.sheetT, cut: f.cut, ruled: f.ruled, profiles, center, guides, tanStart: (f as any).tanStart, tanEnd: (f as any).tanEnd, conn: f.conn, faceStart: f.faceStart, faceEnd: f.faceEnd, closed: f.closed, thinT: f.thinT, merge: (f as any).merge } as any);
           break;
         }
         case "rib": {
@@ -685,7 +685,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           if (error) throw new Error(`${sk.name}: ${error}`);
           const open = chains.filter((c) => !c.closed);
           if (open.length !== 1) throw new Error("Profil eskizi tek bir açık zincir olmalı (ör. L profili)");
-          kfeats.push({ id: f.id, type: "miterflange", skFrame: fr, chain: open[0].segs, edges: f.edges, t: sp.t, r: sp.r, gap: f.gap, rev: f.rev });
+          kfeats.push({ id: f.id, type: "miterflange", skFrame: fr, chain: open[0].segs, edges: f.edges, t: sp.t, r: sp.r, gap: f.gap, rev: f.rev, o1: (f as any).o1, o2: (f as any).o2 } as any);
           break;
         }
         case "closecorner": {
@@ -709,10 +709,13 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           if (!pl) throw new Error("Eskiz düzlemi bulunamadı");
           if (sk.plane.k !== "face") throw new Error("Büküm çizgisi eskizi sacın düz yüzüne çizilmeli");
           const lines = sk.data.ents.filter((e) => e.t === "line" && !e.cons);
-          if (lines.length !== 1) throw new Error("Eskizde tek bir büküm çizgisi olmalı");
-          const ln = lines[0] as Extract<typeof lines[0], { t: "line" }>;
+          if (!lines.length) throw new Error("Eskizde büküm çizgisi yok");
           if (!(f.angle > 0 && f.angle <= 180)) throw new Error("Büküm açısı 0–180° arasında olmalı");
-          kfeats.push({ id: f.id, type: "sketchbend", pl, line: [pointPos(sk.data, ln.p1), pointPos(sk.data, ln.p2)], angle: f.angle, side: f.side, flip: f.flip, pos: f.pos, r: f.useDef ? sp.r : f.r, t: sp.t, k: sp.k });
+          // D6-14: birden çok çizgi → sırayla birden çok büküm (her biri aynı açı / taraf)
+          lines.forEach((l0, i) => {
+            const ln = l0 as Extract<typeof lines[0], { t: "line" }>;
+            kfeats.push({ id: i ? `${f.id}~${i}` : f.id, type: "sketchbend", pl, line: [pointPos(sk.data, ln.p1), pointPos(sk.data, ln.p2)], angle: f.angle, side: f.side, flip: f.flip, pos: f.pos, r: f.useDef ? sp.r : f.r, t: sp.t, k: sp.k });
+          });
           break;
         }
         case "flatcut": {
@@ -768,7 +771,7 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
             pts = sf.data.ents.filter((e: any) => e.t === "point" && !e.cons).map((e: any) => toLocal(pl.frame, toWorld(fr, pointPos(sf.data, e.p))));
             if (!pts.length) throw new Error("Konum eskizinde nokta yok");
           }
-          kfeats.push({ id: f.id, type: "hole", pl, pts, htype: f.htype, d: f.d, depth: f.depth, through: f.through, cd: f.cd, cdepth: f.cdepth, cangle: f.cangle, slot: f.slot, slotAng: f.slotAng, nearCs: f.nearCs, farCs: f.farCs });
+          kfeats.push({ id: f.id, type: "hole", pl, pts, htype: f.htype, d: f.d, depth: f.depth, through: f.through, cd: f.cd, cdepth: f.cdepth, cangle: f.cangle, slot: f.slot, slotAng: f.slotAng, nearCs: f.nearCs, farCs: f.farCs, only: (f as any).only } as any);
           break;
         }
         case "draft": {
@@ -831,7 +834,10 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
         case "surftrim": {
           if (!f.surf) throw new Error("Kırpılacak yüzeyi seçin");
           if (!f.tool) throw new Error("Kırpma aracını (düzlem ya da yüzey) seçin");
-          const std = f.tool.startsWith("std:") ? kplane({ k: "std", n: f.tool.slice(4) } as any, feats, f.id) : undefined;
+          if (f.tool === f.surf) throw new Error("Kırpma aracı ile kırpılacak yüzey aynı olamaz"); // D7-6
+          // D7-16: referans düzlem de araç olabilir
+          const std = f.tool.startsWith("std:") ? kplane({ k: "std", n: f.tool.slice(4) } as any, feats, f.id) : f.tool.startsWith("ref:") ? kplane({ k: "ref", id: f.tool.slice(4) } as any, feats, f.id) : undefined;
+          if (f.tool.startsWith("ref:") && !std) throw new Error("Kırpma düzlemi bulunamadı");
           kfeats.push({ id: f.id, type: "surftrim", surf: f.surf, tool: std ? undefined : f.tool, tpl: std ?? undefined, side: f.side });
           break;
         }
@@ -996,6 +1002,7 @@ export function sketchUsers(feats: Feature[], sketchId: string): Feature[] {
       (f.type === "member" && ([...f.segs, ...(f.groups ?? []).flatMap((g) => g.segs)].some((s) => s.sk === sketchId) || (f.std === "sketch" && f.size === sketchId))) ||
       ((f.type === "spattern" || f.type === "cvpattern" || f.type === "sheetjog" || f.type === "miterflange") && f.sketch === sketchId) ||
       (f.type === "edgeflange" && f.prof === sketchId) ||
-      (f.type === "vent" && f.sketch === sketchId),
+      (f.type === "vent" && f.sketch === sketchId) ||
+      (f.type === "surface" && ((f as any).sketch === sketchId || ((f as any).sketches ?? []).includes(sketchId))),
   );
 }

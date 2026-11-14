@@ -43,6 +43,9 @@ with sync_playwright() as p:
     x,y = S(75,90,0); pg.mouse.click(x,y); time.sleep(0.15)
     chk("paralel çizgiler → çizgi–çizgi", pg.evaluate("window.__app.s3.dimPend&&window.__app.s3.dimPend.t")=="ll")
     x,y = S(-40,45,0); pg.mouse.move(x,y); pg.mouse.click(x,y); time.sleep(0.2); put(50)
+    # v0.90 D3-20: tarayıcı confirm yerine 3 seçenekli pencere
+    time.sleep(0.3)
+    if pg.locator("dialog.redund-dlg button:has-text('Sürülen')").count(): pg.click("dialog.redund-dlg button:has-text('Sürülen')"); time.sleep(0.3)
     chk("çelişen ölçü sürülen (referans) oldu", D("d.dims3.some(m=>m.t==='ll'&&m.ref)") and pg.locator(".s3-dim.ref").count()==1)
     # 4) açı: ayrı bir çapraz çizgi çiz ve alt çizgiyle açı
     tool("Çizgi"); time.sleep(0.2)
@@ -74,6 +77,7 @@ with sync_playwright() as p:
     pg.mouse.dblclick(bb['x']+bb['width']/2, bb['y']+bb['height']/2); time.sleep(0.3); put(160)
     chk("çift tık düzenle → 160", D("d.dims3[0].v")==160 and abs(D("d.xyz[1][0]")-160)<1e-3, D("JSON.stringify(d.xyz[1])"))
     # 7) yay + nokta → nokta–yay merkezi mesafesi, yarıçap ↔ çap (D)
+    pg.evaluate("window.__app.viewer.fit()"); time.sleep(0.3)
     tool("Yay"); time.sleep(0.2)
     for pt in [(0,-60,0),(100,-60,0),(50,-110,0)]:
         x,y = S(*pt); pg.mouse.move(x,y); pg.mouse.click(x,y); time.sleep(0.4)

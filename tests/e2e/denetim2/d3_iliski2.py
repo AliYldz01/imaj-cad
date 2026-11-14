@@ -43,7 +43,8 @@ with sync_playwright() as p:
         h0 = sp.get("h") and sp["h"][0]
         t.key("Escape"); x, y = t.sc(-50 + 20 * math.cos(1.2), 20 + 20 * math.sin(1.2)); t.drag(x, y, x - 20, y - 25)
         t.note("yay sürüklendi: R", g(A["id"])["r"], "tutamak", g(SP["id"]).get("h"), "önce", h0)
-        t.chk("eşit eğrilik kalıcı bir ilişki olarak kayıtlı (yay R değişince güncellenir — SolidWorks)", any(r["t"] in ("eqcurv", "curvature", "eqcurve2") for r in t.sk()["rels"]), [r["t"] for r in t.sk()["rels"]])
+        kal = any(r["t"] in ("eqcurv", "curvature", "eqcurve2") for r in t.sk()["rels"]) or bool(t.sk().get("curv"))  # v0.90: eskizde `curv` kaydı
+        t.chk("eşit eğrilik kalıcı bir ilişki olarak kayıtlı (yay R değişince güncellenir — SolidWorks)", kal and g(SP["id"]).get("h") != sp.get("h"), (t.sk().get("curv"), g(SP["id"]).get("h"), h0))
     t.key("Escape")
 
     # 2) eşit kanallar: iki kanal
@@ -88,6 +89,8 @@ with sync_playwright() as p:
     sk0 = sketch("s0", "Taban", TOP, lambda pt, line, rect, c, tx: rect(-40, -30, 40, 30))
     sk0["data"]["dims"] = [{"id": "W", "t": "dist", "refs": ["p1", "p2"], "v": 80, "sub": "a", "lp": [0, -40]},
                            {"id": "H", "t": "dist", "refs": ["p2", "p3"], "v": 60, "sub": "a", "lp": [50, 0]}]
+    # v0.90: dikdörtgen kalsın (yamuğa dönmesin)
+    sk0["data"]["rels"] = [{"id": "rh1", "t": "horizontal", "refs": ["l5"]}, {"id": "rh2", "t": "horizontal", "refs": ["l7"]}, {"id": "rv1", "t": "vertical", "refs": ["l6"]}, {"id": "rv2", "t": "vertical", "refs": ["l8"]}]
     t.setup([sk0, ext("e0", "s0", 20)])
     t.new_sketch("Sağ Düzlem"); t.zoom(1.5)
     t.cmd("Nokta"); b0 = t.sk(); t.kclick(5, 5, "Control"); pt = new(b0)[0]["p"]
@@ -114,5 +117,6 @@ with sync_playwright() as p:
     f = next(x for x in t.doc()["features"] if x["id"] == fid)
     pp = f["data"]["pts"][pt]
     t.note("model değişince delme noktası (eskiz yerel)", pp)
-    t.chk("Delme ilişkisi modele bağlı: kutu 60→80 olunca nokta kenarı izler (|z| 40)", abs(abs(pp["x"]) - 40) < 1e-3 or abs(abs(pp["y"]) - 40) < 1e-3, pp)
+    zz = [abs(v) for v in (t.ev("window.__app.viewer.mesh.bbox.max[2]"), t.ev("window.__app.viewer.mesh.bbox.min[2]"))]
+    t.chk("Delme ilişkisi modele bağlı: kutu 60→80 olunca nokta kenarı izler", any(abs(abs(pp[k]) - z) < 1e-3 for k in ("x", "y") for z in zz) and max(abs(pp["x"]), abs(pp["y"])) > 30.5, (pp, zz))
     t.close()
