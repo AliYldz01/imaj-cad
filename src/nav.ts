@@ -57,6 +57,7 @@ export class NavControls extends EventTarget {
       this.el.setPointerCapture(e.pointerId);
     } catch {}
     if (this.touchCount() === 2) (this.pinch = this.pinchState()), (this.roll0 = { a: this.pinch.a, d0: this.pinch.d });
+    if (this.touchCount() >= 2) this.wasMulti = true;
   }
 
   private down(e: PointerEvent) {
@@ -75,7 +76,10 @@ export class NavControls extends EventTarget {
     try { this.el.setPointerCapture(e.pointerId); } catch {}
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
     if (this.touchCount() === 2) (this.pinch = this.pinchState()), (this.roll0 = { a: this.pinch.a, d0: this.pinch.d });
+    if (this.touchCount() >= 2) this.wasMulti = true;
   }
+  /** bu dokunuş dizisinde iki (ya da daha çok) parmak kullanıldı mı */
+  private wasMulti = false;
 
   private touchCount() {
     let n = 0;
@@ -96,6 +100,8 @@ export class NavControls extends EventTarget {
     if (p.type === "touch") {
       const n = this.touchCount();
       if (n === 1) {
+        // iki parmaklı hareketten sonra kalan tek parmak döndürmez (parmaklar sırayla kalkarken görünüm sıçrıyordu); hepsi kalkınca sıfırlanır
+        if (this.wasMulti) return;
         if (this.oneFingerRotate) this.rotate(dx, dy);
         else this.pan(dx, dy);
       } else if (n === 2 && this.pinch) {
@@ -158,6 +164,7 @@ export class NavControls extends EventTarget {
     }
     this.pointers.delete(e.pointerId);
     this.pinch = this.touchCount() === 2 ? this.pinchState() : null;
+    if (this.touchCount() === 0) this.wasMulti = false;
   }
 
   private wheel(e: WheelEvent) {

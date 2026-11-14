@@ -694,3 +694,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.94 | Ekrana sığdırma yalnız düğme / F ile; çift orta tık ve tarayıcı iki parmak hareketi kapalı | ✅ |
 
 | v0.95 | Gezinme tanılaması (telefonda iki parmak sonrası görünüm sıçramasının kaynağı) | ✅ |
+
+| v0.96 | İki parmakla kaydırdıktan sonra kalan parmak görünümü döndürmez (merkeze sıçrama) | ✅ |
