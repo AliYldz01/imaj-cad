@@ -182,7 +182,7 @@ export class Viewer {
     let activeDy = 0;
     const touches = new Map<number, { x: number; y: number; t: number; moved: boolean }>();
     let multi = false;
-    let gesture: { max: number; t: number; moved: boolean } | null = null;
+    let gesture: { max: number; t: number; moved: boolean; t2: number } | null = null;
     /** basılı parmaklar (çok parmak dokunuşu sayımı) */
     const live = new Map<number, [number, number]>();
     /** parmakla çizim (tek dokunuş araç olarak) */
@@ -222,8 +222,9 @@ export class Viewer {
         if (e.pointerType === "pen") this.lastPen = performance.now();
         if (e.pointerType === "touch" && e.target === canvas && !penRecent()) {
           // D1-8: çok parmak dokunuşu (2 = geri al, 3 = ileri al) parmağın hangi yola (çizim / tutma / gezinme) gittiğinden bağımsız sayılır
-          if (!live.size) gesture = { max: 0, t: performance.now(), moved: false };
+          if (!live.size) gesture = { max: 0, t: performance.now(), moved: false, t2: 0 };
           live.set(e.pointerId, [e.clientX, e.clientY]);
+          if (gesture && live.size === 2 && !gesture.t2) gesture.t2 = performance.now();
           if (gesture) gesture.max = Math.max(gesture.max, live.size);
         }
         if (e.pointerType === "touch") {
@@ -318,7 +319,7 @@ export class Viewer {
         lpMove(e);
         if (e.pointerType === "touch" && gesture) {
           const st0 = live.get(e.pointerId);
-          if (st0 && Math.hypot(e.clientX - st0[0], e.clientY - st0[1]) > 10) gesture.moved = true;
+          if (st0 && Math.hypot(e.clientX - st0[0], e.clientY - st0[1]) > 5) gesture.moved = true; // 5 px: kısa iki parmak kaydırması "dokunuş" (geri al) sayılmasın
         }
         if (e.pointerType === "touch") {
           if (blocked.has(e.pointerId)) return void e.stopPropagation();
@@ -365,7 +366,8 @@ export class Viewer {
       if (e.pointerType === "touch" && live.delete(e.pointerId) && !live.size) {
         const g = gesture;
         gesture = null;
-        if (!cancel && g && g.max >= 2 && !g.moved && performance.now() - g.t < 400 && prefs.fingerUndo) setTimeout(() => this.onFingerTap?.(g.max), 0);
+        // gerçek çok parmak dokunuşu: parmaklar birlikte iner (≤ 150 ms), kıpırdamaz, kısa sürer (≤ 300 ms)
+        if (!cancel && g && g.max >= 2 && !g.moved && g.t2 - g.t < 150 && performance.now() - g.t < 300 && prefs.fingerUndo) setTimeout(() => this.onFingerTap?.(g.max), 0);
       }
       if (e.pointerType === "touch") {
         if (blocked.delete(e.pointerId)) return void e.stopPropagation();

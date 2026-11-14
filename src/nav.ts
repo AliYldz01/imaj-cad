@@ -68,6 +68,7 @@ export class NavControls extends EventTarget {
       this.downTime = performance.now();
       this.midMoved = false;
       this.downAt = { x: e.clientX, y: e.clientY };
+      this.downMod = e.ctrlKey || e.shiftKey || e.altKey;
       this.pivot = this.sticky ?? (e.ctrlKey || e.shiftKey || e.altKey ? null : this.pivotAt?.(e.clientX, e.clientY, false) ?? null);
       this.dispatchEvent(new Event("pivot"));
     }
@@ -124,6 +125,8 @@ export class NavControls extends EventTarget {
     else this.rotate(dx, dy, this.pivot);
   }
 
+  private lastClickAt = { x: 0, y: 0 };
+  private downMod = false;
   private up(e: PointerEvent) {
     const p = this.pointers.get(e.pointerId);
     if (p && p.type === "mouse") {
@@ -132,7 +135,10 @@ export class NavControls extends EventTarget {
         // sürükleme bitti: varlık seçimi kalkar (SolidWorks)
         this.sticky = null;
         this.lastClick = 0;
-      } else if (now - this.lastClick < 400) {
+      } else if (e.ctrlKey || e.shiftKey || e.altKey || this.downMod) {
+        // kaydırma / yakınlaştırma / çevirme vuruşu (Ctrl / Shift / Alt + orta) tık sayılmaz: sığdırma ve eksen seçimi tetiklemez
+        this.lastClick = 0;
+      } else if (now - this.lastClick < 400 && now - this.downTime < 300 && Math.hypot(e.clientX - this.lastClickAt.x, e.clientY - this.lastClickAt.y) < 6) {
         // iki gerçek tık → ekrana sığdır
         this.sticky = null;
         this.lastClick = 0;
@@ -141,6 +147,7 @@ export class NavControls extends EventTarget {
         // kısa, kıpırdamadan orta tık: varlığı döndürme merkezi seç (köşe / kenar / yüz)
         this.sticky = this.pivotAt?.(e.clientX, e.clientY, true) ?? null;
         this.lastClick = now;
+        this.lastClickAt = { x: e.clientX, y: e.clientY };
       } else {
         // uzun basılıp sürüklemeden bırakıldı: seçim yapma (yanlışlıkla eksen kilitlenmesin)
         this.sticky = null;
@@ -155,6 +162,7 @@ export class NavControls extends EventTarget {
 
   private wheel(e: WheelEvent) {
     e.preventDefault();
+    this.lastClick = 0; // tekerleği çevirirken yanlışlıkla basılan orta tıklar çift tık (sığdır) sayılmasın
     // SolidWorks varsayılanı: tekerleği ileri (deltaY < 0) itmek uzaklaştırır
     const sgn = this.reverseWheel ? -1 : 1;
     const f = Math.exp(sgn * e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015));

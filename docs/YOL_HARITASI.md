@@ -688,3 +688,5 @@ Kullanıcının kalemi şu an yanında değil; v0.10 kalem profilleri yalnız ta
 | v0.91 | Kalan denetim bulguları: 3B eskiz geri al / Esc, ilişkisel öteleme / çoğaltma, kabuk, tam yuvarlak, bindirmeli köşe açınımı, montaj resmi ölçüleri, sac açınım sayfası, eşleşmeler | ✅ |
 
 | v0.92 | Telefon yatay modu: ince üst bant, sol komut kolonu, sol çekmece, sağda ekran çubuğu | ✅ |
+
+| v0.93 | Kaydırırken görünümün kendiliğinden ortalanması / telefonda yanlışlıkla geri alma düzeltildi | ✅ |
