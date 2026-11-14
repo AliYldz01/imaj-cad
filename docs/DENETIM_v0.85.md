@@ -80,13 +80,20 @@ Yüksek önemdeki bulguların bir kısmı aynı betik koşularında yeniden gör
 4. **Dosya kimliği ve depolama:** D9-4, D10-1, D10-2, D10-3, D10-6.
 5. **Telefonda dokunma ofseti ve sürükleme:** Araç 70 px yukarıyı işliyor (D2-5), eskizde sürükleme yok (D3-5), hızlı ölçü kutusu parmağın altında açılıyor (D1-3), çakışan çubuklar (D10-9, D10-10).
 
+### Paket 2 notları (v0.87)
+
+- **Geometri doğrulama altyapısı:** çekirdek her özellikten sonra yeni / değişen gövdeleri denetler (yüz sayısı > 0, hacim > 0, gövdeler tümüyle yok olmamış). Tutmazsa hata o özelliğe yazılır ve model bir önceki hâliyle devam eder (D7-4, P-1'in ortak kökü). Ne yanlış? artık hiçbir özelliğe bağlanmayan hataları da "Model" satırıyla gösterir.
+- **P-1:** kabuk kalınlığı parçanın en küçük boyutunun yarısına ulaşırsa ve kabuk hacmi değiştirmezse / ters yönde değiştirirse / BRepCheck geçersizse hata. Radyüslü kutuda kabuk artık sessizce atlanmıyor, hata veriyor (OCC kabuğunun bu durumda başarısız olması sürüyor).
+- **D5-2 teşhis düzeltmesi:** oyma doğruydu. Betikteki kare (z −5…5) silindirin (z 0…40) yalnız yarısının üstündeydi; kabartma ise silindirin ucundan dışarı taşıp havada malzeme ekliyordu. Sarma artık seçilen silindir yüzünün eksen boyundaki aralığıyla sınırlı. Betik kareyi silindirin tam üstüne alacak şekilde düzeltildi (orta düzlem silindir).
+- **D7-1 madde 3 teşhis düzeltmesi:** `d7_yuzey2` K1'deki "duvar" Ön düzlemde y = 0 doğrusu; Ön düzleme dik çekilince taban ile aynı düzlemde kalıyor (L değil, 40×50 düz levha). 4000 doğru sonuç; betik beklentisi düzeltildi. Gerçek L ve kapalı boru durumları (madde 1–2) yüz başına levha + yuvarlak köşe dolgusuyla doğru (2720 / 2862,8; 5280 / 5851,3 / 5582,8).
+
 ## 4. Önerilen düzeltme sırası
 
 1. ✅ **Paket 1, veri kaybı ve sessiz yanlış** (v0.86):
    - D1-1 (×4), D3-1, D3-2, D3-4, D7-2;
    - D9-1, D9-3, D9-4, D10-1, D10-2, D10-3, D10-5;
    - P-2 / D7-3 çekirdek kilidi.
-2. **Paket 2, sessiz yanlış geometri:** P-1, D4-1, D4-3, D5-1, D5-2, D6-1, D6-2, D7-1, D7-4, D8-1, geometri doğrulama altyapısı.
+2. ✅ **Paket 2, sessiz yanlış geometri** (v0.87): P-1, D4-1, D4-3, D5-1, D5-2, D6-1, D6-2, D7-1, D7-4, D8-1, geometri doğrulama altyapısı.
 3. **Paket 3, kalıcı referansların genişletilmesi:** D5-3, D5-4, D5-5, P-9, D8-3, D9-2, D9-5, D9-6, E-5.
 4. **Paket 4, telefon:** D2-5, D2-6, D3-5, D1-3, D1-8, D1-9, D10-8, D10-9, D10-10, A-2, A-3.
 5. **Paket 5:** Kalan Yüksek ve Orta bulgular, alan alan.
@@ -1219,7 +1226,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 
 ### Bulgular
 
-##### D4-1 · İnce + "Uçları kapat" + "Başla: Yüzey / yüz" (ya da Köşe): kapaklar eskiz düzleminde oluşuyor
+##### ✅ D4-1 · İnce + "Uçları kapat" + "Başla: Yüzey / yüz" (ya da Köşe): kapaklar eskiz düzleminde oluşuyor
 - **Önem:** Kritik (yanlış geometri, sessiz) · **Tür:** Hata
 - **SolidWorks:** Başlangıç koşulu Yüzey / Köşe olan ince özellikte kapaklar ince gövdenin iki ucundadır, başlangıç yüzünden ölçülür.
 - **Bizde:** Hazır model: 80×60×20 blok "Blok" + Üst düzlemde 40×40 Eskiz2. Ekstrüzyon → Başla = Yüzey / yüz → blok üst yüzüne tık (✓ "Başlangıç yüzü ✓") → "Sonucu birleştir" kapalı → İnce özellik, Ters yön, t 2 → "Uçları kapat" (2) → ✓. Sonuç: **4 gövde, 108 480 mm³**, sınır kutusu y 0..40. Beklenen 96 000 + (40·40·20 − 36·36·16) = 107 264, kapaklar y 20..22 ve 38..40'ta. Duvar 20..40'ta, kapaklar ise eskiz düzlemine göre y 0..2 ve 18..20'de (bloğun içinde) oluşuyor. Hata / uyarı yok. Aynı yöntem "Başla: Öteleme"de doğru çalışıyor (X2: y −10..10 ✓).
@@ -1235,7 +1242,7 @@ Envanterde alanıma düşen komutlar: Özellikler sekmesi: Ekstrüzyon, Ekst. Ke
 - **Kod:** `src/kernel.worker.ts:337-341` `profile(f.loops).offset(off, { lineJoinType: "miter" })` + `loftWith(s2, { ruled: true })`. Dışa ötelemede köşelere ek parçalar çıkıyor (P-10: 14 yüz). Karede kenar sayısı / başlangıç köşesi eşleşmesi bozulunca ThruSections başarısız oluyor.
 - **Öneri:** Çokgen profilde öteleme köşelerini elle hesapla (kenar doğrularını ötele, kesiştir; segment sayısı aynı kalsın), ya da düz ekstrüzyon + `BRepOffsetAPI_DraftAngle` (nötr düzlem = eskiz düzlemi) kullan. P-10 da birlikte düzelir.
 
-##### D4-3 · İnce kalınlık profili aşınca hata yok, anlamsız gövde oluşuyor
+##### ✅ D4-3 · İnce kalınlık profili aşınca hata yok, anlamsız gövde oluşuyor
 - **Önem:** Yüksek · **Tür:** Hata (sessiz yanlış geometri)
 - **SolidWorks:** 20×20 kapalı profilde içe 15 mm ince özellik reddedilir ("kalınlık çok büyük").
 - **Bizde:** 20×20 eskiz → Ekstrüzyon 20 → İnce özellik → Kalınlık 15 → Ters yön (içe). Durum "Hazır · 15 ms", **6 000 mm³**: iç döngü tersine dönüp 10×10 "delik" sayılıyor (400 − 100 = 300 mm² × 20). Uyarı yok, ✓ kabul ediyor. 2'ye düzeltince doğru (2 880).
@@ -1481,7 +1488,7 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 
 ### Bulgular
 
-##### D5-1 · Kaburga "Eskize dik" parçanın 1000 mm dışına uzanan dev levha üretiyor (hata yok)
+##### ✅ D5-1 · Kaburga "Eskize dik" parçanın 1000 mm dışına uzanan dev levha üretiyor (hata yok)
 - **Önem:** Yüksek · **Tür:** Hata (yanlış geometri)
 - **SolidWorks:** "Eskize dik" kaburgada kalın profil eskiz düzlemine dik yönde ilk sınırlayan yüzlere kadar uzar; sınırlanamıyorsa "Kaburga oluşturulamadı" hatası verir.
 - **Bizde:** Hazır model L braket (Ön düzlemde L profil 60×60, et 5, derinlik 40) + Ön düzlemden 20 mm düzlemde (5,40)–(40,5) açık çizgi. Şerit Kaburga → (malzeme tarafı ters) → ✓ → 3062,5 ✓. Ağaçtan Düzenle → "Uzama yönü: Eskize dik" → ✓ → hacim **+395 979,8 mm³**, sınır kutusu **z −980 … 40**, ağaçta hata yok.
@@ -1489,7 +1496,7 @@ Kapsama oranı: alandaki envanter komutu **33 / 33** satırlı (Eskiz komutu "�
 - **Kod:** `src/kernel.worker.ts:853–862` `ribTool` dik dalı: `sk.extrude(sign * big)` sonra `touching(solidsOf(long.cut(a)), …)` — paralel daldaki `bounded()` denetimi yok; uzak uca ulaşan parça da tutuluyor.
 - **Öneri:** Dik dalda da parçanın uzak uca (`big`) değmediğini denetle (paralel daldaki `bounded`); değiyorsa "Kaburga bir yüze ulaşmıyor" hatası; ayrıca iki yönde dene, sınırlı olanı al.
 
-##### D5-2 · Sarma "Oyma" seçili bölgenin yalnız yarısını oyuyor
+##### ✅ D5-2 · Sarma "Oyma" seçili bölgenin yalnız yarısını oyuyor
 - **Önem:** Kritik · **Tür:** Hata (sessizce yanlış geometri)
 - **SolidWorks:** Oyma derinliği kadar, sarılan eskizin tamamı silindire gömülür (hacim ≈ kabartma).
 - **Bizde:** Ø40×40 silindir (Ön düzlem), Sağ düzlemden 20 mm teğet düzlemde 10×10 kare. Şerit Sarma → silindire tıkla → Kabartma 1 mm → **101,02**; 2 mm → **201,95** (beklenen ≈101,0 / 201,9 ✓). Oyma 1 mm → **50,56**, 2 mm → **101,19** (beklenen ≈101,1 / 202,4). Oymada yüz sayısı 7, kabartmada 9 → karenin bir yarısı (silindirin iki yarım yüzünden birinin içindeki kısım) oyulmuyor. Hata / uyarı yok.
@@ -1721,14 +1728,14 @@ Kapsama oranı: **21 / 21 komut** (+ alandaki 34 seçenek satırı).
 
 ### Bulgular
 
-##### D6-1 · Sac geçiş parçası (Loft + "Sac geçiş parçası") dolu katı üretiyor
+##### ✅ D6-1 · Sac geçiş parçası (Loft + "Sac geçiş parçası") dolu katı üretiyor
 - **Önem:** Kritik · **Tür:** Sessizce yanlış geometri
 - **SolidWorks:** Lofted-Bend: t kalınlıkta, uçları açık sac cidar; Düzleştir ile açılır.
 - **Bizde:** `d6_akis.py` W2 / `/tmp/d6/x12.py`: Üst düzlemde Ø100, 80 mm ofset düzlemde 120×80 → Özellikler > Loft → "Sac geçiş parçası (loft büküm)" işaretle (Sac kalınlığı 2) → ✓. Kayıtta `sheetT: 2`, ama hacim **701 523,74** (işaretlemeden önceki dolu loft ile aynı), yüz sayısı **8**, Kontrol: tek geçerli katı. Beklenen ≈ 28 680 mm² × 2 ≈ 57 000 mm³ ve uçları açık cidar. Hata / uyarı yok. PM'deki "Açınım (DXF indir)" ise doğru açınım veriyor (286,8 cm²) — model ile açınım birbirini tutmuyor. Ayrıca Sac > Düzleştir "Önce bir taban flanş oluşturun" diyor.
 - **Kod:** `src/kernel.worker.ts:3659-3667` — `onEnd` ölçütü (`resolvePlane(p.pl)` çerçevesi + 1e-3 / 1e-4 toleranslar) hiçbir uç yüzü eşlemiyor gibi; seçilen yüz yokken `solid.shell(...)` katıyı değiştirmeden döndürüyor. (İlk denetimin lb1 testi yalnız açınımı ölçüyor.)
 - **Öneri:** Uç yüzleri loft'un ilk / son yüzü olarak (topolojiden) seç; eşleşen yüz sayısı ≠ profil sayısı ise hata ver; sonra hacim / yüz sayısını doğrula.
 
-##### D6-2 · Saca Dönüştür: kalınlık uyuşmazlığı uyarısız, açınım yanlış, referanslar her yapıda kayıyor
+##### ✅ D6-2 · Saca Dönüştür: kalınlık uyuşmazlığı uyarısız, açınım yanlış, referanslar her yapıda kayıyor
 - **Önem:** Kritik · **Tür:** Sessizce yanlış geometri / kararsız model
 - **SolidWorks:** Kalınlık seçilen sabit yüzden yeniden kurulur ya da tutarsız gövdede hata verir; aynı belge her açılışta aynıdır.
 - **Bizde:** `d6_kose.py` S1, `/tmp/d6/x9.py`: 100×60×40 kutu, 2 mm kabuk (hazır) → Saca Dönüştür, Kalınlık **3** → alttan (Ctrl+6) 4 alt kenar, izometrik + arkadan 4 köşe kenarı → ✓: hata yok, hacim 34 569,8. Düzleştir: **2 büküm**, 135,498 × 95,498 (4 büküm olmalı). Düzleştir'den çıkınca hacim **33 902,36**; yenile → **35 374,6**; tekrar yenile → **33 952,8**. Kayıttaki büküm kenarı orta noktaları her yapıda değişiyor: `[50,0,-60]` → `[47.6768,0,-60]` → `[52.3232,0,0]` … (kalıcı referans onarımı `heals` yanlış kenarları yazıyor).
@@ -1920,7 +1927,7 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 
 ### Bulgular
 
-#### D7-1 · Kalınlaştır keskin köşeli çok yüzlü yüzeylerde sessizce yanlış katı üretiyor
+#### ✅ D7-1 · Kalınlaştır keskin köşeli çok yüzlü yüzeylerde sessizce yanlış katı üretiyor
 - **Önem:** Kritik · **Tür:** Hata (yanlış geometri, uyarı yok)
 - **SolidWorks:** Keskin köşeli (teğet olmayan) bir yüzey / dikilmiş kabuk kalınlaştırılınca köşeler doğru birleşir: L yolu (40 + 30, h 20, t 2) içe 2720, dışa 2880 (yuvarlak köşede 2862,8) mm³; 40×30 kapalı boru h 20 içe 5280, dışa ≈ 5851–5920, ±1 → 5600.
 - **Bizde:**
@@ -1947,7 +1954,7 @@ Envanterde alanıma düşen komutlar: Özellikler > Yüzey (8): Yüzey Ekstrüzy
 - **Kod:** `src/main.ts:2573` "Mesafe" `numField` `min` yok; `src/doc/compile.ts:796` denetimsiz `d`; worker `BRepPrimAPI_MakePrism` sıfır vektör (main.ts / worker zaman aşımı yok — P-2).
 - **Öneri:** Alana `min: 0.001` (negatif için "Yönü ters çevir" kutusu), compile'da `d > 0` denetimi; P-2 zaman aşımı.
 
-#### D7-4 · Gövdeyi yok eden yüzey işlemlerinde model tümüyle kayboluyor, hata hiçbir özelliğe bağlanmıyor
+#### ✅ D7-4 · Gövdeyi yok eden yüzey işlemlerinde model tümüyle kayboluyor, hata hiçbir özelliğe bağlanmıyor
 - **Önem:** Yüksek · **Tür:** Hata
 - **SolidWorks:** "İki taraf" kalınlaştırma kapalı boruda katı üretir; bir kesme tüm gövdeyi silecekse özellik hata verir, önceki model görünür kalır.
 - **Bizde:**
@@ -2169,7 +2176,7 @@ Alan: envanter "Kaynaklı" 11 komut + "Değerlendir" 15 komut = **26 komut, 26 /
 
 ### Bulgular
 
-##### D8-1 — Statik Analiz sonucu model değişince geçersiz sayılmıyor; eski gerilme / sehim / güvenlik katsayısı "güncel" gibi gösteriliyor
+##### ✅ D8-1 — Statik Analiz sonucu model değişince geçersiz sayılmıyor; eski gerilme / sehim / güvenlik katsayısı "güncel" gibi gösteriliyor
 - **Önem:** Kritik (yanlış mühendislik sonucu sessizce) · **Tür:** Hata
 - **SolidWorks:** Model değişince etüt "güncel değil" işaretlenir. Sonuç çizimleri gizlenir, yeniden çalıştırma istenir.
 - **Bizde:** 10×10 kesit, 100 mm kiriş (hazır). Değerlendir > Statik Analiz → uç yüze tık → Sabitle → üst yüze tık → 100 N −Y → ▶ Çöz: δ 0,0717 mm, σ 32,6 MPa, güvenlik 7,21 ✅. Panel açıkken ağaçtan Kiriş → Düzenle → Derinlik 150 → ✓. Panel hâlâ "En büyük von Mises 32,6 MPa · yer değiştirme 0,0717 mm · ✅ Güvenli" gösteriyor ve yeni modeli eski alanla boyuyor. Gerçek değer δ ≈ 0,241 mm (3,4 kat). Malzeme değiştirmede de aynı durum oluşuyor (D8-2).

@@ -5,7 +5,7 @@ sys.path.insert(0, '/home/claude/imaj-cad/tests/e2e/denetim2')
 from d5_lib import *
 
 cs = sketch("s1", "Eskiz1", FRONT, lambda pt, line, rect, c, t: c(0, 0, 20))
-cyl = ext("e1", "s1", 40); cyl["name"] = "Ekstrüzyon1"
+cyl = ext("e1", "s1", 40, end="mid"); cyl["name"] = "Ekstrüzyon1"  # kare silindirin tam üstünde (z −20…20)
 pl = {"id": "pl1", "type": "plane", "name": "Düzlem1", "base": RIGHT, "offset": 20, "flip": False}
 sq = sketch("s2", "Eskiz2", {"k": "ref", "id": "pl1"}, lambda pt, line, rect, c, t: rect(-5, -5, 5, 5))
 

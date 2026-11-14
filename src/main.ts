@@ -1007,7 +1007,12 @@ async function rebuild() {
     void ghostPreview(feats);
     applyLook();
     if (fea) {
-      if (fea.vf && res.mesh && fea.vf.length !== res.mesh.vertices.length / 3) (fea.res = undefined), (fea.field = fea.disp = undefined), renderFea();
+      if (fea.res && fea.sig !== feaSig()) {
+        fea.res = undefined;
+        fea.field = fea.disp = undefined;
+        renderFea();
+        toast("Model değişti: analiz sonucu geçersiz, yeniden çözün", true);
+      }
       fea.vf = undefined;
       feaPaint();
     }
@@ -5563,7 +5568,14 @@ async function openWhatsWrong(check = false) {
   dlg.appendChild(h("h2", "", "Ne yanlış?"));
   const list = h("div", "ww-list");
   const errs = [...featureErrors].filter(([id]) => getFeat(id));
-  if (!errs.length) list.appendChild(h("p", "ww-ok", "✓ Özelliklerde hata yok."));
+  // D7-4: hiçbir özelliğe bağlanmayan (genel) hatalar da gösterilir
+  const gen = [...featureErrors].filter(([id]) => !id).map(([, m]) => m);
+  for (const m of gen) {
+    const row = h("div", "ww-row");
+    row.append(h("b", "", "⛔ Model"), h("div", "small", m));
+    list.appendChild(row);
+  }
+  if (!errs.length && !gen.length) list.appendChild(h("p", "ww-ok", "✓ Özelliklerde hata yok."));
   for (const [id, msg] of errs) {
     const f = getFeat(id)!;
     const row = h("div", "ww-row");
@@ -5648,7 +5660,9 @@ function toggleDraftAnalysis() {
 // ---------- Sonlu eleman analizi (doğrusal statik) ----------
 const NU: Record<string, number> = { aluminium: 0.33, brass: 0.34, copper: 0.34, titanium: 0.34, castiron: 0.26, pom: 0.35, pa6: 0.39, pe: 0.42, abs: 0.35, pla: 0.36, wood: 0.3 };
 const FEA_DIRS: [string, [number, number, number]][] = [["−Y", [0, -1, 0]], ["+Y", [0, 1, 0]], ["−X", [-1, 0, 0]], ["+X", [1, 0, 0]], ["−Z", [0, 0, -1]], ["+Z", [0, 0, 1]]];
-let fea: { el: HTMLElement; res?: FeaResult; show: "vm" | "u"; deform: boolean; worker?: Worker; vf?: Int32Array; field?: Float32Array; disp?: Float32Array; addKind: "F" | "Fn" | "p"; addV: number; addDir: number; t?: number } | null = null;
+/** D8-1: SEA sonucunun ait olduğu model özeti (özellikler + malzeme + yapılandırma) */
+const feaSig = () => JSON.stringify([doc.features, doc.material, doc.config, (doc as any).vars, doc.fea ?? { fix: [], loads: [], n: 6000 }]);
+let fea: { el: HTMLElement; sig?: string; res?: FeaResult; show: "vm" | "u"; deform: boolean; worker?: Worker; vf?: Int32Array; field?: Float32Array; disp?: Float32Array; addKind: "F" | "Fn" | "p"; addV: number; addDir: number; t?: number } | null = null;
 const feaStudy = () => (doc.fea ??= { fix: [], loads: [], n: 6000 });
 function feaFaceIdx(ref: FaceRef): number {
   const m = viewer.mesh;
@@ -5797,6 +5811,7 @@ function feaFields() {
   fea.disp = d;
 }
 async function runFea(prog?: HTMLElement): Promise<FeaResult | null> {
+  const sig0 = feaSig();
   if (!fea || !viewer.mesh) return null;
   const st = feaStudy();
   const fixI = st.fix.map(feaFaceIdx).filter((i) => i >= 0);
@@ -5841,6 +5856,7 @@ async function runFea(prog?: HTMLElement): Promise<FeaResult | null> {
     return res;
   }
   fea.res = res;
+  fea.sig = sig0;
   fea.t = performance.now() - t0;
   feaFields();
   renderFea();

@@ -308,6 +308,29 @@ export function thinRegion(chains: { segs: Seg[]; closed: boolean }[], t: number
       const innerD = sgn * (mode === "one" ? 0 : mode === "mid" ? -t / 2 : mode === "two" ? -t2 : -t);
       const o = outerD === 0 ? toLinesArcs(ch.segs) : offsetSegs(ch.segs, outerD, true);
       const i = innerD === 0 ? toLinesArcs(ch.segs) : offsetSegs(ch.segs, innerD, true);
+      // D4-3: içe öteleme profili aşarsa iç döngü tersine döner / dışa taşar → hata
+      const area = (sg: Seg[]) => {
+        const pp: Vec2[] = [];
+        sg.forEach((x) => pp.push(...segPoints(x).slice(0, -1)));
+        return polyArea(pp);
+      };
+      const a0 = polyArea(poly), ao = area(o), ai = area(i);
+      // ötelenmiş döngünün her noktası özgün sınırdan öteleme kadar uzakta olmalı (aşınca döngü ters yüzüne geçer)
+      const minDist = (sg: Seg[]) => {
+        let m = Infinity;
+        for (const x of sg)
+          for (const q of segPoints(x))
+            for (let k = 0; k < poly.length; k++) {
+              const A = poly[k], B = poly[(k + 1) % poly.length];
+              const ab: Vec2 = [B[0] - A[0], B[1] - A[1]], aq: Vec2 = [q[0] - A[0], q[1] - A[1]];
+              const L2 = ab[0] * ab[0] + ab[1] * ab[1] || 1;
+              const u = Math.max(0, Math.min(1, (aq[0] * ab[0] + aq[1] * ab[1]) / L2));
+              m = Math.min(m, Math.hypot(aq[0] - u * ab[0], aq[1] - u * ab[1]));
+            }
+        return m;
+      };
+      const tooBig = (d: number, sg: Seg[]) => d !== 0 && minDist(sg) < Math.abs(d) * 0.98 - 1e-6;
+      if (Math.sign(ai) !== Math.sign(a0) || Math.abs(ai) < 1e-9 || Math.abs(ai) >= Math.abs(ao) || Math.sign(ao) !== Math.sign(a0) || tooBig(innerD, i) || tooBig(outerD, o)) throw new Error("İnce özellik kalınlığı profil için çok büyük");
       loops.push({ segs: o, depth: 0 }, { segs: i, depth: 1 });
     } else {
       const [l, r] = mode === "mid" ? [t / 2, -t / 2] : mode === "one" ? [t, 0] : mode === "two" ? [t, -t2] : [0, -t];

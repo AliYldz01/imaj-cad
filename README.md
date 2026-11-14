@@ -59,6 +59,7 @@ Hedef: makinenin başında ölçü alarak parçaları çizmek, montajlamak ve ü
 - v0.84: Ekstrüzyondan sonra eskiz düzenlenince değişikliğin kaybolması düzeltildi.
 - v0.85: Orta tuşla döndürmede görüntünün kayması ve ekranda dönmesi düzeltildi.
 - v0.86: denetim 2 Paket 1 — veri kaybı ve sessiz yanlış hataları düzeltildi (eskiz vazgeç geri alma, Değiştir kutusu, denklemler, sıfır derinlik kilidi, montaj kaydı, Farklı kaydet, depo dolu uyarısı).
+- v0.87: denetim 2 Paket 2 — sessizce yanlış geometri üreten durumlar artık hata veriyor ya da doğru sonuç üretiyor (kabuk, ince kapak, kaburga, sarma, sac geçiş, Saca Dönüştür, kalınlaştır, statik analiz güncelliği).
 - v0.36: **Kalıcı referanslar** — ekstrüzyon derinliği ya da eskiz ölçüsü değişince radyüs, pah, kabuk, kenar flanşı, diş seçtiğiniz kenarı/yüzü kaybetmez; eskizde Esc artık çıkış sormaz
 - v0.35: Serbest Çizimde elips, yuvarlatılmış dikdörtgen ve çok daha bozuk çizilmiş kare/dikdörtgen tanınır (kare = eşit kenar); Esc / ✕ / geri tuşunda değişiklik varsa "Çıkmak istediğinize emin misiniz?" sorulur
 - v0.34: **Serbest Çizim** — eskizde basılı tutup kabaca çizin, bırakmadan bekleyin: çizim çizgi / yay / daire / çokgen / serbest eğriye dönüşür; uçlar birleşir, yatay-dikey-dik ilişkileri kendiliğinden verilir (fare, kalem, parmak)

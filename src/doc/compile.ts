@@ -343,16 +343,21 @@ export function compile(feats0: Feature[], profiles: Record<string, { name: stri
           const pr0 = f.thin ? { ...thinOf(f.sketch, f.thinT ?? 2, f.thinMode ?? "one", f.thinT2, f.thinR), texts: [] } : profileOf(f.sketch);
           const pr = { ...pr0, loops: selectContours(pr0.loops, f.contours) };
           if (f.thin && f.thinCap && f.thinCap > 0 && !f.cut) {
-            // uçları kapat: dış sınır bölgesi baştan ve sondan kapak kalınlığında
             if (!(pr0 as any).closed) throw new Error("Uçları kapat yalnız kapalı profilde kullanılır");
             if (f.end !== "blind" || f.dir2) throw new Error("Uçları kapat: bitiş koşulu kör ve tek yön olmalı");
             if (2 * f.thinCap >= f.d1) throw new Error("Kapak kalınlığı derinliğin yarısından küçük olmalı");
-            const outer = pr.loops.filter((l) => l.depth === 0);
-            const so = f.startOff ?? 0, sg = f.rev ? -1 : 1;
-            for (const [k, off] of [["c1", so], ["c2", so + sg * (f.d1 - f.thinCap)]] as const)
-              kfeats.push({ id: `${f.id}~${k}`, type: "extrude", startOff: off, cut: false, pl: pr.pl, loops: outer, texts: [], end: "blind", d1: f.thinCap, rev: f.rev, dir2: false, end2: "blind", d2: 0, merge: f.merge } as any);
+            if (f.dirVec || f.draft || f.twist) throw new Error("Uçları kapat: kenar yönü, koniklik ve burulmayla birlikte kullanılamaz");
           }
           kfeats.push({ id: f.id, type: "extrude", fromFace: f.fromFace, fromVtx: f.fromVtx, vtx: f.vtx, bodyRef: f.bodyRef, dirVec: f.dirVec, flipCut: f.flipCut, startOff: f.startOff, cut: f.cut, pl: pr.pl, loops: pr.loops, texts: pr.texts, end: f.end, d1: f.d1, rev: f.rev, dir2: f.dir2, end2: f.end2, d2: f.d2, face: f.face, offd: f.offd, draft: f.draft, draftOut: f.draftOut, twist: f.twist, merge: f.merge });
+          if (f.thin && f.thinCap && f.thinCap > 0 && !f.cut) {
+            // uçları kapat: dış sınır bölgesi baştan ve sondan kapak kalınlığında
+            const outer = pr.loops.filter((l) => l.depth === 0);
+            const so = f.startOff ?? 0, sg = f.rev ? -1 : 1;
+            // D4-1: başlangıç yüz / köşe ise kapaklar da oradan ölçülür (addOff başlangıca eklenir)
+            const fromRef = !!(f.fromFace || f.fromVtx);
+            for (const [k, off] of [["c1", 0], ["c2", sg * (f.d1 - f.thinCap)]] as const)
+              kfeats.push({ id: `${f.id}~${k}`, type: "extrude", fromFace: f.fromFace, fromVtx: f.fromVtx, startOff: fromRef ? 0 : so + off, addOff: fromRef ? off : 0, capOf: f.id, cut: false, pl: pr.pl, loops: outer, texts: [], end: "blind", d1: f.thinCap, rev: f.rev, dir2: false, end2: "blind", d2: 0, merge: f.merge } as any);
+          }
           break;
         }
         case "revolve": {

@@ -268,8 +268,9 @@ with sync_playwright() as p:
         a.edit_feat(th); a.pmseg("Taraf 2"); a.wait(0.8); a.ok()
         v2 = a.vol()
         print("   K1 L kabuğu kalınlaştır:", v, v2, mb)
-        # taban 40×30×2 = 2400 + duvar (40×20 yükseklik): iç köşe (20−2)·40·2 = 1440 → 3840; dış: 40×22×2 = 1760 → 4160
-        chk("K1 dikilmiş L kabuğu kalınlaştır: 3840 / 4160", sorted([round(v or 0), round(v2 or 0)]) == [3840, 4160], (v, v2))
+        # NOT (v0.87): "Duvar" Ön düzlemde y=0 doğrusu → Ön düzleme dik çekilince taban ile AYNI düzlemde (y=0) kalır;
+        # yani kabuk L değil, 40×50 düz levhadır: 40·50·2 = 4000 her iki tarafta doğru sonuçtur (önceki 3840/4160 beklentisi yanlıştı).
+        chk("K1 dikilmiş (düzlemdeş) kabuğu kalınlaştır: 4000 / 4000", sorted([round(v or 0), round(v2 or 0)]) == [4000, 4000], (v, v2))
     case("K1", k1)
 
     print("SAYFA HATALARI:", a.errs[:5])
