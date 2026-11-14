@@ -1622,6 +1622,12 @@ function askRedundant3(): Promise<"ref" | "keep" | null> {
     d.appendChild(row);
     d.addEventListener("cancel", () => (d.remove(), res(null)));
     document.body.appendChild(d);
-    d.showModal();
+    // Enter ile onaylanan ölçü kutusunun tuşu ilk düğmeyi tetiklemesin: pencere tuş bittikten sonra açılır, odak başlıkta
+    setTimeout(() => {
+      d.showModal();
+      const h = d.querySelector("h3") as HTMLElement;
+      h.tabIndex = -1;
+      h.focus();
+    }, 0);
   });
 }

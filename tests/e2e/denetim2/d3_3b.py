@@ -110,6 +110,7 @@ with sync_playwright() as p:
     if loc.count(): loc.press("Enter"); time.sleep(0.4)
     t.note("gereksiz 3B ölçü iletisi", dlg, D("(d.dims3||[]).map(m=>[m.t,m.v,!!m.ref])"))
     t.chk("3B gereksiz ölçüde 2B ile aynı 3 seçenekli pencere (redund-dlg)", not dlg and t.pg.locator("dialog.redund-dlg").count() > 0, dlg)
+    if t.pg.locator("dialog.redund-dlg[open]").count(): t.pg.click("dialog.redund-dlg button:has-text('Sürülen')"); time.sleep(0.3)
     tool("Seç"); t.key("Escape")
     ex2 = t.pg.locator("dialog.exit-dialog[open]").count()
     t.chk("3B Seç modunda (ölçü sonrası) Esc çıkış penceresi açmaz (E-30)", ex2 == 0, ex2)
